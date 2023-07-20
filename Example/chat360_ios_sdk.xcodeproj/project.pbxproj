@@ -41,9 +41,9 @@
 		607FACE51AFB9204008FA782 /* chat360_ios_sdk_Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = chat360_ios_sdk_Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		607FACEA1AFB9204008FA782 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		607FACEB1AFB9204008FA782 /* Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests.swift; sourceTree = "<group>"; };
-		9716C7138B398699A14C3D7C /* chat360_ios_sdk.podspec */ = {isa = PBXFileReference; includeInIndex = 1; name = chat360_ios_sdk.podspec; path = ../chat360_ios_sdk.podspec; sourceTree = "<group>"; };
-		9B9A795798AA3D772DE6BB61 /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; name = README.md; path = ../README.md; sourceTree = "<group>"; };
-		D2BC5BBC541F197228AAD6B8 /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; name = LICENSE; path = ../LICENSE; sourceTree = "<group>"; };
+		9716C7138B398699A14C3D7C /* chat360_ios_sdk.podspec */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = chat360_ios_sdk.podspec; path = ../chat360_ios_sdk.podspec; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		9B9A795798AA3D772DE6BB61 /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../README.md; sourceTree = "<group>"; };
+		D2BC5BBC541F197228AAD6B8 /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = LICENSE; path = ../LICENSE; sourceTree = "<group>"; };
 		D43E2B396F4C571C57146F9F /* Pods-chat360_ios_sdk_Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-chat360_ios_sdk_Example.debug.xcconfig"; path = "Target Support Files/Pods-chat360_ios_sdk_Example/Pods-chat360_ios_sdk_Example.debug.xcconfig"; sourceTree = "<group>"; };
 		D96990B91814C90E90CD1771 /* Pods_chat360_ios_sdk_Tests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_chat360_ios_sdk_Tests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4CA4E8BFE4921D53552DA2A /* Pods-chat360_ios_sdk_Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-chat360_ios_sdk_Example.release.xcconfig"; path = "Target Support Files/Pods-chat360_ios_sdk_Example/Pods-chat360_ios_sdk_Example.release.xcconfig"; sourceTree = "<group>"; };
@@ -156,7 +156,6 @@
 				3C805AAB335AD721598D701B /* Pods-chat360_ios_sdk_Tests.debug.xcconfig */,
 				0ECE51ED1A8488F0F1E57E94 /* Pods-chat360_ios_sdk_Tests.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -227,6 +226,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 				Base,
 			);
