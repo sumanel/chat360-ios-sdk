@@ -1,8 +1,8 @@
 {
   "name": "chat360_ios_sdk",
   "version": "0.1.0",
-  "summary": "A short description of chat360_ios_sdk.",
-  "description": "TODO: Add long description of the pod here.",
+  "summary": "Its  a chat bot ios sdk that can be independently used.",
+  "description": "\"Its  a chat bot ios sdk that can be independently used. You have to just import the package.\"",
   "homepage": "https://github.com/prateekgupta360/chat360_ios_sdk",
   "license": {
     "type": "MIT",
@@ -16,7 +16,7 @@
     "tag": "0.1.0"
   },
   "platforms": {
-    "ios": "10.0"
+    "ios": "13.0"
   },
-  "source_files": "chat360_ios_sdk/Classes/**/*"
+  "source_files": "Classes/**/*.swift"
 }

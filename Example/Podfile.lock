@@ -9,7 +9,7 @@ EXTERNAL SOURCES:
     :path: "../"
 
 SPEC CHECKSUMS:
-  chat360_ios_sdk: 81da8abe9dcc0d6cd14bfe24cebe8aac7693ac58
+  chat360_ios_sdk: 6d8e46b915f2fae41d7b751ec990d4b3a0dcfbb6
 
 PODFILE CHECKSUM: 3782638311974f6dc36928c353c6267eca2ddf37
 
