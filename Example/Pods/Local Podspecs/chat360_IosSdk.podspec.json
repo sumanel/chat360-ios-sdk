@@ -1,0 +1,22 @@
+{
+  "name": "chat360_IosSdk",
+  "version": "0.1.0",
+  "summary": "A short description of chat360_IosSdk.",
+  "description": "TODO: Add long description of the pod here.",
+  "homepage": "https://github.com/prateekgupta360/chat360_IosSdk",
+  "license": {
+    "type": "MIT",
+    "file": "LICENSE"
+  },
+  "authors": {
+    "prateekgupta360": "prateek.gupta@chat360.io"
+  },
+  "source": {
+    "git": "https://github.com/prateekgupta360/chat360_IosSdk.git",
+    "tag": "0.1.0"
+  },
+  "platforms": {
+    "ios": "10.0"
+  },
+  "source_files": "chat360_IosSdk/Classes/**/*"
+}

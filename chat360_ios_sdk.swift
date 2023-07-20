@@ -62,9 +62,17 @@ public class Chat360: UIViewController, WKUIDelegate {
     }
     
     public override func viewSafeAreaInsetsDidChange() {
-        super.viewSafeAreaInsetsDidChange()
+        if #available(iOS 11.0, *) {
+            super.viewSafeAreaInsetsDidChange()
+        } else {
+            // Fallback on earlier versions
+        }
 
-        let bottomSafeAreaInset = view.safeAreaInsets.bottom
+        if #available(iOS 11.0, *) {
+            let bottomSafeAreaInset = view.safeAreaInsets.bottom
+        } else {
+            // Fallback on earlier versions
+        }
         webView.frame.size.height = view.bounds.height - bottomSafeAreaInset
     }
 
