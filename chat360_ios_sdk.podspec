@@ -36,6 +36,7 @@ Pod::Spec.new do |s|
       "ios" : "13.0"
   }
   
+  
   # s.resource_bundles = {
   #   'chat360_ios_sdk' => ['chat360_ios_sdk/Assets/*.png']
   # }
