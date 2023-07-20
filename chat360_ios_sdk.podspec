@@ -21,11 +21,11 @@ Pod::Spec.new do |s|
 "Its  a chat bot ios sdk that can be independently used. You have to just import the package."
                        DESC
 
-  s.homepage         = 'https://github.com/prateekgupta360/chat360_ios_sdk'
+  s.homepage         = 'http://github.com/sumanel/chat360_ios_sdk'
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'prateekgupta360' => 'prateek.gupta@chat360.io' }
-  s.source           = { :git => 'https://github.com/sumanel/chat360-ios-sdk.git', :tag => s.version.to_s }
+  s.source           = { :git => 'http://github.com/sumanel/chat360-ios-sdk.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
   s.ios.deployment_target = '13.0'
