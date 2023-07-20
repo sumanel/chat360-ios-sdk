@@ -4,17 +4,17 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
-		<key>Pods-chat360_IosSdk_Example.xcscheme</key>
+		<key>Pods-chat360_sdk_ios_Example.xcscheme</key>
 		<dict>
 			<key>isShown</key>
 			<false/>
 		</dict>
-		<key>Pods-chat360_IosSdk_Tests.xcscheme</key>
+		<key>Pods-chat360_sdk_ios_Tests.xcscheme</key>
 		<dict>
 			<key>isShown</key>
 			<false/>
 		</dict>
-		<key>chat360_IosSdk.xcscheme</key>
+		<key>chat360_sdk_ios.xcscheme</key>
 		<dict>
 			<key>isShown</key>
 			<false/>

@@ -1,5 +1,5 @@
 import XCTest
-import chat360_IosSdk
+import chat360_sdk_ios
 
 class Tests: XCTestCase {
     

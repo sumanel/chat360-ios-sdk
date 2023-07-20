@@ -2,10 +2,10 @@ use_frameworks!
 
 platform :ios, '10.0'
 
-target 'chat360_IosSdk_Example' do
-  pod 'chat360_IosSdk', :path => '../'
+target 'chat360_sdk_ios_Example' do
+  pod 'chat360_sdk_ios', :path => '../'
 
-  target 'chat360_IosSdk_Tests' do
+  target 'chat360_sdk_ios_Tests' do
     inherit! :search_paths
 
     

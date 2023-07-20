@@ -73,7 +73,7 @@ public class Chat360: UIViewController, WKUIDelegate {
         } else {
             // Fallback on earlier versions
         }
-        webView.frame.size.height = view.bounds.height - bottomSafeAreaInset
+        webView.frame.size.height = view.bounds.height 
     }
 
 }

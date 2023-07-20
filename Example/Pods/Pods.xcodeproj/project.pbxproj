@@ -7,111 +7,161 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		06B7B3832A691C94006C048F /* chat360_ios_sdk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B7B3822A691C94006C048F /* chat360_ios_sdk.swift */; };
-		0B3823C9FAD8CED48EC13589E6671FDD /* ReplaceMe.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC56F315311566B0088CCF41C559172 /* ReplaceMe.swift */; };
-		2E61607B4B849AD5E6DD1CCC21CBFA5C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
-		4104CA59A46245C99DD4770DEC846816 /* chat360_IosSdk-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = C8DEE2B6D1C47D76897693CED6D8C7E6 /* chat360_IosSdk-dummy.m */; };
-		7891BE79441A1BCC5B3A2722FAE57E58 /* chat360_IosSdk-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = AAA63356A9A727780CB709A3DA92A909 /* chat360_IosSdk-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		89774B39EB06C8BB0F219EA3C24A3840 /* Pods-chat360_IosSdk_Example-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 004E0A26BA1C562AD6DEC5EAD3BD8375 /* Pods-chat360_IosSdk_Example-dummy.m */; };
-		A52C2715817A3AAE742BD12DEFFDEE4A /* Pods-chat360_IosSdk_Tests-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = BAFD162B7FB8249E5A1555F67AB5E27C /* Pods-chat360_IosSdk_Tests-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		BA0B502E5D58F8BAE36F98E200277CD8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
-		C01BAD154C5EDD6CD86B356144D179AE /* Pods-chat360_IosSdk_Tests-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = D9571BB2FDBA079694720CD94D71E8F8 /* Pods-chat360_IosSdk_Tests-dummy.m */; };
-		CD9BB36AFD107C8274C5103BD04AAD25 /* Pods-chat360_IosSdk_Example-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 22AAB96A6613F8B113A9AC55CC731BED /* Pods-chat360_IosSdk_Example-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		DB9A47045062301327D7BE39E40B75DB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
+		06B7B3852A69282C006C048F /* chat360_ios_sdk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B7B3842A69282C006C048F /* chat360_ios_sdk.swift */; };
+		147210EF879C47511CF8C898D24610C3 /* chat360_sdk_ios-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 88BA258F39E1B028169338F54FC865A4 /* chat360_sdk_ios-dummy.m */; };
+		3CCCB21F26A8F4270A2A12F977E21A1C /* chat360_sdk_ios-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = FE6417F3648DB5D548654CE548B4CC01 /* chat360_sdk_ios-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		69F129CBA6384CB04EA89CB991937487 /* Pods-chat360_sdk_ios_Example-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 99DEB9A49C77D9BCCAE6D1C5A778DFE6 /* Pods-chat360_sdk_ios_Example-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		A68EB0A1F83032C02BB5B3F6AA47D7A0 /* Pods-chat360_sdk_ios_Example-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = E060B1841B9CBE6221CA3D2E51782251 /* Pods-chat360_sdk_ios_Example-dummy.m */; };
+		A734FC05B6A6358B06056CF947CB9234 /* Pods-chat360_sdk_ios_Tests-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 5D1CADE331BE01B6C331F39653423AF0 /* Pods-chat360_sdk_ios_Tests-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		B10B1F217B247DB12234D52B89E5F916 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
+		B70144056CEA101A9728127CC2A7F144 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
+		DAF2645683EB6A57A5D9169BD909279C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */; };
+		FD6B5CE2D4C097515F7D07582998664B /* Pods-chat360_sdk_ios_Tests-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 462C788C30D34B179B4335089854619B /* Pods-chat360_sdk_ios_Tests-dummy.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		384D3A7F030DC8954B6D1DEA505E1740 /* PBXContainerItemProxy */ = {
+		7CB13D60EA0BF20D351C5A4537F41370 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 0BC27A2456944E48C8D773B1C6765F54;
-			remoteInfo = "Pods-chat360_IosSdk_Example";
+			remoteGlobalIDString = 514386FF11CA3C86FC877D3063D167F8;
+			remoteInfo = "Pods-chat360_sdk_ios_Example";
 		};
-		3FA830DD10D56927758B2B728861127D /* PBXContainerItemProxy */ = {
+		CF952A68B70EC77176486F6E23EA83D3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 8488DB1FA7BCC0621FF70F5872EDE9AD;
-			remoteInfo = chat360_IosSdk;
+			remoteGlobalIDString = 14ABF2929BE6F531F1B6FFD29AC9A25A;
+			remoteInfo = chat360_sdk_ios;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		004E0A26BA1C562AD6DEC5EAD3BD8375 /* Pods-chat360_IosSdk_Example-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-chat360_IosSdk_Example-dummy.m"; sourceTree = "<group>"; };
-		06B7B3822A691C94006C048F /* chat360_ios_sdk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = chat360_ios_sdk.swift; sourceTree = "<group>"; };
-		1393558F20C1284FDD6FE585651E9A86 /* chat360_IosSdk.podspec */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; path = chat360_IosSdk.podspec; sourceTree = "<group>"; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
-		1D28BD14AF946705DB651F535D4B8781 /* Pods-chat360_IosSdk_Tests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_IosSdk_Tests.release.xcconfig"; sourceTree = "<group>"; };
-		22AAB96A6613F8B113A9AC55CC731BED /* Pods-chat360_IosSdk_Example-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-chat360_IosSdk_Example-umbrella.h"; sourceTree = "<group>"; };
-		495BA76E3B832BC0D9205B6D9DC4EA5C /* Pods-chat360_IosSdk_Example-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_IosSdk_Example-acknowledgements.plist"; sourceTree = "<group>"; };
-		4B46569294ED506AE23DE7D88E282307 /* chat360_IosSdk-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "chat360_IosSdk-Info.plist"; sourceTree = "<group>"; };
-		5075F9B8E5BAEABAB20D0FA46921A85E /* chat360_IosSdk-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "chat360_IosSdk-prefix.pch"; sourceTree = "<group>"; };
-		5DC5E978B18F47BB460FDED7CD3A4001 /* Pods-chat360_IosSdk_Tests-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-chat360_IosSdk_Tests-acknowledgements.markdown"; sourceTree = "<group>"; };
+		03C2FAAFFC37BA2CB706B49E5882424C /* chat360_sdk_ios */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = chat360_sdk_ios; path = chat360_sdk_ios.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		06B7B3842A69282C006C048F /* chat360_ios_sdk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = chat360_ios_sdk.swift; sourceTree = "<group>"; };
+		254A9EE549FD1C15172CB61ED82FB711 /* Pods-chat360_sdk_ios_Example-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_sdk_ios_Example-Info.plist"; sourceTree = "<group>"; };
+		31F0C98DDFE579E991F1168053A5BCF9 /* Pods-chat360_sdk_ios_Tests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_sdk_ios_Tests.debug.xcconfig"; sourceTree = "<group>"; };
+		36CF44F106ABB399509E23A3AFFF8D3E /* Pods-chat360_sdk_ios_Example-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_sdk_ios_Example-acknowledgements.plist"; sourceTree = "<group>"; };
+		3933C8EC6360F25E3FA825574E4B23CD /* chat360_sdk_ios.podspec */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; path = chat360_sdk_ios.podspec; sourceTree = "<group>"; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		40FEE94F1AAD896C050532CAE39F434E /* chat360_sdk_ios-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "chat360_sdk_ios-Info.plist"; sourceTree = "<group>"; };
+		4484EE19A8B4C344B7F47969DCB5B945 /* chat360_sdk_ios.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = chat360_sdk_ios.debug.xcconfig; sourceTree = "<group>"; };
+		453CA06A058EEF7194BB8F255E8F8F4F /* Pods-chat360_sdk_ios_Tests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_sdk_ios_Tests.release.xcconfig"; sourceTree = "<group>"; };
+		462C788C30D34B179B4335089854619B /* Pods-chat360_sdk_ios_Tests-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-chat360_sdk_ios_Tests-dummy.m"; sourceTree = "<group>"; };
+		52A8297AF117DA13AFD7A5B9B63D91F2 /* Pods-chat360_sdk_ios_Example-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-chat360_sdk_ios_Example-acknowledgements.markdown"; sourceTree = "<group>"; };
+		59E457B907E28EEAE5904E48FE4ACA49 /* Pods-chat360_sdk_ios_Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_sdk_ios_Example.debug.xcconfig"; sourceTree = "<group>"; };
+		5D1CADE331BE01B6C331F39653423AF0 /* Pods-chat360_sdk_ios_Tests-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-chat360_sdk_ios_Tests-umbrella.h"; sourceTree = "<group>"; };
+		645C74B98C216D3F49710A2F1CA6B87D /* Pods-chat360_sdk_ios_Tests-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-chat360_sdk_ios_Tests-acknowledgements.markdown"; sourceTree = "<group>"; };
 		73010CC983E3809BECEE5348DA1BB8C6 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		7EC65976506821F2ACD1B248978F7CE4 /* Pods-chat360_IosSdk_Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_IosSdk_Example.release.xcconfig"; sourceTree = "<group>"; };
-		828AA9208B943305A7140341BCA5B970 /* Pods-chat360_IosSdk_Example-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-chat360_IosSdk_Example-frameworks.sh"; sourceTree = "<group>"; };
-		8CE22EAE7DFE718BA9817BF5CC4F952D /* Pods-chat360_IosSdk_Example */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-chat360_IosSdk_Example"; path = Pods_chat360_IosSdk_Example.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		88BA258F39E1B028169338F54FC865A4 /* chat360_sdk_ios-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "chat360_sdk_ios-dummy.m"; sourceTree = "<group>"; };
+		8A886BC085FFBB4314BA1802E389D728 /* Pods-chat360_sdk_ios_Example.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-chat360_sdk_ios_Example.modulemap"; sourceTree = "<group>"; };
+		90C6347BEB712B435D485B0326358DC3 /* Pods-chat360_sdk_ios_Tests-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_sdk_ios_Tests-Info.plist"; sourceTree = "<group>"; };
+		9137B561B0F2F41A8CA90D384238931F /* Pods-chat360_sdk_ios_Example-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-chat360_sdk_ios_Example-frameworks.sh"; sourceTree = "<group>"; };
+		99DEB9A49C77D9BCCAE6D1C5A778DFE6 /* Pods-chat360_sdk_ios_Example-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-chat360_sdk_ios_Example-umbrella.h"; sourceTree = "<group>"; };
 		9D940727FF8FB9C785EB98E56350EF41 /* Podfile */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; name = Podfile; path = ../Podfile; sourceTree = SOURCE_ROOT; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
-		AAA63356A9A727780CB709A3DA92A909 /* chat360_IosSdk-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "chat360_IosSdk-umbrella.h"; sourceTree = "<group>"; };
-		AE0819C0206A0AE1292C236FE5831B62 /* chat360_IosSdk */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = chat360_IosSdk; path = chat360_IosSdk.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		AEE0AD8C7C48826A5026E1F7B99F8589 /* Pods-chat360_IosSdk_Tests */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-chat360_IosSdk_Tests"; path = Pods_chat360_IosSdk_Tests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		B4E6710C41E373AC764EC421EAE73A47 /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		BA1B8BC836C4F5D93B1DC84D603E97CF /* chat360_IosSdk.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = chat360_IosSdk.modulemap; sourceTree = "<group>"; };
-		BAFD162B7FB8249E5A1555F67AB5E27C /* Pods-chat360_IosSdk_Tests-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-chat360_IosSdk_Tests-umbrella.h"; sourceTree = "<group>"; };
-		C8DEE2B6D1C47D76897693CED6D8C7E6 /* chat360_IosSdk-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "chat360_IosSdk-dummy.m"; sourceTree = "<group>"; };
-		CFC56F315311566B0088CCF41C559172 /* ReplaceMe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReplaceMe.swift; path = chat360_IosSdk/Classes/ReplaceMe.swift; sourceTree = "<group>"; };
-		D8012B5BE1F57F930A0A777788425E16 /* chat360_IosSdk.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = chat360_IosSdk.release.xcconfig; sourceTree = "<group>"; };
-		D9571BB2FDBA079694720CD94D71E8F8 /* Pods-chat360_IosSdk_Tests-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-chat360_IosSdk_Tests-dummy.m"; sourceTree = "<group>"; };
-		DB3E9387BB76BDB6DDF8CDFDBA413FFA /* Pods-chat360_IosSdk_Tests.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-chat360_IosSdk_Tests.modulemap"; sourceTree = "<group>"; };
-		DFC3F5CF8D6C6CB881E5A74AEF4E918B /* Pods-chat360_IosSdk_Tests-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_IosSdk_Tests-acknowledgements.plist"; sourceTree = "<group>"; };
-		E28C59048F96956EB3C1543CD4442E3E /* Pods-chat360_IosSdk_Example.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-chat360_IosSdk_Example.modulemap"; sourceTree = "<group>"; };
-		E4FF955383E56467F7B5DA176835E8AF /* Pods-chat360_IosSdk_Example-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_IosSdk_Example-Info.plist"; sourceTree = "<group>"; };
-		EA1D5B8DDFBD394F36AFFBFAA71B9048 /* Pods-chat360_IosSdk_Example-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-chat360_IosSdk_Example-acknowledgements.markdown"; sourceTree = "<group>"; };
-		EB7548BF45B6263A21605E08469C084B /* Pods-chat360_IosSdk_Tests-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_IosSdk_Tests-Info.plist"; sourceTree = "<group>"; };
-		EEEB10467B2E9468BC71F868CE71C052 /* chat360_IosSdk.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = chat360_IosSdk.debug.xcconfig; sourceTree = "<group>"; };
-		F01E96D1CA3BAE4CD28303E091D5EE3A /* Pods-chat360_IosSdk_Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_IosSdk_Example.debug.xcconfig"; sourceTree = "<group>"; };
-		F1DEDADC181AF19C4F0B475E9C6487CF /* Pods-chat360_IosSdk_Tests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_IosSdk_Tests.debug.xcconfig"; sourceTree = "<group>"; };
-		F58D8974A323B9C5863662592FF0CCCC /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		A59F9CE2DDAADD0543360C271325161C /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		A5DD186B4BFE10E8FE78BD4471FF7839 /* Pods-chat360_sdk_ios_Tests */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-chat360_sdk_ios_Tests"; path = Pods_chat360_sdk_ios_Tests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1334C66A35B80CCC2BE336FE1CD7418 /* Pods-chat360_sdk_ios_Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-chat360_sdk_ios_Example.release.xcconfig"; sourceTree = "<group>"; };
+		C1FDB6842F23B2B8C45C37865F27E295 /* chat360_sdk_ios.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = chat360_sdk_ios.release.xcconfig; sourceTree = "<group>"; };
+		C479C222E2F279A57B0B7C17E3B55F7C /* Pods-chat360_sdk_ios_Tests-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-chat360_sdk_ios_Tests-acknowledgements.plist"; sourceTree = "<group>"; };
+		CB69D3028C971E087387D23DA8A00A5F /* LICENSE */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		E060B1841B9CBE6221CA3D2E51782251 /* Pods-chat360_sdk_ios_Example-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-chat360_sdk_ios_Example-dummy.m"; sourceTree = "<group>"; };
+		E5238DB85C60BFFC3F9BA682D7AD6EB9 /* Pods-chat360_sdk_ios_Example */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-chat360_sdk_ios_Example"; path = Pods_chat360_sdk_ios_Example.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E84B1A6FF873520DAFF6D516AD568319 /* chat360_sdk_ios-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "chat360_sdk_ios-prefix.pch"; sourceTree = "<group>"; };
+		ED278316621E00E65855A31EF8794C5F /* Pods-chat360_sdk_ios_Tests.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-chat360_sdk_ios_Tests.modulemap"; sourceTree = "<group>"; };
+		F737E41134D02AAE3EADD9286391FE53 /* chat360_sdk_ios.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = chat360_sdk_ios.modulemap; sourceTree = "<group>"; };
+		FE6417F3648DB5D548654CE548B4CC01 /* chat360_sdk_ios-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "chat360_sdk_ios-umbrella.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		0ADE5E69F9C552D38F12913DC0BDE1D9 /* Frameworks */ = {
+		5AB97C046B4B290155964DFA5E7E24AC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BA0B502E5D58F8BAE36F98E200277CD8 /* Foundation.framework in Frameworks */,
+				B70144056CEA101A9728127CC2A7F144 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		534F1A53CEB066AC73FD41324C63108E /* Frameworks */ = {
+		B72B69AEE958B5127DAE5E45FEBDDFFC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2E61607B4B849AD5E6DD1CCC21CBFA5C /* Foundation.framework in Frameworks */,
+				DAF2645683EB6A57A5D9169BD909279C /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		AA6F87D06D826AC6FC96F8D7C4B59654 /* Frameworks */ = {
+		D2B96C388D068E47511F3501ECF62F88 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DB9A47045062301327D7BE39E40B75DB /* Foundation.framework in Frameworks */,
+				B10B1F217B247DB12234D52B89E5F916 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		11007BF42F5EF381C186C6A4336F569F /* chat360_IosSdk */ = {
+		0097950B4D5B8A3B5B89EBF4B130B708 /* Pod */ = {
 			isa = PBXGroup;
 			children = (
-				CFC56F315311566B0088CCF41C559172 /* ReplaceMe.swift */,
-				9B6AA71D5534CC54C7D84E103BB7FCAF /* Pod */,
-				EF778311340557EB0496CF3B1D5FB2A2 /* Support Files */,
-				06B7B3822A691C94006C048F /* chat360_ios_sdk.swift */,
+				3933C8EC6360F25E3FA825574E4B23CD /* chat360_sdk_ios.podspec */,
+				CB69D3028C971E087387D23DA8A00A5F /* LICENSE */,
+				A59F9CE2DDAADD0543360C271325161C /* README.md */,
 			);
-			name = chat360_IosSdk;
+			name = Pod;
+			sourceTree = "<group>";
+		};
+		10BA9300776E957FFAB72366554D55E2 /* Pods-chat360_sdk_ios_Example */ = {
+			isa = PBXGroup;
+			children = (
+				8A886BC085FFBB4314BA1802E389D728 /* Pods-chat360_sdk_ios_Example.modulemap */,
+				52A8297AF117DA13AFD7A5B9B63D91F2 /* Pods-chat360_sdk_ios_Example-acknowledgements.markdown */,
+				36CF44F106ABB399509E23A3AFFF8D3E /* Pods-chat360_sdk_ios_Example-acknowledgements.plist */,
+				E060B1841B9CBE6221CA3D2E51782251 /* Pods-chat360_sdk_ios_Example-dummy.m */,
+				9137B561B0F2F41A8CA90D384238931F /* Pods-chat360_sdk_ios_Example-frameworks.sh */,
+				254A9EE549FD1C15172CB61ED82FB711 /* Pods-chat360_sdk_ios_Example-Info.plist */,
+				99DEB9A49C77D9BCCAE6D1C5A778DFE6 /* Pods-chat360_sdk_ios_Example-umbrella.h */,
+				59E457B907E28EEAE5904E48FE4ACA49 /* Pods-chat360_sdk_ios_Example.debug.xcconfig */,
+				C1334C66A35B80CCC2BE336FE1CD7418 /* Pods-chat360_sdk_ios_Example.release.xcconfig */,
+			);
+			name = "Pods-chat360_sdk_ios_Example";
+			path = "Target Support Files/Pods-chat360_sdk_ios_Example";
+			sourceTree = "<group>";
+		};
+		1CD922B83F8CB45B43DB45B0A97ABF4F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				03C2FAAFFC37BA2CB706B49E5882424C /* chat360_sdk_ios */,
+				E5238DB85C60BFFC3F9BA682D7AD6EB9 /* Pods-chat360_sdk_ios_Example */,
+				A5DD186B4BFE10E8FE78BD4471FF7839 /* Pods-chat360_sdk_ios_Tests */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3624D5B36A6571070FC92E133B0A5AC1 /* chat360_sdk_ios */ = {
+			isa = PBXGroup;
+			children = (
+				06B7B3842A69282C006C048F /* chat360_ios_sdk.swift */,
+				0097950B4D5B8A3B5B89EBF4B130B708 /* Pod */,
+				7C6A4282F4F2C312BBC0644101F04D07 /* Support Files */,
+			);
+			name = chat360_sdk_ios;
 			path = ../..;
+			sourceTree = "<group>";
+		};
+		474C7E1972003CBF420BFB42BE7230EA /* Pods-chat360_sdk_ios_Tests */ = {
+			isa = PBXGroup;
+			children = (
+				ED278316621E00E65855A31EF8794C5F /* Pods-chat360_sdk_ios_Tests.modulemap */,
+				645C74B98C216D3F49710A2F1CA6B87D /* Pods-chat360_sdk_ios_Tests-acknowledgements.markdown */,
+				C479C222E2F279A57B0B7C17E3B55F7C /* Pods-chat360_sdk_ios_Tests-acknowledgements.plist */,
+				462C788C30D34B179B4335089854619B /* Pods-chat360_sdk_ios_Tests-dummy.m */,
+				90C6347BEB712B435D485B0326358DC3 /* Pods-chat360_sdk_ios_Tests-Info.plist */,
+				5D1CADE331BE01B6C331F39653423AF0 /* Pods-chat360_sdk_ios_Tests-umbrella.h */,
+				31F0C98DDFE579E991F1168053A5BCF9 /* Pods-chat360_sdk_ios_Tests.debug.xcconfig */,
+				453CA06A058EEF7194BB8F255E8F8F4F /* Pods-chat360_sdk_ios_Tests.release.xcconfig */,
+			);
+			name = "Pods-chat360_sdk_ios_Tests";
+			path = "Target Support Files/Pods-chat360_sdk_ios_Tests";
 			sourceTree = "<group>";
 		};
 		578452D2E740E91742655AC8F1636D1F /* iOS */ = {
@@ -122,67 +172,46 @@
 			name = iOS;
 			sourceTree = "<group>";
 		};
-		5FEDD2493BDF8F3A8AB54417555DC77A /* Targets Support Files */ = {
+		5A16BEDFD16F3F84C7BBEE9C78E1C0D0 /* Targets Support Files */ = {
 			isa = PBXGroup;
 			children = (
-				E58AF512D15CE258976AF5261EDF4FD3 /* Pods-chat360_IosSdk_Example */,
-				608B32375FFB5F8A49C96A660DF5A4BA /* Pods-chat360_IosSdk_Tests */,
+				10BA9300776E957FFAB72366554D55E2 /* Pods-chat360_sdk_ios_Example */,
+				474C7E1972003CBF420BFB42BE7230EA /* Pods-chat360_sdk_ios_Tests */,
 			);
 			name = "Targets Support Files";
 			sourceTree = "<group>";
 		};
-		608B32375FFB5F8A49C96A660DF5A4BA /* Pods-chat360_IosSdk_Tests */ = {
+		7C6A4282F4F2C312BBC0644101F04D07 /* Support Files */ = {
 			isa = PBXGroup;
 			children = (
-				DB3E9387BB76BDB6DDF8CDFDBA413FFA /* Pods-chat360_IosSdk_Tests.modulemap */,
-				5DC5E978B18F47BB460FDED7CD3A4001 /* Pods-chat360_IosSdk_Tests-acknowledgements.markdown */,
-				DFC3F5CF8D6C6CB881E5A74AEF4E918B /* Pods-chat360_IosSdk_Tests-acknowledgements.plist */,
-				D9571BB2FDBA079694720CD94D71E8F8 /* Pods-chat360_IosSdk_Tests-dummy.m */,
-				EB7548BF45B6263A21605E08469C084B /* Pods-chat360_IosSdk_Tests-Info.plist */,
-				BAFD162B7FB8249E5A1555F67AB5E27C /* Pods-chat360_IosSdk_Tests-umbrella.h */,
-				F1DEDADC181AF19C4F0B475E9C6487CF /* Pods-chat360_IosSdk_Tests.debug.xcconfig */,
-				1D28BD14AF946705DB651F535D4B8781 /* Pods-chat360_IosSdk_Tests.release.xcconfig */,
+				F737E41134D02AAE3EADD9286391FE53 /* chat360_sdk_ios.modulemap */,
+				88BA258F39E1B028169338F54FC865A4 /* chat360_sdk_ios-dummy.m */,
+				40FEE94F1AAD896C050532CAE39F434E /* chat360_sdk_ios-Info.plist */,
+				E84B1A6FF873520DAFF6D516AD568319 /* chat360_sdk_ios-prefix.pch */,
+				FE6417F3648DB5D548654CE548B4CC01 /* chat360_sdk_ios-umbrella.h */,
+				4484EE19A8B4C344B7F47969DCB5B945 /* chat360_sdk_ios.debug.xcconfig */,
+				C1FDB6842F23B2B8C45C37865F27E295 /* chat360_sdk_ios.release.xcconfig */,
 			);
-			name = "Pods-chat360_IosSdk_Tests";
-			path = "Target Support Files/Pods-chat360_IosSdk_Tests";
+			name = "Support Files";
+			path = "Example/Pods/Target Support Files/chat360_sdk_ios";
 			sourceTree = "<group>";
 		};
-		9B6AA71D5534CC54C7D84E103BB7FCAF /* Pod */ = {
+		A1149B5C434B05483B49A6AB63D5B22E /* Development Pods */ = {
 			isa = PBXGroup;
 			children = (
-				1393558F20C1284FDD6FE585651E9A86 /* chat360_IosSdk.podspec */,
-				F58D8974A323B9C5863662592FF0CCCC /* LICENSE */,
-				B4E6710C41E373AC764EC421EAE73A47 /* README.md */,
-			);
-			name = Pod;
-			sourceTree = "<group>";
-		};
-		9C7D90F550BB47CCA2C4B0D40E7F73D6 /* Development Pods */ = {
-			isa = PBXGroup;
-			children = (
-				11007BF42F5EF381C186C6A4336F569F /* chat360_IosSdk */,
+				3624D5B36A6571070FC92E133B0A5AC1 /* chat360_sdk_ios */,
 			);
 			name = "Development Pods";
-			sourceTree = "<group>";
-		};
-		B1D7F35ED876DA5EAC2DBE8F3F29C59F /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				AE0819C0206A0AE1292C236FE5831B62 /* chat360_IosSdk */,
-				8CE22EAE7DFE718BA9817BF5CC4F952D /* Pods-chat360_IosSdk_Example */,
-				AEE0AD8C7C48826A5026E1F7B99F8589 /* Pods-chat360_IosSdk_Tests */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		CF1408CF629C7361332E53B88F7BD30C = {
 			isa = PBXGroup;
 			children = (
 				9D940727FF8FB9C785EB98E56350EF41 /* Podfile */,
-				9C7D90F550BB47CCA2C4B0D40E7F73D6 /* Development Pods */,
+				A1149B5C434B05483B49A6AB63D5B22E /* Development Pods */,
 				D210D550F4EA176C3123ED886F8F87F5 /* Frameworks */,
-				B1D7F35ED876DA5EAC2DBE8F3F29C59F /* Products */,
-				5FEDD2493BDF8F3A8AB54417555DC77A /* Targets Support Files */,
+				1CD922B83F8CB45B43DB45B0A97ABF4F /* Products */,
+				5A16BEDFD16F3F84C7BBEE9C78E1C0D0 /* Targets Support Files */,
 			);
 			sourceTree = "<group>";
 		};
@@ -194,122 +223,90 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		E58AF512D15CE258976AF5261EDF4FD3 /* Pods-chat360_IosSdk_Example */ = {
-			isa = PBXGroup;
-			children = (
-				E28C59048F96956EB3C1543CD4442E3E /* Pods-chat360_IosSdk_Example.modulemap */,
-				EA1D5B8DDFBD394F36AFFBFAA71B9048 /* Pods-chat360_IosSdk_Example-acknowledgements.markdown */,
-				495BA76E3B832BC0D9205B6D9DC4EA5C /* Pods-chat360_IosSdk_Example-acknowledgements.plist */,
-				004E0A26BA1C562AD6DEC5EAD3BD8375 /* Pods-chat360_IosSdk_Example-dummy.m */,
-				828AA9208B943305A7140341BCA5B970 /* Pods-chat360_IosSdk_Example-frameworks.sh */,
-				E4FF955383E56467F7B5DA176835E8AF /* Pods-chat360_IosSdk_Example-Info.plist */,
-				22AAB96A6613F8B113A9AC55CC731BED /* Pods-chat360_IosSdk_Example-umbrella.h */,
-				F01E96D1CA3BAE4CD28303E091D5EE3A /* Pods-chat360_IosSdk_Example.debug.xcconfig */,
-				7EC65976506821F2ACD1B248978F7CE4 /* Pods-chat360_IosSdk_Example.release.xcconfig */,
-			);
-			name = "Pods-chat360_IosSdk_Example";
-			path = "Target Support Files/Pods-chat360_IosSdk_Example";
-			sourceTree = "<group>";
-		};
-		EF778311340557EB0496CF3B1D5FB2A2 /* Support Files */ = {
-			isa = PBXGroup;
-			children = (
-				BA1B8BC836C4F5D93B1DC84D603E97CF /* chat360_IosSdk.modulemap */,
-				C8DEE2B6D1C47D76897693CED6D8C7E6 /* chat360_IosSdk-dummy.m */,
-				4B46569294ED506AE23DE7D88E282307 /* chat360_IosSdk-Info.plist */,
-				5075F9B8E5BAEABAB20D0FA46921A85E /* chat360_IosSdk-prefix.pch */,
-				AAA63356A9A727780CB709A3DA92A909 /* chat360_IosSdk-umbrella.h */,
-				EEEB10467B2E9468BC71F868CE71C052 /* chat360_IosSdk.debug.xcconfig */,
-				D8012B5BE1F57F930A0A777788425E16 /* chat360_IosSdk.release.xcconfig */,
-			);
-			name = "Support Files";
-			path = "Example/Pods/Target Support Files/chat360_IosSdk";
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
-		075AE727C6550E688F4005DB54491667 /* Headers */ = {
+		70FE3F4653DC2CCAC5C17D1A03C8D0A8 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CD9BB36AFD107C8274C5103BD04AAD25 /* Pods-chat360_IosSdk_Example-umbrella.h in Headers */,
+				3CCCB21F26A8F4270A2A12F977E21A1C /* chat360_sdk_ios-umbrella.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		84D6AB63D3870F94A6A23A119919EAAD /* Headers */ = {
+		E883D567EC00A1471B403852FFA2E529 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A52C2715817A3AAE742BD12DEFFDEE4A /* Pods-chat360_IosSdk_Tests-umbrella.h in Headers */,
+				A734FC05B6A6358B06056CF947CB9234 /* Pods-chat360_sdk_ios_Tests-umbrella.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D2013F97DB0569FE9EE884FAA015CED3 /* Headers */ = {
+		FBAADA82E1C834352E18B5D710298DC5 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7891BE79441A1BCC5B3A2722FAE57E58 /* chat360_IosSdk-umbrella.h in Headers */,
+				69F129CBA6384CB04EA89CB991937487 /* Pods-chat360_sdk_ios_Example-umbrella.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		0BC27A2456944E48C8D773B1C6765F54 /* Pods-chat360_IosSdk_Example */ = {
+		14ABF2929BE6F531F1B6FFD29AC9A25A /* chat360_sdk_ios */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1A0AAD34F1EC1147E348D1E73532D80C /* Build configuration list for PBXNativeTarget "Pods-chat360_IosSdk_Example" */;
+			buildConfigurationList = 0C9DF9CD021C0ECAC890A284961366B5 /* Build configuration list for PBXNativeTarget "chat360_sdk_ios" */;
 			buildPhases = (
-				075AE727C6550E688F4005DB54491667 /* Headers */,
-				C42B86948DE523FBD33233DDB2089F55 /* Sources */,
-				AA6F87D06D826AC6FC96F8D7C4B59654 /* Frameworks */,
-				34C729E86F4F02ACFCEA9B66E9EE08F3 /* Resources */,
+				70FE3F4653DC2CCAC5C17D1A03C8D0A8 /* Headers */,
+				17C991AAE6735BB4AA41178342E974DF /* Sources */,
+				5AB97C046B4B290155964DFA5E7E24AC /* Frameworks */,
+				476807B32449EC531B182C1939704E08 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				9C7C8A87F09AFDD5DF0CFBF4C4C170B1 /* PBXTargetDependency */,
 			);
-			name = "Pods-chat360_IosSdk_Example";
-			productName = Pods_chat360_IosSdk_Example;
-			productReference = 8CE22EAE7DFE718BA9817BF5CC4F952D /* Pods-chat360_IosSdk_Example */;
+			name = chat360_sdk_ios;
+			productName = chat360_sdk_ios;
+			productReference = 03C2FAAFFC37BA2CB706B49E5882424C /* chat360_sdk_ios */;
 			productType = "com.apple.product-type.framework";
 		};
-		2FB03DD0D1F8F3141C68BB8ED6CF7BFF /* Pods-chat360_IosSdk_Tests */ = {
+		514386FF11CA3C86FC877D3063D167F8 /* Pods-chat360_sdk_ios_Example */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1472B37D3B98FF36C5B251E85BBEC9ED /* Build configuration list for PBXNativeTarget "Pods-chat360_IosSdk_Tests" */;
+			buildConfigurationList = 666A1878D7B9E939414A6A97A195DB0D /* Build configuration list for PBXNativeTarget "Pods-chat360_sdk_ios_Example" */;
 			buildPhases = (
-				84D6AB63D3870F94A6A23A119919EAAD /* Headers */,
-				A23C01BB35A360A91B07A93B36253148 /* Sources */,
-				0ADE5E69F9C552D38F12913DC0BDE1D9 /* Frameworks */,
-				B3732546CF253E886BBDD87ED6EA38B9 /* Resources */,
+				FBAADA82E1C834352E18B5D710298DC5 /* Headers */,
+				4194F55B1410D9719EB20650800D6907 /* Sources */,
+				D2B96C388D068E47511F3501ECF62F88 /* Frameworks */,
+				C8F550F24E6DCD08ED276484B50EA904 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				AE8857BA2A2FA8F4C64D09FE66C4DA88 /* PBXTargetDependency */,
+				BC549990CB2F3CE383465D5910B8FC99 /* PBXTargetDependency */,
 			);
-			name = "Pods-chat360_IosSdk_Tests";
-			productName = Pods_chat360_IosSdk_Tests;
-			productReference = AEE0AD8C7C48826A5026E1F7B99F8589 /* Pods-chat360_IosSdk_Tests */;
+			name = "Pods-chat360_sdk_ios_Example";
+			productName = Pods_chat360_sdk_ios_Example;
+			productReference = E5238DB85C60BFFC3F9BA682D7AD6EB9 /* Pods-chat360_sdk_ios_Example */;
 			productType = "com.apple.product-type.framework";
 		};
-		8488DB1FA7BCC0621FF70F5872EDE9AD /* chat360_IosSdk */ = {
+		6757A9F1C8EED19299716B9EACEF4B8D /* Pods-chat360_sdk_ios_Tests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 41BA6F8218D369274B5EFC3136C5404B /* Build configuration list for PBXNativeTarget "chat360_IosSdk" */;
+			buildConfigurationList = 66FA30D12F4D4187611E937908981689 /* Build configuration list for PBXNativeTarget "Pods-chat360_sdk_ios_Tests" */;
 			buildPhases = (
-				D2013F97DB0569FE9EE884FAA015CED3 /* Headers */,
-				4C9148DFC61BA0DCED445B088AE945FF /* Sources */,
-				534F1A53CEB066AC73FD41324C63108E /* Frameworks */,
-				6513CA39A3B5723D7E563A11B1D1690E /* Resources */,
+				E883D567EC00A1471B403852FFA2E529 /* Headers */,
+				A65F6A0382D90EF0F890AEACDEE8E602 /* Sources */,
+				B72B69AEE958B5127DAE5E45FEBDDFFC /* Frameworks */,
+				D94EF5AD3224587703E6486F96327BD7 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7A1E1D6BE566A9F8A431E5A311A8CA33 /* PBXTargetDependency */,
 			);
-			name = chat360_IosSdk;
-			productName = chat360_IosSdk;
-			productReference = AE0819C0206A0AE1292C236FE5831B62 /* chat360_IosSdk */;
+			name = "Pods-chat360_sdk_ios_Tests";
+			productName = Pods_chat360_sdk_ios_Tests;
+			productReference = A5DD186B4BFE10E8FE78BD4471FF7839 /* Pods-chat360_sdk_ios_Tests */;
 			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
@@ -330,33 +327,33 @@
 				en,
 			);
 			mainGroup = CF1408CF629C7361332E53B88F7BD30C;
-			productRefGroup = B1D7F35ED876DA5EAC2DBE8F3F29C59F /* Products */;
+			productRefGroup = 1CD922B83F8CB45B43DB45B0A97ABF4F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				8488DB1FA7BCC0621FF70F5872EDE9AD /* chat360_IosSdk */,
-				0BC27A2456944E48C8D773B1C6765F54 /* Pods-chat360_IosSdk_Example */,
-				2FB03DD0D1F8F3141C68BB8ED6CF7BFF /* Pods-chat360_IosSdk_Tests */,
+				14ABF2929BE6F531F1B6FFD29AC9A25A /* chat360_sdk_ios */,
+				514386FF11CA3C86FC877D3063D167F8 /* Pods-chat360_sdk_ios_Example */,
+				6757A9F1C8EED19299716B9EACEF4B8D /* Pods-chat360_sdk_ios_Tests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		34C729E86F4F02ACFCEA9B66E9EE08F3 /* Resources */ = {
+		476807B32449EC531B182C1939704E08 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		6513CA39A3B5723D7E563A11B1D1690E /* Resources */ = {
+		C8F550F24E6DCD08ED276484B50EA904 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B3732546CF253E886BBDD87ED6EA38B9 /* Resources */ = {
+		D94EF5AD3224587703E6486F96327BD7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -366,53 +363,52 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4C9148DFC61BA0DCED445B088AE945FF /* Sources */ = {
+		17C991AAE6735BB4AA41178342E974DF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4104CA59A46245C99DD4770DEC846816 /* chat360_IosSdk-dummy.m in Sources */,
-				0B3823C9FAD8CED48EC13589E6671FDD /* ReplaceMe.swift in Sources */,
-				06B7B3832A691C94006C048F /* chat360_ios_sdk.swift in Sources */,
+				147210EF879C47511CF8C898D24610C3 /* chat360_sdk_ios-dummy.m in Sources */,
+				06B7B3852A69282C006C048F /* chat360_ios_sdk.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A23C01BB35A360A91B07A93B36253148 /* Sources */ = {
+		4194F55B1410D9719EB20650800D6907 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C01BAD154C5EDD6CD86B356144D179AE /* Pods-chat360_IosSdk_Tests-dummy.m in Sources */,
+				A68EB0A1F83032C02BB5B3F6AA47D7A0 /* Pods-chat360_sdk_ios_Example-dummy.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C42B86948DE523FBD33233DDB2089F55 /* Sources */ = {
+		A65F6A0382D90EF0F890AEACDEE8E602 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				89774B39EB06C8BB0F219EA3C24A3840 /* Pods-chat360_IosSdk_Example-dummy.m in Sources */,
+				FD6B5CE2D4C097515F7D07582998664B /* Pods-chat360_sdk_ios_Tests-dummy.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		9C7C8A87F09AFDD5DF0CFBF4C4C170B1 /* PBXTargetDependency */ = {
+		7A1E1D6BE566A9F8A431E5A311A8CA33 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			name = chat360_IosSdk;
-			target = 8488DB1FA7BCC0621FF70F5872EDE9AD /* chat360_IosSdk */;
-			targetProxy = 3FA830DD10D56927758B2B728861127D /* PBXContainerItemProxy */;
+			name = "Pods-chat360_sdk_ios_Example";
+			target = 514386FF11CA3C86FC877D3063D167F8 /* Pods-chat360_sdk_ios_Example */;
+			targetProxy = 7CB13D60EA0BF20D351C5A4537F41370 /* PBXContainerItemProxy */;
 		};
-		AE8857BA2A2FA8F4C64D09FE66C4DA88 /* PBXTargetDependency */ = {
+		BC549990CB2F3CE383465D5910B8FC99 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			name = "Pods-chat360_IosSdk_Example";
-			target = 0BC27A2456944E48C8D773B1C6765F54 /* Pods-chat360_IosSdk_Example */;
-			targetProxy = 384D3A7F030DC8954B6D1DEA505E1740 /* PBXContainerItemProxy */;
+			name = chat360_sdk_ios;
+			target = 14ABF2929BE6F531F1B6FFD29AC9A25A /* chat360_sdk_ios */;
+			targetProxy = CF952A68B70EC77176486F6E23EA83D3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		25984865EF8B43228ABEC2A2826633B5 /* Release */ = {
+		2F67AA1160CE2D989765BF26C89BE7B4 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 1D28BD14AF946705DB651F535D4B8781 /* Pods-chat360_IosSdk_Tests.release.xcconfig */;
+			baseConfigurationReference = 31F0C98DDFE579E991F1168053A5BCF9 /* Pods-chat360_sdk_ios_Tests.debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -424,12 +420,12 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = "Target Support Files/Pods-chat360_IosSdk_Tests/Pods-chat360_IosSdk_Tests-Info.plist";
+				INFOPLIST_FILE = "Target Support Files/Pods-chat360_sdk_ios_Tests/Pods-chat360_sdk_ios_Tests-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-chat360_IosSdk_Tests/Pods-chat360_IosSdk_Tests.modulemap";
+				MODULEMAP_FILE = "Target Support Files/Pods-chat360_sdk_ios_Tests/Pods-chat360_sdk_ios_Tests.modulemap";
 				OTHER_LDFLAGS = "";
 				OTHER_LIBTOOLFLAGS = "";
 				PODS_ROOT = "$(SRCROOT)";
@@ -438,17 +434,15 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
 			};
-			name = Release;
+			name = Debug;
 		};
-		308A7C78E660B445CA348130CAA75F5C /* Release */ = {
+		5EE37991B291128E798B978F9E95414B /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7EC65976506821F2ACD1B248978F7CE4 /* Pods-chat360_IosSdk_Example.release.xcconfig */;
+			baseConfigurationReference = 4484EE19A8B4C344B7F47969DCB5B945 /* chat360_sdk_ios.debug.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
@@ -458,53 +452,18 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = "Target Support Files/Pods-chat360_IosSdk_Example/Pods-chat360_IosSdk_Example-Info.plist";
+				GCC_PREFIX_HEADER = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios-prefix.pch";
+				INFOPLIST_FILE = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-chat360_IosSdk_Example/Pods-chat360_IosSdk_Example.modulemap";
-				OTHER_LDFLAGS = "";
-				OTHER_LIBTOOLFLAGS = "";
-				PODS_ROOT = "$(SRCROOT)";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
-				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				MODULEMAP_FILE = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios.modulemap";
+				PRODUCT_MODULE_NAME = chat360_sdk_ios;
+				PRODUCT_NAME = chat360_sdk_ios;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Release;
-		};
-		686010FE2B2D97DB47FA1265C7E85D2A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = F1DEDADC181AF19C4F0B475E9C6487CF /* Pods-chat360_IosSdk_Tests.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = "Target Support Files/Pods-chat360_IosSdk_Tests/Pods-chat360_IosSdk_Tests-Info.plist";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-chat360_IosSdk_Tests/Pods-chat360_IosSdk_Tests.modulemap";
-				OTHER_LDFLAGS = "";
-				OTHER_LIBTOOLFLAGS = "";
-				PODS_ROOT = "$(SRCROOT)";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
-				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_VERSION = 4.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
@@ -572,9 +531,9 @@
 			};
 			name = Release;
 		};
-		95AB73D9D7ED2CE5B43331858403820E /* Debug */ = {
+		9E8DB1DA908E48D7C027E2278A1F8B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F01E96D1CA3BAE4CD28303E091D5EE3A /* Pods-chat360_IosSdk_Example.debug.xcconfig */;
+			baseConfigurationReference = C1334C66A35B80CCC2BE336FE1CD7418 /* Pods-chat360_sdk_ios_Example.release.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -586,12 +545,12 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = "Target Support Files/Pods-chat360_IosSdk_Example/Pods-chat360_IosSdk_Example-Info.plist";
+				INFOPLIST_FILE = "Target Support Files/Pods-chat360_sdk_ios_Example/Pods-chat360_sdk_ios_Example-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-chat360_IosSdk_Example/Pods-chat360_IosSdk_Example.modulemap";
+				MODULEMAP_FILE = "Target Support Files/Pods-chat360_sdk_ios_Example/Pods-chat360_sdk_ios_Example.modulemap";
 				OTHER_LDFLAGS = "";
 				OTHER_LIBTOOLFLAGS = "";
 				PODS_ROOT = "$(SRCROOT)";
@@ -600,10 +559,77 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
 			};
-			name = Debug;
+			name = Release;
+		};
+		A0E48758BCB16DBC12FC7C06D41DB706 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 453CA06A058EEF7194BB8F255E8F8F4F /* Pods-chat360_sdk_ios_Tests.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INFOPLIST_FILE = "Target Support Files/Pods-chat360_sdk_ios_Tests/Pods-chat360_sdk_ios_Tests-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-chat360_sdk_ios_Tests/Pods-chat360_sdk_ios_Tests.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		C6483368B9D0506EF73E2A69698A48B0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1FDB6842F23B2B8C45C37865F27E295 /* chat360_sdk_ios.release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GCC_PREFIX_HEADER = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios-prefix.pch";
+				INFOPLIST_FILE = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MODULEMAP_FILE = "Target Support Files/chat360_sdk_ios/chat360_sdk_ios.modulemap";
+				PRODUCT_MODULE_NAME = chat360_sdk_ios;
+				PRODUCT_NAME = chat360_sdk_ios;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
 		};
 		D299434AB35E7FD6F7921C8EF24742FF /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -671,10 +697,11 @@
 			};
 			name = Debug;
 		};
-		DAAE8528FB60A99C6103E337AFEB9FF3 /* Debug */ = {
+		DEA40D62335D77B9F6E84AB66F61847B /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = EEEB10467B2E9468BC71F868CE71C052 /* chat360_IosSdk.debug.xcconfig */;
+			baseConfigurationReference = 59E457B907E28EEAE5904E48FE4ACA49 /* Pods-chat360_sdk_ios_Example.debug.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
@@ -684,82 +711,33 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				GCC_PREFIX_HEADER = "Target Support Files/chat360_IosSdk/chat360_IosSdk-prefix.pch";
-				INFOPLIST_FILE = "Target Support Files/chat360_IosSdk/chat360_IosSdk-Info.plist";
+				INFOPLIST_FILE = "Target Support Files/Pods-chat360_sdk_ios_Example/Pods-chat360_sdk_ios_Example-Info.plist";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				MODULEMAP_FILE = "Target Support Files/chat360_IosSdk/chat360_IosSdk.modulemap";
-				PRODUCT_MODULE_NAME = chat360_IosSdk;
-				PRODUCT_NAME = chat360_IosSdk;
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-chat360_sdk_ios_Example/Pods-chat360_sdk_ios_Example.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
-				SWIFT_VERSION = 4.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
 			};
 			name = Debug;
 		};
-		E218619495C60545EE55370A36255FD5 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = D8012B5BE1F57F930A0A777788425E16 /* chat360_IosSdk.release.xcconfig */;
-			buildSettings = {
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				GCC_PREFIX_HEADER = "Target Support Files/chat360_IosSdk/chat360_IosSdk-prefix.pch";
-				INFOPLIST_FILE = "Target Support Files/chat360_IosSdk/chat360_IosSdk-Info.plist";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				MODULEMAP_FILE = "Target Support Files/chat360_IosSdk/chat360_IosSdk.modulemap";
-				PRODUCT_MODULE_NAME = chat360_IosSdk;
-				PRODUCT_NAME = chat360_IosSdk;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
-				SWIFT_VERSION = 4.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1472B37D3B98FF36C5B251E85BBEC9ED /* Build configuration list for PBXNativeTarget "Pods-chat360_IosSdk_Tests" */ = {
+		0C9DF9CD021C0ECAC890A284961366B5 /* Build configuration list for PBXNativeTarget "chat360_sdk_ios" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				686010FE2B2D97DB47FA1265C7E85D2A /* Debug */,
-				25984865EF8B43228ABEC2A2826633B5 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		1A0AAD34F1EC1147E348D1E73532D80C /* Build configuration list for PBXNativeTarget "Pods-chat360_IosSdk_Example" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				95AB73D9D7ED2CE5B43331858403820E /* Debug */,
-				308A7C78E660B445CA348130CAA75F5C /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		41BA6F8218D369274B5EFC3136C5404B /* Build configuration list for PBXNativeTarget "chat360_IosSdk" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DAAE8528FB60A99C6103E337AFEB9FF3 /* Debug */,
-				E218619495C60545EE55370A36255FD5 /* Release */,
+				5EE37991B291128E798B978F9E95414B /* Debug */,
+				C6483368B9D0506EF73E2A69698A48B0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -769,6 +747,24 @@
 			buildConfigurations = (
 				D299434AB35E7FD6F7921C8EF24742FF /* Debug */,
 				7EE7A78859F657F6BEFC651185B43192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		666A1878D7B9E939414A6A97A195DB0D /* Build configuration list for PBXNativeTarget "Pods-chat360_sdk_ios_Example" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DEA40D62335D77B9F6E84AB66F61847B /* Debug */,
+				9E8DB1DA908E48D7C027E2278A1F8B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		66FA30D12F4D4187611E937908981689 /* Build configuration list for PBXNativeTarget "Pods-chat360_sdk_ios_Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F67AA1160CE2D989765BF26C89BE7B4 /* Debug */,
+				A0E48758BCB16DBC12FC7C06D41DB706 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

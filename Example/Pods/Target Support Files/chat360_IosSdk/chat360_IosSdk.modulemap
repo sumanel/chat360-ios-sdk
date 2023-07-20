@@ -1,6 +1,0 @@
-framework module chat360_IosSdk {
-  umbrella header "chat360_IosSdk-umbrella.h"
-
-  export *
-  module * { export * }
-}
