@@ -478,6 +478,7 @@
 			baseConfigurationReference = D43E2B396F4C571C57146F9F /* Pods-chat360_ios_sdk_Example.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"EXCLUDED_ARCHS[sdk=*]" = arm64;
 				INFOPLIST_FILE = chat360_ios_sdk/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MODULE_NAME = ExampleApp;
@@ -493,6 +494,7 @@
 			baseConfigurationReference = F4CA4E8BFE4921D53552DA2A /* Pods-chat360_ios_sdk_Example.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"EXCLUDED_ARCHS[sdk=*]" = arm64;
 				INFOPLIST_FILE = chat360_ios_sdk/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MODULE_NAME = ExampleApp;
@@ -507,6 +509,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 3C805AAB335AD721598D701B /* Pods-chat360_ios_sdk_Tests.debug.xcconfig */;
 			buildSettings = {
+				EXCLUDED_ARCHS = "";
+				"EXCLUDED_ARCHS[sdk=*]" = arm64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
 					"$(inherited)",
@@ -530,6 +534,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 0ECE51ED1A8488F0F1E57E94 /* Pods-chat360_ios_sdk_Tests.release.xcconfig */;
 			buildSettings = {
+				"EXCLUDED_ARCHS[sdk=*]" = arm64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
 					"$(inherited)",
