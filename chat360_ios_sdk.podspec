@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'chat360_ios_sdk'
-  s.version          = '0.1.0'
+  s.version          = '0.1.1'
   s.summary          = 'Its  a chat bot ios sdk that can be independently used.'
 
 # This description is used to generate tags and improve search results.
