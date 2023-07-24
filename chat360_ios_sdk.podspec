@@ -8,7 +8,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'chat360_ios_sdk'
-  s.version          = '0.1.1'
+  s.version          = '0.1.2'
   s.summary          = 'Its  a chat bot ios sdk that can be independently used.'
 
 # This description is used to generate tags and improve search results.
@@ -21,7 +21,7 @@ Pod::Spec.new do |s|
 "Its  a chat bot ios sdk that can be independently used. You have to just import the package."
                        DESC
 
-  s.homepage         = 'https://github.com/sumanel/chat360_ios_sdk'
+  s.homepage         = 'https://github.com/sumanel/chat360-ios-sdk'
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'prateekgupta360' => 'prateek.gupta@chat360.io' }
