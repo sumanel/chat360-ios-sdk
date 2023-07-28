@@ -7,8 +7,8 @@
 #
 
 Pod::Spec.new do |s|
-  s.name             = 'chat360_ios_sdk'
-  s.version          = '1.0.2'
+  s.name             = 'chat360-ios-sdk'
+  s.version          = '1.0.3'
   s.summary          = 'Chat360 IOS SDK'
 
 # This description is used to generate tags and improve search results.
@@ -25,7 +25,7 @@ Its a Chat360 IOS SDK for ios application.
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Chat360' => 'production@chat360.io' }
-  s.source           = { :git => 'https://github.com/sumanel/chat360-ios-sdk.git', :tag => "1.0.2"  }
+  s.source           = { :git => 'https://github.com/sumanel/chat360-ios-sdk.git', :tag => "1.0.3"  }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
   s.ios.deployment_target = '11.0'
