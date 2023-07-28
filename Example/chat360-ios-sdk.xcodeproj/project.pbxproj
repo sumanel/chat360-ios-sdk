@@ -33,14 +33,14 @@
 		3B22130CAF00BBF2E3E8765E /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../README.md; sourceTree = "<group>"; };
 		3C22C3BB44A038DDD81CC0F0 /* Pods-chat360_ios_sdk_Example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-chat360_ios_sdk_Example.debug.xcconfig"; path = "Target Support Files/Pods-chat360_ios_sdk_Example/Pods-chat360_ios_sdk_Example.debug.xcconfig"; sourceTree = "<group>"; };
 		57CAE63D3D84A9F46317CE3D /* Pods-chat360_ios_sdk_Example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-chat360_ios_sdk_Example.release.xcconfig"; path = "Target Support Files/Pods-chat360_ios_sdk_Example/Pods-chat360_ios_sdk_Example.release.xcconfig"; sourceTree = "<group>"; };
-		607FACD01AFB9204008FA782 /* chat360_ios_sdk_Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = chat360_ios_sdk_Example.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		607FACD01AFB9204008FA782 /* chat360-ios-sdk_Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "chat360-ios-sdk_Example.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		607FACD41AFB9204008FA782 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		607FACD51AFB9204008FA782 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		607FACD71AFB9204008FA782 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		607FACDA1AFB9204008FA782 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		607FACDC1AFB9204008FA782 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
 		607FACDF1AFB9204008FA782 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/LaunchScreen.xib; sourceTree = "<group>"; };
-		607FACE51AFB9204008FA782 /* chat360_ios_sdk_Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = chat360_ios_sdk_Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		607FACE51AFB9204008FA782 /* chat360-ios-sdk_Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "chat360-ios-sdk_Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		607FACEA1AFB9204008FA782 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		607FACEB1AFB9204008FA782 /* Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests.swift; sourceTree = "<group>"; };
 		747B3DD2C25888494817BE18 /* chat360_ios_sdk.podspec */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = chat360_ios_sdk.podspec; path = ../chat360_ios_sdk.podspec; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
@@ -93,8 +93,8 @@
 		607FACD11AFB9204008FA782 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				607FACD01AFB9204008FA782 /* chat360_ios_sdk_Example.app */,
-				607FACE51AFB9204008FA782 /* chat360_ios_sdk_Tests.xctest */,
+				607FACD01AFB9204008FA782 /* chat360-ios-sdk_Example.app */,
+				607FACE51AFB9204008FA782 /* chat360-ios-sdk_Tests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -162,9 +162,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		607FACCF1AFB9204008FA782 /* chat360_ios_sdk_Example */ = {
+		607FACCF1AFB9204008FA782 /* chat360-ios-sdk_Example */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 607FACEF1AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360_ios_sdk_Example" */;
+			buildConfigurationList = 607FACEF1AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360-ios-sdk_Example" */;
 			buildPhases = (
 				9CA8E41B6EB70337A9FBA327 /* [CP] Check Pods Manifest.lock */,
 				607FACCC1AFB9204008FA782 /* Sources */,
@@ -176,14 +176,14 @@
 			);
 			dependencies = (
 			);
-			name = chat360_ios_sdk_Example;
+			name = "chat360-ios-sdk_Example";
 			productName = chat360_ios_sdk;
-			productReference = 607FACD01AFB9204008FA782 /* chat360_ios_sdk_Example.app */;
+			productReference = 607FACD01AFB9204008FA782 /* chat360-ios-sdk_Example.app */;
 			productType = "com.apple.product-type.application";
 		};
-		607FACE41AFB9204008FA782 /* chat360_ios_sdk_Tests */ = {
+		607FACE41AFB9204008FA782 /* chat360-ios-sdk_Tests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 607FACF21AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360_ios_sdk_Tests" */;
+			buildConfigurationList = 607FACF21AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360-ios-sdk_Tests" */;
 			buildPhases = (
 				2CBEEB96EBA9564868856CE8 /* [CP] Check Pods Manifest.lock */,
 				607FACE11AFB9204008FA782 /* Sources */,
@@ -195,9 +195,9 @@
 			dependencies = (
 				607FACE71AFB9204008FA782 /* PBXTargetDependency */,
 			);
-			name = chat360_ios_sdk_Tests;
+			name = "chat360-ios-sdk_Tests";
 			productName = Tests;
-			productReference = 607FACE51AFB9204008FA782 /* chat360_ios_sdk_Tests.xctest */;
+			productReference = 607FACE51AFB9204008FA782 /* chat360-ios-sdk_Tests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -223,7 +223,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 607FACCB1AFB9204008FA782 /* Build configuration list for PBXProject "chat360_ios_sdk" */;
+			buildConfigurationList = 607FACCB1AFB9204008FA782 /* Build configuration list for PBXProject "chat360-ios-sdk" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
@@ -237,8 +237,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				607FACCF1AFB9204008FA782 /* chat360_ios_sdk_Example */,
-				607FACE41AFB9204008FA782 /* chat360_ios_sdk_Tests */,
+				607FACCF1AFB9204008FA782 /* chat360-ios-sdk_Example */,
+				607FACE41AFB9204008FA782 /* chat360-ios-sdk_Tests */,
 			);
 		};
 /* End PBXProject section */
@@ -351,7 +351,7 @@
 /* Begin PBXTargetDependency section */
 		607FACE71AFB9204008FA782 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 607FACCF1AFB9204008FA782 /* chat360_ios_sdk_Example */;
+			target = 607FACCF1AFB9204008FA782 /* chat360-ios-sdk_Example */;
 			targetProxy = 607FACE61AFB9204008FA782 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -529,7 +529,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/chat360_ios_sdk_Example.app/chat360_ios_sdk_Example";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/chat360-ios-sdk_Example.app/chat360-ios-sdk_Example";
 			};
 			name = Debug;
 		};
@@ -549,14 +549,14 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/chat360_ios_sdk_Example.app/chat360_ios_sdk_Example";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/chat360-ios-sdk_Example.app/chat360-ios-sdk_Example";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		607FACCB1AFB9204008FA782 /* Build configuration list for PBXProject "chat360_ios_sdk" */ = {
+		607FACCB1AFB9204008FA782 /* Build configuration list for PBXProject "chat360-ios-sdk" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				607FACED1AFB9204008FA782 /* Debug */,
@@ -565,7 +565,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		607FACEF1AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360_ios_sdk_Example" */ = {
+		607FACEF1AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360-ios-sdk_Example" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				607FACF01AFB9204008FA782 /* Debug */,
@@ -574,7 +574,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		607FACF21AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360_ios_sdk_Tests" */ = {
+		607FACF21AFB9204008FA782 /* Build configuration list for PBXNativeTarget "chat360-ios-sdk_Tests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				607FACF31AFB9204008FA782 /* Debug */,
