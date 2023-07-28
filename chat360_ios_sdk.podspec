@@ -21,16 +21,16 @@ Pod::Spec.new do |s|
 Its a Chat360 IOS SDK for ios application.
                        DESC
 
-  s.homepage         = 'https://github.com/sumanel/chat360-ios-sdk'
+  s.homepage         = 'https://github.com/sumanel/chat360-ios-sdk/tree/master'
   # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Chat360' => 'production@chat360.io' }
-  s.source           = { :git => 'https://github.com/sumanel/chat360-ios-sdk.git', :tag => s.version.to_s }
+  s.source           = { :git => 'https://github.com/sumanel/chat360-ios-sdk/tree/master.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
   s.ios.deployment_target = '11.0'
 
-  s.source_files = 'chat360_ios_sdk/Classes/**/*.{h,swift}'
+  s.source_files = 'Classes/**/*.{h,swift}'
   
   # s.resource_bundles = {
   #   'chat360_ios_sdk' => ['chat360_ios_sdk/Assets/*.png']
