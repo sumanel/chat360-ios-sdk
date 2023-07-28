@@ -1,24 +1,13 @@
-//
-//  ViewController.swift
-//  chat360_ios_sdk
-//
-//  Created by prateekgupta360 on 07/28/2023.
-//  Copyright (c) 2023 prateekgupta360. All rights reserved.
-//
-
 import UIKit
+import chat360_ios_sdk
 
 class ViewController: UIViewController {
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        let config = ChatConfigs(botId: "f0efe1c0-cbe9-4320-859b-e594cd7fc46f", appId: "com.chat360.chat360demoapp")
+        ChatLauncher.showChat(with: config, parentController: self)
     }
-
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
-    }
-
+    
+    // ...
 }
-

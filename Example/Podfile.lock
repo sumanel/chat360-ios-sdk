@@ -1,0 +1,16 @@
+PODS:
+  - chat360_ios_sdk (0.1.0)
+
+DEPENDENCIES:
+  - chat360_ios_sdk (from `../`)
+
+EXTERNAL SOURCES:
+  chat360_ios_sdk:
+    :path: "../"
+
+SPEC CHECKSUMS:
+  chat360_ios_sdk: 81da8abe9dcc0d6cd14bfe24cebe8aac7693ac58
+
+PODFILE CHECKSUM: 3782638311974f6dc36928c353c6267eca2ddf37
+
+COCOAPODS: 1.12.1
