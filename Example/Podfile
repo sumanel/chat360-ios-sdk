@@ -1,0 +1,13 @@
+use_frameworks!
+
+platform :ios, '10.0'
+
+target 'CHAT360IOS_SDK_Example' do
+  pod 'CHAT360IOS_SDK', :path => '../'
+
+  target 'CHAT360IOS_SDK_Tests' do
+    inherit! :search_paths
+
+    
+  end
+end

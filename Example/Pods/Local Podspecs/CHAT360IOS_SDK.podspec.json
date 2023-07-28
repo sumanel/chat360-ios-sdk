@@ -1,0 +1,22 @@
+{
+  "name": "CHAT360IOS_SDK",
+  "version": "0.1.0",
+  "summary": "A short description of CHAT360IOS_SDK.",
+  "description": "TODO: Add long description of the pod here.",
+  "homepage": "https://github.com/prateekgupta360/CHAT360IOS_SDK",
+  "license": {
+    "type": "MIT",
+    "file": "LICENSE"
+  },
+  "authors": {
+    "prateekgupta360": "prateek.gupta@chat360.io"
+  },
+  "source": {
+    "git": "https://github.com/prateekgupta360/CHAT360IOS_SDK.git",
+    "tag": "0.1.0"
+  },
+  "platforms": {
+    "ios": "10.0"
+  },
+  "source_files": "CHAT360IOS_SDK/Classes/**/*"
+}
