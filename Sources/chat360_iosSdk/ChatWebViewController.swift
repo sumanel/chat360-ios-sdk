@@ -2,7 +2,7 @@ import UIKit
 import WebKit
 
  class ChatWebViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
-    
+     weak var delegate: ChatWebViewControllerDelegate?
     private var webView: WKWebView!
     var config: ChatConfigs?
 
@@ -49,7 +49,8 @@ import WebKit
         // Check if the navigation action is a link click and decide to allow it
         if navigationAction.navigationType == .linkActivated {
             if let url = navigationAction.request.url {
-                UIApplication.shared.open(url) // Open links in Safari or default browser
+                UIApplication.shared.open(url)// Open links in Safari or default browser
+                handleDeepLink()
                 decisionHandler(.cancel) // Cancel the navigation so it doesn't load in the WKWebView
                 return
             }
@@ -57,6 +58,13 @@ import WebKit
         decisionHandler(.allow) // Allow all other navigation actions
     }
      
+     func handleDeepLink() {
+         closeWebView()
+         delegate?.chatWebViewControllerDidClose(self)
+         
+     }
+     
+     //you can delete this function
      // Inject JavaScript code into the web page to handle button clicks and close the webview
         func injectJavaScriptCode() {
             let jsCode = """
@@ -82,8 +90,15 @@ import WebKit
                     webView.configuration.userContentController = userContentController
         }
 }
+
+
+protocol ChatWebViewControllerDelegate: AnyObject {
+    func chatWebViewControllerDidClose(_ viewController: ChatWebViewController)
+}
+
 extension ChatWebViewController: WKScriptMessageHandler {
     // Handle messages posted from JavaScript
+    //you can delete this function
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
       if message.name == "closeWebView" {
             if let body = message.body as? String {
@@ -93,6 +108,10 @@ extension ChatWebViewController: WKScriptMessageHandler {
             }
         }
     }
+    func chatWebViewControllerDidClose(_ viewController: ChatWebViewController) {
+            // Dismiss or pop the ChatWebViewController
+            viewController.dismiss(animated: true, completion: nil)
+        }
     
     // Function to close the webview
     private func closeWebView() {

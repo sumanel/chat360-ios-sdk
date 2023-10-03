@@ -3,6 +3,7 @@ import UIKit
 
 public class ChatLauncher{
     public static func showChat(with config: ChatConfigs, parentController: UIViewController){
+        
         let chatVC = ChatWebViewController.init(nibName: "ChatWebViewController", bundle: nil)
         chatVC.modalPresentationStyle = .fullScreen
         chatVC.config = config
