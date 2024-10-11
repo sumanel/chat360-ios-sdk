@@ -4,12 +4,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "chat360_iosSdk",
+    name: "Chat360Sdk",
+    
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
-            name: "chat360_iosSdk",
-            targets: ["chat360_iosSdk"]),
+            name: "Chat360Sdk",
+            targets: ["Chat360Sdk"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -19,10 +20,11 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
-            name: "chat360_iosSdk",
-            dependencies: []),
+            name: "Chat360Sdk",
+            
+            path: "Sources/Chat360Sdk"),
         .testTarget(
-            name: "chat360_iosSdkTests",
-            dependencies: ["chat360_iosSdk"]),
+            name: "Chat360SdkTests",
+            dependencies: ["Chat360Sdk"]),
     ]
 )
