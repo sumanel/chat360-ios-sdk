@@ -41,7 +41,7 @@ import Chat360Sdk
 Create an instance of `Chat360Config` with your bot and app IDs:
 
 ```swift
-let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID", isDebug: true, flutter: false, meta: ["key": "value"])
+let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID",)
 ```
 
 ### Step 3: Create the Chat360BotView
@@ -49,10 +49,8 @@ let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID", isDeb
 Create a `Chat360BotView` with the configured settings:
 
 ```swift
-if let url = chatConfig.createUrl() {
-    let chatView = Chat360BotView(url: url)
+    let chatView = Chat360BotView(botConfig: chatConfig)
     // Present or add the chatView to your view hierarchy
-}
 ```
 
 ### Step 4: Display the ChatBot
