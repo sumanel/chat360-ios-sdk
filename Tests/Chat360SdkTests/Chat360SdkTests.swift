@@ -1,5 +1,5 @@
 import XCTest
-@testable import chat360_iosSdk
+@testable import Chat360Sdk
 
 final class chat360_iosSdkTests: XCTestCase {
     func testCreateUrl_WithValidInputs() {

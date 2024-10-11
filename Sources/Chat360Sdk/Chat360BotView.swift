@@ -3,11 +3,11 @@ import WebKit
 
 
 @available(iOS 13.0, *)
-struct Chat360BotView: UIViewRepresentable {
+public struct Chat360BotView: UIViewRepresentable {
     
     let botConfig: Chat360Config
 
-    init(botConfig: Chat360Config) {
+    public init(botConfig: Chat360Config) {
         self.botConfig = botConfig
     }
 
@@ -15,7 +15,7 @@ struct Chat360BotView: UIViewRepresentable {
         Coordinator(self)
     }
 
-    func makeUIView(context: Context) -> WKWebView {
+    public func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
@@ -30,26 +30,26 @@ struct Chat360BotView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {
+    public func updateUIView(_ uiView: WKWebView, context: Context) {
         // Optionally handle updates to the view
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    public class Coordinator: NSObject, WKNavigationDelegate {
         let parent: Chat360BotView
 
-        init(_ parent: Chat360BotView) {
+        public init(_ parent: Chat360BotView) {
             self.parent = parent
         }
 
-        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             print("Bot started loading.")
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             print("Bot finished loading.")
         }
 
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             print("Bot failed with error: \(error.localizedDescription)")
         }
     }
