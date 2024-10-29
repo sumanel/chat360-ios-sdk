@@ -2,7 +2,7 @@ import Foundation
 
 public struct Chat360Config {
     var baseUrl: String = "https://app.chat360.io/page?h="
-    private var stagingUrl = "https://app.gaadibaazar.in/page?h="
+    private var stagingUrl = "https://staging.chat360.io/page/?h="
     var botId: String? = ""
     var appId: String? = ""
     var isDebug: Bool = false

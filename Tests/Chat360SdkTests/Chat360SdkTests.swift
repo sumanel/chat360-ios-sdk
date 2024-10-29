@@ -16,7 +16,7 @@ final class chat360_iosSdkTests: XCTestCase {
          XCTAssertNotNil(url, "URL should not be nil")
          XCTAssertEqual(url?.absoluteString, "https://app.chat360.io/page?h=\(botId)&store_session=1&app_id=\(appId)&is_mobile=true&mobile=1&meta=%7B%22key%22:%22value%22%7D", "URL string does not match expected format")
      }
-     
+    
      func testCreateUrl_WithStagingMode() {
          // Given
          let botId = "testBotId"
@@ -29,7 +29,7 @@ final class chat360_iosSdkTests: XCTestCase {
          
          // Then
          XCTAssertNotNil(url, "URL should not be nil")
-         XCTAssertEqual(url?.absoluteString, "https://app.gaadibaazar.in/page?h=\(botId)&store_session=1&app_id=\(appId)&is_mobile=true&mobile=1&meta=%7B%22key%22:%22value%22%7D", "URL string does not match expected format in debug mode")
+         XCTAssertEqual(url?.absoluteString, "https://staging.chat360.io/page/?h=\(botId)&store_session=1&app_id=\(appId)&is_mobile=true&mobile=1&meta=%7B%22key%22:%22value%22%7D", "URL string does not match expected format in debug mode")
      }
      
      func testCreateUrl_WithFlutter() {

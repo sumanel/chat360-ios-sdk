@@ -11,6 +11,19 @@ public struct Chat360BotView: UIViewRepresentable {
         self.botConfig = botConfig
     }
 
+    
+    public static func clean() {
+        HTTPCookieStorage.shared.removeCookies(since: Date.distantPast)
+        print("[Bot] All cookies deleted")
+        
+        WKWebsiteDataStore.default().fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
+            records.forEach { record in
+                WKWebsiteDataStore.default().removeData(ofTypes: record.dataTypes, for: [record], completionHandler: {})
+                print("[Bot] Record \(record) deleted")
+            }
+        }
+    }
+
     public func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
