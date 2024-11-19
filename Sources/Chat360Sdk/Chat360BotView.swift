@@ -32,6 +32,7 @@ public struct Chat360BotView: UIViewRepresentable {
         let webView = WKWebView()
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
+//        webView.translatesAutoresizingMaskIntoConstraints = false
         
         if let uri = botConfig.createUrl() {
             webView.load(URLRequest(url: uri))
