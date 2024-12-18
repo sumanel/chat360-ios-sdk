@@ -46,7 +46,6 @@ public struct Chat360Config {
             urlString += "&flutter_sdk_type=ios"
         }
         
-        print(urlString)
         return URL(string: urlString)
     }
 }
