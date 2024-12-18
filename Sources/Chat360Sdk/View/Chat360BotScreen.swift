@@ -1,10 +1,3 @@
-//
-//  SwiftUIView.swift
-//  
-//
-//  Created by Harshit Sharma on 19/11/24.
-//
-
 import SwiftUI
 
 @available(iOS 13.0, *)
