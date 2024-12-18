@@ -41,25 +41,16 @@ import Chat360Sdk
 Create an instance of `Chat360Config` with your bot and app IDs:
 
 ```swift
-let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID",)
+    let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID",)
 ```
 
-### Step 3: Create the Chat360BotView
-
-Create a `Chat360BotView` with the configured settings:
-
-```swift
-    let chatView = Chat360BotView(botConfig: chatConfig)
-    // Present or add the chatView to your view hierarchy
-```
-
-### Step 4: Display the ChatBot
+### Step 3: Display the ChatBot
 
 You can present the `Chat360BotView` using your preferred method (e.g., modal presentation, navigation controller, etc.):
 
 ```swift
-let navigationController = UINavigationController(rootViewController: chatView)
-self.present(navigationController, animated: true, completion: nil)
+    Chat360Bot.shared.setConfig(chat360Config: config)
+    try Chat360Bot.shared.startChatbot(animated: true)
 ```
 
 ## Configuration Options

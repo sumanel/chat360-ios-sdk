@@ -29,15 +29,13 @@ public struct Chat360BotView: UIViewRepresentable {
     }
 
     public func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let webView = WKWebView(frame: .zero)
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
-//        webView.translatesAutoresizingMaskIntoConstraints = false
         
         if let uri = botConfig.createUrl() {
             webView.load(URLRequest(url: uri))
         } else {
-            // Handle the case where the URL is nil
             print("Failed to create URL")
         }
 
