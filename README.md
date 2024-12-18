@@ -46,7 +46,7 @@ Create an instance of `Chat360Config` with your bot and app IDs:
 
 ### Step 3: Display the ChatBot
 
-You can present the `Chat360BotView` using your preferred method (e.g., modal presentation, navigation controller, etc.):
+You can present the Bot View using below code:
 
 ```swift
     Chat360Bot.shared.setConfig(chat360Config: config)
