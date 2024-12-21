@@ -13,9 +13,9 @@ public class Chat360Bot {
         config = chat360Config
     }
     
-    func initiliseBotView() throws -> ChatController {
+    public func initializesBotView() throws -> ChatController {
         guard let botConfig = config else {
-            assertionFailure("config not found. Instead please use setConfig(config) to set the configration then call this function.")
+            assertionFailure("config not found. Instead please use setConfig(config) to set the configuration then call this function.")
             throw Chat360Error.configDoesNotExit
         }
         self.botController = ChatController(botConfig: botConfig)
@@ -32,7 +32,7 @@ public class Chat360Bot {
     
     
     public func startChatbot(on viewController: UIViewController, animated: Bool = true, completion: (() -> Void)? = nil) throws {
-        try initiliseBotView()
+        try initializesBotView()
         viewController.present(self.botController!, animated: animated, completion: completion)
     }
 }
