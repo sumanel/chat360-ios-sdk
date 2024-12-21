@@ -33,7 +33,7 @@ To install the Chat360 library using Swift Package Manager, follow these steps:
 Import the Chat360 library in your Swift file:
 
 ```swift
-import Chat360Sdk
+import Chat360SDK
 ```
 
 ### Step 2: Configure the Chat360Bot
