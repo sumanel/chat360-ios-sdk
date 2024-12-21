@@ -9,7 +9,6 @@ Pod::Spec.new do |spec|
     spec.platform = :ios, "12.0"
   
     spec.source = { :git => "https://github.com/sumanel/chat360-ios-sdk.git", :tag => "#{spec.version}" }
-
-    spec.source_files = "Sources/Chat360Sdk/*.swift"
+    spec.source_files = "Sources/Chat360Sdk/**/*.swift"
     spec.swift_version = '5.0'
   end
