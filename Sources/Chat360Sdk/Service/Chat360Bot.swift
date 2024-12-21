@@ -13,7 +13,7 @@ public class Chat360Bot {
         config = chat360Config
     }
     
-    public func initializesBotView() throws -> ChatController {
+    func initializesBotView() throws -> ChatController {
         guard let botConfig = config else {
             assertionFailure("config not found. Instead please use setConfig(config) to set the configuration then call this function.")
             throw Chat360Error.configDoesNotExit
