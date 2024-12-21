@@ -1,7 +1,6 @@
 import SwiftUI
 import WebKit
 
-
 @available(iOS 13.0, *)
 public struct Chat360BotView: UIViewRepresentable {
     

@@ -2,9 +2,10 @@ import Foundation
 import UIKit
 import SwiftUI
 
+@objc
 @available(iOS 13.0, *)
 class ChatController: UIViewController {
-    let botConfig: Chat360Config
+    @objc let botConfig: Chat360Config
 
     public init(botConfig: Chat360Config) {
         self.botConfig = botConfig
