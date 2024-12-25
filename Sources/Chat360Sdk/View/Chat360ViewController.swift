@@ -4,7 +4,7 @@ import SwiftUI
 
 @objc
 @available(iOS 13.0, *)
-class ChatController: UIViewController {
+public class ChatController: UIViewController {
     @objc let botConfig: Chat360Config
 
     public init(botConfig: Chat360Config) {
