@@ -55,7 +55,7 @@ You can present the Bot View using below code:
 
 ### Step 4: Close the ChatBot
 
-You can present the Bot View using below code:
+You can close the Bot View using below code:
 
 ```swift
     try? Chat360Bot.shared.closeChatBot(animated: true)
