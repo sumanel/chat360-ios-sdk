@@ -8,13 +8,13 @@ public class Chat360Bot: NSObject {
     
     @objc public var config: Chat360Config? = nil
     
-    @objc var botController : ChatController?
+    @objc public var botController : ChatController?
     
     @objc public func setConfig(chat360Config: Chat360Config) {
         config = chat360Config
     }
     
-    @objc func initializesBotView() throws -> ChatController {
+    @objc public func initializesBotView() throws -> ChatController {
         guard let botConfig = config else {
             assertionFailure("config not found. Instead please use setConfig(config) to set the configuration then call this function.")
             throw Chat360Error.configDoesNotExit
