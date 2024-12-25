@@ -1,26 +1,12 @@
 import SwiftUI
 import WebKit
 
-@available(iOS 13.0, *)
 public struct Chat360BotView: UIViewRepresentable {
     
     let botConfig: Chat360Config
 
     public init(botConfig: Chat360Config) {
         self.botConfig = botConfig
-    }
-
-    
-    public static func clean() {
-        HTTPCookieStorage.shared.removeCookies(since: Date.distantPast)
-        print("[Bot] All cookies deleted")
-        
-        WKWebsiteDataStore.default().fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
-            records.forEach { record in
-                WKWebsiteDataStore.default().removeData(ofTypes: record.dataTypes, for: [record], completionHandler: {})
-                print("[Bot] Record \(record) deleted")
-            }
-        }
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -41,9 +27,7 @@ public struct Chat360BotView: UIViewRepresentable {
         return webView
     }
 
-    public func updateUIView(_ uiView: WKWebView, context: Context) {
-        // Optionally handle updates to the view
-    }
+    public func updateUIView(_ uiView: WKWebView, context: Context) {}
 
     public class Coordinator: NSObject, WKNavigationDelegate {
         let parent: Chat360BotView

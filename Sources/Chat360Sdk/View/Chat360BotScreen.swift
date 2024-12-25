@@ -1,6 +1,5 @@
 import SwiftUI
 
-@available(iOS 13.0, *)
 struct Chat360BotScreen: View {
     let botConfig: Chat360Config
     @Environment(\.presentationMode) var presentationMode
@@ -28,10 +27,10 @@ struct Chat360BotScreen: View {
                 }
             }
             .navigationBarItems(leading: Button(action: {
-                self.presentationMode.wrappedValue.dismiss()
+                try? Chat360Bot.shared.closeChatBot();
             }) {
-                Image(systemName: "arrow.left")  // The back button icon
-                    .foregroundColor(.black)     // Customize the color if needed
+                Image(systemName: "arrow.left")
+                    .foregroundColor(.black) 
             })
         }
     }

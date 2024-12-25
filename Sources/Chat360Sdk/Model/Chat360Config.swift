@@ -45,7 +45,6 @@ import Foundation
         if flutter {
             urlString += "&flutter_sdk_type=ios"
         }
-        
         return URL(string: urlString)
     }
 }
