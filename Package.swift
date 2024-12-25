@@ -5,14 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "Chat360SDK",
-    platforms: [
-           .iOS(.v13), // Specify your platform version
-    ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "Chat360SDK",
-            type: .static,
             targets: ["Chat360SDK"]),
     ],
     dependencies: [
