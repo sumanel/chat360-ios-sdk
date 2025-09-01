@@ -118,22 +118,21 @@ public struct Chat360BotView: UIViewRepresentable {
                     return
                 }
 
-                print("[JS → Native] Event type:", type, "data:", body["data"] ?? "nil")
-
                 if let webView = webView {
-                    EventDispatcher.shared.handle(event: type, data: body["data"] as? [String: Any], webView: webView)
+                    let data = body["data"] as? [String: String] ?? [:]
+                    EventDispatcher.shared.handle(event: type, data: data, webView: webView)
                 }
             }
         }
     }
 
     private func registerDefaultHandlers() {
-        EventDispatcher.shared.register(event: "CHAT360_WINDOW_EVENT") { webView, _ in
+        EventDispatcher.shared.register(event: "CHAT360_WINDOW_EVENT") { webView, body  in
             let metadata: [String: String]
-            if let provider = Chat360Bot.shared.metadataProvider?() {
+            if let provider = Chat360Bot.shared.handleWindowEvents?(body) {
                 metadata = provider
             } else {
-                metadata = ["error": "metadata not found"]
+                metadata = [:]
             }
 
             self.postResponse(webView: webView, type: "CHAT360_WINDOW_EVENT", data: metadata)
@@ -157,7 +156,7 @@ public struct Chat360BotView: UIViewRepresentable {
                 if let error = error {
                     print("[Native → JS] Error sending message:", error.localizedDescription)
                 } else {
-                    print("[Native → JS] Sent event \(type)_RESPONSE")
+                    print("[Native → JS] Sent event \(type)")
                 }
             }
         }

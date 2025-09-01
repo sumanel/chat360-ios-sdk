@@ -11,24 +11,20 @@ public class Chat360Bot: NSObject {
     @objc public var botController: ChatController?
     @objc var onBackClick: (() -> Void)?
 
-    @objc public var metadataProvider: (() -> [String: String])?
+    @objc public var handleWindowEvents: (([String: String]) -> [String: String])?
 
-    private var pendingBaseUrl: String?
+    @objc private var baseUrl: String?
 
     @objc public func setConfig(chat360Config: Chat360Config) {
         config = chat360Config
-        if let baseUrl = pendingBaseUrl {
-            config?.setBaseUrl(with: "\(baseUrl)/page?h=")
-            pendingBaseUrl = nil
-        }
     }
 
-    @objc public func setBaseUrl(_ url: String) {
-        if let config = config {
-            config.setBaseUrl(with: url)
-        } else {
-            pendingBaseUrl = url
-        }
+    @objc public func setBaseUrl(url: String) {
+        baseUrl = url
+    }
+    
+    @objc public func getBaseUrl() -> String? {
+        return baseUrl
     }
 
     @objc public func initializesBotView() throws -> ChatController {
