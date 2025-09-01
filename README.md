@@ -7,6 +7,7 @@ Chat360 is a Swift library that allows you to easily integrate a chatbot interfa
 - Easy integration of Chat360 chatbot in your iOS app.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
 - Supports sending metadata to enhance chatbot functionality.
+- Back button navigation support with custom callback handlers
 - Lightweight and easy to use.
 
 ## Installation
@@ -63,11 +64,89 @@ You can close the Bot View using below code:
 
 ## Configuration Options
 
+### Basic Configuration
+
 - **botId**: The ID of your chatbot.
 - **appId**: Your application ID.
-- **flutter**: Set to `true` if you are using Flutter SDK.
 - **meta**: A dictionary for sending additional metadata as a JSON string.
+
+### Advanced Features
+
+#### Back Button Handling
+
+You can customize the back button behavior by providing a callback:
+
+```swift
+Chat360Bot.shared.startChatbot(animated: true, onBackClick: {
+    // Custom back button handling
+    print("Back button clicked")
+}) {
+    print("Chat bot presented")
+}
+```
+
+#### Window Event Handling
+
+The SDK provides a way to handle events from the web channel through the `handleWindowEvents` callback. This allows you to receive and process events from the chatbot interface:
+
+```swift
+Chat360Bot.shared.handleWindowEvents = { eventData in
+    // Handle window events here
+    // eventData is a dictionary containing event information
+    print("Received window event: \(eventData)")
+}
+```
+
+Common use cases for window event handling, this feature is for Window Event Component:
+
+- Receiving user interactions from the chatbot
+- Handling custom actions triggered by the bot
+- Integrating with native app features
+- Tracking conversation events and analytics
+- You can send back you data to the bot by returing map data in this function
+
+Example implementation:
+
+```swift
+let config = Chat360Config(
+    botId: "YOUR_BOT_ID",
+    appId: "YOUR_APP_ID",
+    meta: ["user_id": "12345"]
+)
+Chat360Bot.shared.setConfig(chat360Config: config)
+
+// Set up window event handler
+Chat360Bot.shared.handleWindowEvents = { eventData in
+    if let eventType = eventData["type"] as? String {
+        switch eventType {
+        case "message_sent":
+            print("User sent a message")
+        case "bot_response":
+            print("Bot responded")
+        case "conversation_ended":
+            print("Chat session ended")
+        default:
+            print("Received event: \(eventType)")
+        }
+    }
+    return eventData
+}
+
+try? Chat360Bot.shared.startChatbot(animated: true)
+```
 
 ## Error Handling
 
-If the URL creation fails, ensure that your `botId` and `appId` are correctly set. You can handle potential errors in your app as needed.
+If the URL creation fails, ensure that your `botId` and `appId` are correctly set. The SDK throws `Chat360Error.configDoesNotExit` if configuration is not set before initialization.
+
+Example error handling:
+
+```swift
+do {
+    try Chat360Bot.shared.startChatbot()
+} catch Chat360Error.configDoesNotExit {
+    print("Configuration not set. Call setConfig first.")
+} catch {
+    print("An unexpected error occurred: \(error)")
+}
+```
