@@ -128,7 +128,7 @@ public struct Chat360BotView: UIViewRepresentable {
     }
 
     private func registerDefaultHandlers() {
-        EventDispatcher.shared.register(event: "CHAT360_WINDOW_EVENT_APP") { webView, _ in
+        EventDispatcher.shared.register(event: "CHAT360_WINDOW_EVENT") { webView, _ in
             let metadata: [String: String]
             if let provider = Chat360Bot.shared.metadataProvider?() {
                 metadata = provider
@@ -136,7 +136,7 @@ public struct Chat360BotView: UIViewRepresentable {
                 metadata = ["error": "metadata not found"]
             }
 
-            self.postResponse(webView: webView, type: "CHAT360_WINDOW_EVENT_APP", data: metadata)
+            self.postResponse(webView: webView, type: "CHAT360_WINDOW_EVENT", data: metadata)
         }
     }
 
@@ -149,7 +149,7 @@ public struct Chat360BotView: UIViewRepresentable {
         }
 
         let js = """
-        window.receiveFromApp({ type: "\(type)_RESPONSE", data: \(jsonString) });
+        window.receiveFromApp({ type: "\(type)", data: \(jsonString) });
         """
 
         DispatchQueue.main.async {
