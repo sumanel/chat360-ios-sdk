@@ -45,6 +45,12 @@ Create an instance of `Chat360Config` with your bot and app IDs:
     let chatConfig = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID",)
 ```
 
+if you are using your own custom base url for bot, set it to the Chat360Bot. 
+
+```swift
+     Chat360Bot.shared.setBaseUrl(url: "https://your-base-url")
+```
+
 ### Step 3: Display the ChatBot
 
 You can present the Bot View using below code:
