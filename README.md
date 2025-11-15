@@ -74,6 +74,7 @@ You can close the Bot View using below code:
 
 - **botId**: The ID of your chatbot.
 - **appId**: Your application ID.
+- **useNewUI**: boolean to use new UI.
 - **meta**: A dictionary for sending additional metadata as a JSON string.
 
 ### Advanced Features
