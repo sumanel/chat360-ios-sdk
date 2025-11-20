@@ -91,21 +91,24 @@ public struct Chat360BotView: UIViewRepresentable {
         // ✅ Correct signatures
         public func webView(_ webView: WKWebView, didStartProvisionalNavigation _: WKNavigation!) {
             self.webView = webView
+            Chat360JSBridge.shared.webView = webView
             print("[Chat360Bot] Bot started loading.")
         }
 
         public func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
             self.webView = webView
+            Chat360JSBridge.shared.webView = webView
             print("[Chat360Bot] Bot finished loading.")
         }
 
         public func webView(_ webView: WKWebView, didFail _: WKNavigation!, withError error: Error) {
             self.webView = webView
+            Chat360JSBridge.shared.webView = webView
             print("[Chat360Bot] Bot failed with error: \(error.localizedDescription)")
         }
 
         public func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "consoleBridge" {
+            if message.name == "consoleBridge" && parent.botConfig.isDebug {
                 print("[JS Console]:", message.body)
                 return
             }
@@ -135,7 +138,7 @@ public struct Chat360BotView: UIViewRepresentable {
                 metadata = [:]
             }
 
-            self.postResponse(webView: webView, type: "CHAT360_WINDOW_EVENT", data: metadata)
+            self.postResponse(webView: webView, type: "CHAT360_WINDOW_EVENT_RESPONSE", data: metadata)
         }
     }
 
