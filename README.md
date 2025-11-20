@@ -68,6 +68,14 @@ You can close the Bot View using below code:
     try? Chat360Bot.shared.closeChatBot(animated: true)
 ```
 
+### Step 5: To Send Events to Bot
+
+You can send events to the Bot View using below code:
+
+```swift
+    try? Chat360Bot.shared.sendEventToBot(event: event)
+```
+
 ## Configuration Options
 
 ### Basic Configuration

@@ -12,6 +12,7 @@ public class Chat360Bot: NSObject {
     @objc var onBackClick: (() -> Void)?
 
     @objc public var handleWindowEvents: (([String: String]) -> [String: String])?
+    
 
     @objc private var baseUrl: String?
 
@@ -25,6 +26,10 @@ public class Chat360Bot: NSObject {
     
     @objc public func getBaseUrl() -> String? {
         return baseUrl
+    }
+    
+    @objc public func sendEventToBot(event: [String :String]) -> Void {
+        Chat360JSBridge.shared.send(type: "CHAT360_WINDOW_EVENT", data: event)
     }
 
     @objc public func initializesBotView() throws -> ChatController {
