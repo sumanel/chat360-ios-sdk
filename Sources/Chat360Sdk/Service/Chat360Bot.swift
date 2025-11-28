@@ -12,9 +12,22 @@ public class Chat360Bot: NSObject {
     @objc var onBackClick: (() -> Void)?
 
     @objc public var handleWindowEvents: (([String: String]) -> [String: String])?
-    
+    @objc public var onLocationNeeded: ((String, @escaping (String, String) -> Void) -> Void)? {
+        didSet {
+            // If not set, use built-in location manager
+            if onLocationNeeded == nil {
+                setupDefaultLocationHandler()
+            }
+        }
+    }
 
     @objc private var baseUrl: String?
+
+    override init() {
+        super.init()
+        // Setup default location handler on init
+        setupDefaultLocationHandler()
+    }
 
     @objc public func setConfig(chat360Config: Chat360Config) {
         config = chat360Config
@@ -23,12 +36,21 @@ public class Chat360Bot: NSObject {
     @objc public func setBaseUrl(url: String) {
         baseUrl = url
     }
-    
+
     @objc public func getBaseUrl() -> String? {
         return baseUrl
     }
-    
-    @objc public func sendEventToBot(event: [String :String]) -> Void {
+
+    private func setupDefaultLocationHandler() {
+        // Use built-in location manager if no custom handler is set
+        onLocationNeeded = { _, completion in
+            Chat360LocationManager.shared.requestLocation { latitude, longitude in
+                completion(String(latitude),String(longitude))
+            }
+        }
+    }
+
+    @objc public func sendEventToBot(event: [String: String]) {
         Chat360JSBridge.shared.send(type: "CHAT360_WINDOW_EVENT", data: event)
     }
 
