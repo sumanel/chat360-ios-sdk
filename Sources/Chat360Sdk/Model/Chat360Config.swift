@@ -13,7 +13,18 @@ public class Chat360Config : NSObject {
     @objc var meta: [String: String]?
     
     @objc var useNewUI: Bool = false
-    
+
+    /// Which built-in look the native chat screen starts from; `.custom` defers entirely to
+    /// `customLightColors`/`customDarkColors`/`customBranding`. Not exposed to Objective-C since
+    /// `Chat360ThemePreset` is a Swift-only enum.
+    public var themePreset: Chat360ThemePreset = .standard
+    public var customLightColors: Chat360Colors?
+    public var customDarkColors: Chat360Colors?
+    public var customTypography: Chat360Typography?
+    public var customBranding: Chat360Branding?
+    /// Host apps (or specific integrations) can turn conversation-history fetch off entirely.
+    @objc public var historyEnabled: Bool = true
+
     @objc public init(botId: String,
                       appId: String,
                       isDebug: Bool = false,
@@ -46,9 +57,16 @@ public class Chat360Config : NSObject {
         return createBaseUrl(with: nil)
     }
     
+    /// Same host-resolution precedence `createBaseUrl` uses for the legacy WebView URL
+    /// (`Chat360Bot`'s own override, else the debug/staging split) - reused by the native chat
+    /// screen so both paths agree on which server to talk to.
+    var resolvedBaseUrl: String {
+        Chat360Bot.shared.getBaseUrl() ?? (isDebug ? stagingUrl : baseUrl)
+    }
+
     @objc private func createBaseUrl(with metaString: String?) -> URL? {
-        let host = Chat360Bot.shared.getBaseUrl() ?? (isDebug ? stagingUrl : baseUrl)
-        
+        let host = resolvedBaseUrl
+
         let path = useNewUI ? "/web_bot?h=" : "/page?h="
         
         guard let botId = botId, let appId = appId else { return nil }

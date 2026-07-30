@@ -1,14 +1,22 @@
 # Chat360 Swift Library
 
-Chat360 is a Swift library that allows you to easily integrate a chatbot interface into your iOS applications using a WebView. This library simplifies the process of configuring and displaying the Chat360 chatbot.
+Chat360 is a Swift library that allows you to easily integrate a chatbot interface into your iOS applications. As of 3.0.0 the chat UI is fully native SwiftUI (the same rewrite the Android SDK shipped) rather than a WebView - `startChatbot`/`closeChatBot`/`sendEventToBot`/`handleWindowEvents` all keep their existing signatures, so no integration code changes are required to pick up the native experience.
 
 ## Features
 
-- Easy integration of Chat360 chatbot in your iOS app.
-- Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
+- Fully native SwiftUI chat experience: real-time WebSocket messaging, rich content (carousels, forms, media, image buttons, welcome screens, iframes, ...), voice messages, dictation, and a configurable post-chat feedback survey.
+- Configurable parameters for customization (bot ID, app ID, debug mode, theme, etc.).
 - Supports sending metadata to enhance chatbot functionality.
-- Back button navigation support with custom callback handlers
+- Back button navigation support with custom callback handlers.
 - Lightweight and easy to use.
+
+## Requirements
+
+- iOS 15.0+
+- If your app lets users record voice messages or use dictation, add these keys to your app's `Info.plist` (the SDK itself cannot declare them for you):
+  - `NSMicrophoneUsageDescription` - required to record a voice message.
+  - `NSSpeechRecognitionUsageDescription` - required for the dictation ("mic" icon on the text input) feature.
+  - `NSCameraUsageDescription` - required if a bot flow's file-upload prompt offers a camera option.
 
 ## Installation
 
@@ -84,6 +92,21 @@ You can send events to the Bot View using below code:
 - **appId**: Your application ID.
 - **useNewUI**: boolean to use new UI.
 - **meta**: A dictionary for sending additional metadata as a JSON string.
+- **historyEnabled**: whether the chat screen fetches prior conversation history on connect (default `true`).
+
+### Theming
+
+`Chat360Config` also accepts a theme preset so the native chat screen matches your app's branding:
+
+```swift
+let config = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID")
+config.themePreset = .custom
+config.customLightColors = Chat360Colors(/* ... */)
+config.customDarkColors = Chat360Colors(/* ... */)
+config.customBranding = Chat360Branding(botTitle: "Acme Assistant", logo: .remote(url: "https://..."))
+```
+
+Leave `themePreset` at its default `.standard` to use the library's brand-neutral light/dark palette. Colors/branding returned by the bot's own server-side appearance settings are layered on top of whichever preset you choose.
 
 ### Advanced Features
 
@@ -152,7 +175,7 @@ try? Chat360Bot.shared.startChatbot(animated: true)
 
 ## Error Handling
 
-If the URL creation fails, ensure that your `botId` and `appId` are correctly set. The SDK throws `Chat360Error.configDoesNotExit` if configuration is not set before initialization.
+If the URL creation fails, ensure that your `botId` and `appId` are correctly set. The SDK throws `Chat360Error.configDoesNotExit` if configuration is not set before initialization, or `Chat360Error.botIdMissing` if `botId` is blank.
 
 Example error handling:
 
@@ -161,6 +184,8 @@ do {
     try Chat360Bot.shared.startChatbot()
 } catch Chat360Error.configDoesNotExit {
     print("Configuration not set. Call setConfig first.")
+} catch Chat360Error.botIdMissing {
+    print("botId is not configured.")
 } catch {
     print("An unexpected error occurred: \(error)")
 }

@@ -51,13 +51,17 @@ public class Chat360Bot: NSObject {
     }
 
     @objc public func sendEventToBot(event: [String: String]) {
-        Chat360JSBridge.shared.send(type: "CHAT360_WINDOW_EVENT", data: event)
+        WindowEventBridge.sendToActiveSession(event)
     }
 
     @objc public func initializesBotView() throws -> ChatController {
         guard let botConfig = config else {
             assertionFailure("config not found. Instead please use setConfig(config) to set the configuration then call this function.")
             throw Chat360Error.configDoesNotExit
+        }
+        guard let botId = botConfig.botId, !botId.trimmingCharacters(in: .whitespaces).isEmpty else {
+            assertionFailure("botId is not configured. Please set botId on Chat360Config before calling startChatbot().")
+            throw Chat360Error.botIdMissing
         }
         botController = ChatController(botConfig: botConfig)
         return botController!
