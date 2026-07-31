@@ -44,6 +44,16 @@ struct BotMessageRow: View {
             Text(message.timeText)
                 .font(textFont(size: 11))
                 .foregroundColor(colors.textDisabled)
+            if !isLiveChat {
+                Spacer().frame(height: 6)
+                MessageActionsRow(
+                    feedback: message.feedback,
+                    onCopy: actions.onCopy,
+                    onRegenerate: actions.onRegenerate,
+                    onLike: actions.onLike,
+                    onDislike: actions.onDislike
+                )
+            }
         }
     }
 

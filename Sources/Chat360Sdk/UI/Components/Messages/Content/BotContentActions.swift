@@ -27,4 +27,8 @@ struct BotContentActions {
     var onTextCarouselTap: (_ text: String, _ clickedIndex: Int, _ targetId: String?) -> Void = { _, _, _ in }
     var onWelcomeCardSelected: (BotContent.WelcomeScreen.Card, Int) -> Void = { _, _ in }
     var onIframeAdvance: (_ targetId: String) -> Void = { _ in }
+    var onCopy: () -> Void = {}
+    var onRegenerate: () -> Void = {}
+    var onLike: () -> Void = {}
+    var onDislike: () -> Void = {}
 }

@@ -48,6 +48,13 @@ struct VoiceMessageInfo: Equatable {
     var durationMs: Int64
 }
 
+/// Inline like/dislike on a bot message - local UI state only, no wire message exists yet for
+/// per-message feedback (see design/Hyundai_v1_implementation_plan.md §3.4).
+enum MessageFeedback: Equatable {
+    case like
+    case dislike
+}
+
 struct ChatMessage: Equatable, Identifiable {
     var id: String = UUID().uuidString
     var chatMsgId: String?
@@ -69,6 +76,8 @@ struct ChatMessage: Equatable, Identifiable {
     var author: BotNode.MessageAuthor = .bot
     /// Set only for a sent VOICE_MESSAGE - mutually exclusive with `attachment`/`text` rendering.
     var voiceMessage: VoiceMessageInfo?
+    /// Inline like/dislike toggled from the message actions row - bot messages only.
+    var feedback: MessageFeedback?
 
     private static func formattedNow() -> String {
         let formatter = DateFormatter()

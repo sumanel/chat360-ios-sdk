@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Top-level chat screen: owns layout only. Every visual piece (header, splash, message rows,
 /// input bar) lives in `UI/Components/` so this file stays readable as content types grow.
@@ -9,6 +10,7 @@ import SwiftUI
 /// layered on top.
 struct ChatScreen: View {
     @ObservedObject var viewModel: ChatViewModel
+    var onNewSession: () -> Void = {}
 
     @Environment(\.chat360Colors) private var baseColors
     @Environment(\.chat360Branding) private var baseBranding
@@ -17,7 +19,6 @@ struct ChatScreen: View {
     @StateObject private var voiceRecorder = VoiceRecorderController()
     @StateObject private var voicePreviewPlayback = VoicePlaybackController()
     @StateObject private var speechToText = SpeechToTextController()
-    @State private var showEmojiPicker = false
     @State private var showAttachmentPicker = false
     @State private var showCameraPicker = false
     @State private var mediaFieldPickerTarget: FormFieldTarget?
@@ -49,7 +50,7 @@ struct ChatScreen: View {
         let state = viewModel.uiState
 
         VStack(spacing: 0) {
-            HeaderBar(connected: state.isConnected, assignedAgent: state.assignedAgent)
+            HeaderBar(connected: state.isConnected, assignedAgent: state.assignedAgent, onNewSession: onNewSession)
 
             if let error = state.error {
                 StatusBanner(text: "Error: \(error)", emphasized: true)
@@ -169,20 +170,11 @@ struct ChatScreen: View {
         } else if speechToText.isListening {
             SpeechToTextBar(isListening: true, error: speechToText.error, onStop: { speechToText.stop() })
         } else {
-            VStack(spacing: 0) {
-                if showEmojiPicker {
-                    EmojiPickerPanel(onEmojiSelected: { emoji in viewModel.onInputChange(state.inputText + emoji) })
-                }
-                ChatInputBar(
-                    value: Binding(get: { state.inputText }, set: { viewModel.onInputChange($0) }),
-                    onSend: { viewModel.sendMessage() },
-                    onAttachmentClick: { showAttachmentPicker = true },
-                    onMicClick: { voiceRecorder.requestStart() },
-                    showDictationIcon: speechToText.isSupported(),
-                    onDictateClick: { speechToText.requestStart() },
-                    onEmojiClick: { showEmojiPicker.toggle() }
-                )
-            }
+            ChatInputBar(
+                value: Binding(get: { state.inputText }, set: { viewModel.onInputChange($0) }),
+                onSend: { viewModel.sendMessage() },
+                onMicClick: { voiceRecorder.requestStart() },
+            )
         }
     }
 
@@ -214,7 +206,11 @@ struct ChatScreen: View {
                 },
                 onTextCarouselTap: { text, index, targetId in viewModel.selectTextCarouselReply(messageId: message.id, text: text, clickedIndex: index, targetId: targetId) },
                 onWelcomeCardSelected: { card, index in viewModel.selectWelcomeCard(messageId: message.id, card: card, index: index) },
-                onIframeAdvance: { targetId in viewModel.advanceFromIframe(targetId: targetId) }
+                onIframeAdvance: { targetId in viewModel.advanceFromIframe(targetId: targetId) },
+                onCopy: { UIPasteboard.general.string = message.text },
+                onRegenerate: { viewModel.regenerate(messageId: message.id) },
+                onLike: { viewModel.setMessageFeedback(messageId: message.id, feedback: .like) },
+                onDislike: { viewModel.setMessageFeedback(messageId: message.id, feedback: .dislike) }
             ),
             isLiveChat: isLiveChat,
             assignedAgent: assignedAgent

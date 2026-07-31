@@ -444,4 +444,22 @@ final class ChatViewModel: ObservableObject {
     func disconnect() {
         repository.disconnect()
     }
+
+    /// Re-sends the user message that led to `messageId`'s AI response as a new outgoing message,
+    /// removing the old AI bubble locally first. Not a distinct "regenerate" wire concept - the
+    /// backend just sees a repeated user message; see design/Hyundai_v1_implementation_plan.md §3.4.
+    func regenerate(messageId: String) {
+        guard let index = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        guard let userMessage = uiState.messages[..<index].last(where: { $0.fromUser }) else { return }
+        uiState.messages.remove(at: index)
+        let chatMsgId = repository.sendFreeText(userMessage.text)
+        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: userMessage.text, fromUser: true))
+    }
+
+    /// Toggles inline like/dislike on a bot message. Local UI state only for now - see
+    /// design/Hyundai_v1_implementation_plan.md §3.4 for why this isn't sent anywhere yet.
+    func setMessageFeedback(messageId: String, feedback: MessageFeedback) {
+        guard let index = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        uiState.messages[index].feedback = uiState.messages[index].feedback == feedback ? nil : feedback
+    }
 }
