@@ -40,7 +40,8 @@ private struct Chat360ChatSession: View {
         _viewModel = StateObject(wrappedValue: ChatViewModel(
             baseUrl: botConfig.resolvedBaseUrl,
             botId: botConfig.botId ?? "",
-            historyEnabled: botConfig.historyEnabled
+            historyEnabled: botConfig.historyEnabled,
+            conversationStarterEnabled: botConfig.conversationStarterEnabled
         ))
     }
 

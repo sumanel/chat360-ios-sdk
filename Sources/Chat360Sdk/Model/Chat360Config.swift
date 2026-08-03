@@ -24,6 +24,11 @@ public class Chat360Config : NSObject {
     public var customBranding: Chat360Branding?
     /// Host apps (or specific integrations) can turn conversation-history fetch off entirely.
     @objc public var historyEnabled: Bool = true
+    /// Whether the bot proactively sends an opening message before the user says anything (a REST
+    /// conversation-starter fetch, plus a WS jump to start the flow on a brand-new session). When
+    /// false, a fresh session shows the welcome/logo screen instead, and the bot's flow only
+    /// starts once the user sends their first message.
+    @objc public var conversationStarterEnabled: Bool = true
     /// Which input bar affordances (attachment, emoji, dictation, mic) are offered - defaults to
     /// all on. Not exposed to Objective-C since `Chat360InputBarConfig` is a Swift-only struct.
     public var inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig()

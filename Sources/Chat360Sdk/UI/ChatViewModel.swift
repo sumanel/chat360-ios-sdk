@@ -12,8 +12,8 @@ final class ChatViewModel: ObservableObject {
     /// every render, so no stripping happens here.
     private var streamRawText: [String: String] = [:]
 
-    init(baseUrl: String, botId: String, historyEnabled: Bool = true) {
-        self.repository = ChatRepository(baseUrl: baseUrl, botId: botId, historyEnabled: historyEnabled)
+    init(baseUrl: String, botId: String, historyEnabled: Bool = true, conversationStarterEnabled: Bool = true) {
+        self.repository = ChatRepository(baseUrl: baseUrl, botId: botId, historyEnabled: historyEnabled, conversationStarterEnabled: conversationStarterEnabled)
         startConnecting()
     }
 

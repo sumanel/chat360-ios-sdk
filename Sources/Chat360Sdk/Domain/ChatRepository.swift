@@ -13,6 +13,10 @@ final class ChatRepository {
     private let botId: String
     /// Host apps can turn conversation-history fetch off entirely.
     private let historyEnabled: Bool
+    /// Host apps can turn off the bot proactively speaking first (REST conversation-starter fetch
+    /// + WS jump on a brand-new session) - when false, a fresh session shows the welcome/logo
+    /// screen instead, and the bot's flow only starts once the user sends their first message.
+    private let conversationStarterEnabled: Bool
     private let apiService: Chat360ApiService
     private let wsClient: Chat360WebSocketClient
     private let encoder = JSONEncoder()
@@ -52,6 +56,7 @@ final class ChatRepository {
         baseUrl: String,
         botId: String,
         historyEnabled: Bool = true,
+        conversationStarterEnabled: Bool = true,
         apiService: Chat360ApiService? = nil,
         wsClient: Chat360WebSocketClient = Chat360WebSocketClient(),
         scheduler: Scheduler = DispatchScheduler()
@@ -59,6 +64,7 @@ final class ChatRepository {
         self.baseUrl = baseUrl
         self.botId = botId
         self.historyEnabled = historyEnabled
+        self.conversationStarterEnabled = conversationStarterEnabled
         self.apiService = apiService ?? Chat360ApiService(baseUrl: baseUrl)
         self.wsClient = wsClient
         self.scheduler = scheduler
@@ -105,8 +111,9 @@ final class ChatRepository {
             currentTargetId = session.targetId
             shouldAskFeedback = session.configs?.should_ask_feedback ?? false
             // An INIT node means the flow hasn't started: after the socket opens, jump to the
-            // session's targetId so the bot emits its first message.
-            if session.nodeType == "INIT" { pendingInitJumpTargetId = session.targetId }
+            // session's targetId so the bot emits its first message. Only when the host app wants
+            // the bot to speak first at all - see `conversationStarterEnabled`.
+            if conversationStarterEnabled, session.nodeType == "INIT" { pendingInitJumpTargetId = session.targetId }
 
             let resumedAgent: AssignedAgent? = session.assigned_user.flatMap { user in
                 let blank = (user.operator_name?.isEmpty ?? true) && (user.user_designation?.isEmpty ?? true) && (user.avatar?.isEmpty ?? true)
@@ -118,8 +125,12 @@ final class ChatRepository {
             let hadHistory = historyEnabled ? await loadHistory() : false
             // A room with no history yet shows the conversation-starter content as the opening
             // bubbles instead of an empty welcome screen, using the exact same wire parsing as
-            // any other frame.
-            if !hadHistory { await loadConversationStarter() }
+            // any other frame. Skipped when a system-jump is about to fire (nodeType == INIT,
+            // see above): that jump delivers the same first node over the socket, and running
+            // both left the opening bubble appended twice - see
+            // .claude/duplicate-welcome-message-rca.md. Also gated on `conversationStarterEnabled`
+            // - when false, a room with no history just shows the welcome/logo screen instead.
+            if conversationStarterEnabled, !hadHistory, session.nodeType != "INIT" { await loadConversationStarter() }
             openSocket()
         } catch {
             onError(error)
