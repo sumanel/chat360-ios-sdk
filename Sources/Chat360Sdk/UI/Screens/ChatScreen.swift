@@ -19,6 +19,7 @@ struct ChatScreen: View {
     @StateObject private var voiceRecorder = VoiceRecorderController()
     @StateObject private var voicePreviewPlayback = VoicePlaybackController()
     @StateObject private var speechToText = SpeechToTextController()
+    @State private var showEmojiPicker = false
     @State private var showAttachmentPicker = false
     @State private var showCameraPicker = false
     @State private var mediaFieldPickerTarget: FormFieldTarget?
@@ -170,11 +171,20 @@ struct ChatScreen: View {
         } else if speechToText.isListening {
             SpeechToTextBar(isListening: true, error: speechToText.error, onStop: { speechToText.stop() })
         } else {
-            ChatInputBar(
-                value: Binding(get: { state.inputText }, set: { viewModel.onInputChange($0) }),
-                onSend: { viewModel.sendMessage() },
-                onMicClick: { voiceRecorder.requestStart() },
-            )
+            VStack(spacing: 0) {
+                if showEmojiPicker {
+                    EmojiPickerPanel(onEmojiSelected: { emoji in viewModel.onInputChange(state.inputText + emoji) })
+                }
+                ChatInputBar(
+                    value: Binding(get: { state.inputText }, set: { viewModel.onInputChange($0) }),
+                    onSend: { viewModel.sendMessage() },
+                    onAttachmentClick: { showAttachmentPicker = true },
+                    onMicClick: { voiceRecorder.requestStart() },
+                    showDictationIcon: speechToText.isSupported(),
+                    onDictateClick: { speechToText.requestStart() },
+                    onEmojiClick: { showEmojiPicker.toggle() }
+                )
+            }
         }
     }
 

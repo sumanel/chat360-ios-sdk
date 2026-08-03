@@ -21,6 +21,10 @@ private struct Chat360BrandingKey: EnvironmentKey {
     static let defaultValue = DefaultBranding
 }
 
+private struct Chat360InputBarConfigKey: EnvironmentKey {
+    static let defaultValue = DefaultInputBarConfig
+}
+
 public extension EnvironmentValues {
     var chat360Colors: Chat360Colors {
         get { self[Chat360ColorsKey.self] }
@@ -36,6 +40,11 @@ public extension EnvironmentValues {
         get { self[Chat360BrandingKey.self] }
         set { self[Chat360BrandingKey.self] = newValue }
     }
+
+    var chat360InputBarConfig: Chat360InputBarConfig {
+        get { self[Chat360InputBarConfigKey.self] }
+        set { self[Chat360InputBarConfigKey.self] = newValue }
+    }
 }
 
 /// Resolves a preset (or a client's own custom colors/typography/branding) to the
@@ -49,6 +58,9 @@ private struct Chat360ThemeModifier: ViewModifier {
     var customTypography: Chat360Typography?
     var customBranding: Chat360Branding?
     var colorOverrides: Chat360ColorOverrides?
+    /// Not preset-dependent (unlike colors/typography/branding) - it's a behavior toggle set, not
+    /// a look, so it applies as-is regardless of `.standard` vs `.custom`.
+    var inputBarConfig: Chat360InputBarConfig
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -75,6 +87,7 @@ private struct Chat360ThemeModifier: ViewModifier {
             .environment(\.chat360Colors, resolvedColors)
             .environment(\.chat360Typography, typography)
             .environment(\.chat360Branding, branding)
+            .environment(\.chat360InputBarConfig, inputBarConfig)
     }
 }
 
@@ -85,7 +98,8 @@ public extension View {
         customDarkColors: Chat360Colors? = nil,
         customTypography: Chat360Typography? = nil,
         customBranding: Chat360Branding? = nil,
-        colorOverrides: Chat360ColorOverrides? = nil
+        colorOverrides: Chat360ColorOverrides? = nil,
+        inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig()
     ) -> some View {
         modifier(Chat360ThemeModifier(
             preset: preset,
@@ -93,7 +107,8 @@ public extension View {
             customDarkColors: customDarkColors,
             customTypography: customTypography,
             customBranding: customBranding,
-            colorOverrides: colorOverrides
+            colorOverrides: colorOverrides,
+            inputBarConfig: inputBarConfig
         ))
     }
 }

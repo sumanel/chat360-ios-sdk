@@ -24,6 +24,9 @@ public class Chat360Config : NSObject {
     public var customBranding: Chat360Branding?
     /// Host apps (or specific integrations) can turn conversation-history fetch off entirely.
     @objc public var historyEnabled: Bool = true
+    /// Which input bar affordances (attachment, emoji, dictation, mic) are offered - defaults to
+    /// all on. Not exposed to Objective-C since `Chat360InputBarConfig` is a Swift-only struct.
+    public var inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig()
 
     @objc public init(botId: String,
                       appId: String,
