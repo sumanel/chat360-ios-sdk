@@ -33,6 +33,9 @@ private struct Chat360ChatSession: View {
     @StateObject private var viewModel: ChatViewModel
     let botConfig: Chat360Config
     let onNewSession: () -> Void
+    /// `nil` means "follow the system setting" - lives here (not in `ChatDrawer`) so it survives
+    /// the drawer closing/reopening across the lifetime of one session.
+    @State private var appearanceOverride: ColorScheme?
 
     init(botConfig: Chat360Config, onNewSession: @escaping () -> Void) {
         self.botConfig = botConfig
@@ -47,7 +50,7 @@ private struct Chat360ChatSession: View {
 
     var body: some View {
         NavigationView {
-            ChatScreen(viewModel: viewModel, onNewSession: onNewSession)
+            ChatScreen(viewModel: viewModel, onNewSession: onNewSession, appearanceOverride: $appearanceOverride)
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarItems(leading: Button(action: {
                     try? Chat360Bot.shared.closeChatBot()
@@ -65,6 +68,7 @@ private struct Chat360ChatSession: View {
             customBranding: botConfig.customBranding,
             inputBarConfig: botConfig.inputBarConfig
         )
+        .preferredColorScheme(appearanceOverride)
         .onDisappear { viewModel.disconnect() }
     }
 }

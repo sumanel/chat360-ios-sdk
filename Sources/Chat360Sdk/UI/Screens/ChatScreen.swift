@@ -11,6 +11,7 @@ import UIKit
 struct ChatScreen: View {
     @ObservedObject var viewModel: ChatViewModel
     var onNewSession: () -> Void = {}
+    var appearanceOverride: Binding<ColorScheme?> = .constant(nil)
 
     @Environment(\.chat360Colors) private var baseColors
     @Environment(\.chat360Branding) private var baseBranding
@@ -23,6 +24,7 @@ struct ChatScreen: View {
     @State private var showAttachmentPicker = false
     @State private var showCameraPicker = false
     @State private var mediaFieldPickerTarget: FormFieldTarget?
+    @State private var isDrawerOpen = false
 
     private var effectiveColors: Chat360Colors {
         baseColors.applyingOverrides(viewModel.uiState.colorOverrides)
@@ -50,56 +52,79 @@ struct ChatScreen: View {
     var body: some View {
         let state = viewModel.uiState
 
-        VStack(spacing: 0) {
-            HeaderBar(connected: state.isConnected, assignedAgent: state.assignedAgent, onNewSession: onNewSession)
+        ZStack(alignment: .leading) {
+            VStack(spacing: 0) {
+                HeaderBar(
+                    connected: state.isConnected,
+                    assignedAgent: state.assignedAgent,
+                    onMenuTap: { withAnimation { isDrawerOpen = true } },
+                    onNewSession: onNewSession
+                )
 
-            if let error = state.error {
-                StatusBanner(text: "Error: \(error)", emphasized: true)
-            }
-            if state.isSlowConnection {
-                StatusBanner(text: "Slow connection…", emphasized: false)
-            }
-
-            if let pinned = pinnedWelcomeMessage {
-                botMessageItem(pinned, isLiveChat: state.isLiveChat, assignedAgent: state.assignedAgent)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-            }
-
-            if state.messages.isEmpty {
-                WelcomeSplash().frame(maxHeight: .infinity)
-            } else if !listMessages.isEmpty || state.isAgentTyping {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
-                            ForEach(listMessages) { message in
-                                Group {
-                                    if message.fromUser {
-                                        UserMessageRow(message: message)
-                                    } else {
-                                        botMessageItem(message, isLiveChat: state.isLiveChat, assignedAgent: state.assignedAgent)
-                                    }
-                                }
-                                .id(message.id)
-                            }
-                            if state.isAgentTyping {
-                                TypingIndicatorRow().id("typing-indicator")
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                    }
-                    .onChange(of: state.messages.count) { _ in scrollToBottom(proxy: proxy, state: state) }
-                    .onChange(of: state.isAgentTyping) { _ in scrollToBottom(proxy: proxy, state: state) }
+                if let error = state.error {
+                    StatusBanner(text: "Error: \(error)", emphasized: true)
                 }
-            } else {
-                Spacer()
-            }
+                if state.isSlowConnection {
+                    StatusBanner(text: "Slow connection…", emphasized: false)
+                }
 
-            bottomBar(state: state)
+                if let pinned = pinnedWelcomeMessage {
+                    botMessageItem(pinned, isLiveChat: state.isLiveChat, assignedAgent: state.assignedAgent)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+
+                if state.messages.isEmpty {
+                    WelcomeSplash().frame(maxHeight: .infinity)
+                } else if !listMessages.isEmpty || state.isAgentTyping {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 14) {
+                                ForEach(listMessages) { message in
+                                    Group {
+                                        if message.fromUser {
+                                            UserMessageRow(message: message)
+                                        } else {
+                                            botMessageItem(message, isLiveChat: state.isLiveChat, assignedAgent: state.assignedAgent)
+                                        }
+                                    }
+                                    .id(message.id)
+                                }
+                                if state.isAgentTyping {
+                                    TypingIndicatorRow().id("typing-indicator")
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+                        .onChange(of: state.messages.count) { _ in scrollToBottom(proxy: proxy, state: state) }
+                        .onChange(of: state.isAgentTyping) { _ in scrollToBottom(proxy: proxy, state: state) }
+                    }
+                } else {
+                    Spacer()
+                }
+
+                bottomBar(state: state)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(effectiveColors.background)
+
+            if isDrawerOpen {
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation { isDrawerOpen = false } }
+                    .transition(.opacity)
+
+                ChatDrawer(
+                    onNewChat: {
+                        withAnimation { isDrawerOpen = false }
+                        onNewSession()
+                    },
+                    appearanceOverride: appearanceOverride
+                )
+                .transition(.move(edge: .leading))
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(effectiveColors.background)
         .environment(\.chat360Colors, effectiveColors)
         .environment(\.chat360Branding, effectiveBranding)
         .onChange(of: state.pendingUrlToOpen) { pending in
