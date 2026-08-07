@@ -60,6 +60,16 @@ struct ChatScreen: View {
 
         ZStack(alignment: .leading) {
             VStack(spacing: 0) {
+                // Paints the system status bar's background to match `colors.statusBar` - a
+                // zero-height colored view whose `.ignoresSafeArea(edges: .top)` extends its fill
+                // backward behind the status bar without taking any layout space itself. Mirrors
+                // Android's `ChatComposeActivity` setting `Window.statusBarColor` directly - iOS
+                // has no equivalent direct API, so this paints the same visual result instead.
+                effectiveColors.statusBar
+                    .frame(height: 0)
+                    .frame(maxWidth: .infinity)
+                    .ignoresSafeArea(edges: .top)
+
                 HeaderBar(
                     connected: state.isConnected,
                     assignedAgent: state.assignedAgent,
@@ -141,6 +151,7 @@ struct ChatScreen: View {
                     conversations: viewModel.conversations,
                     activeConversationId: viewModel.activeConversationId,
                     languages: viewModel.languages,
+                    onDismiss: { withAnimation { isDrawerOpen = false } },
                     onNewChat: {
                         withAnimation { isDrawerOpen = false }
                         viewModel.startNewChat()

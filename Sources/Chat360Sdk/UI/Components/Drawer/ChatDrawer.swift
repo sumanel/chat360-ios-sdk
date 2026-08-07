@@ -8,20 +8,19 @@ private enum AssistantMode {
     case customer
 }
 
-/// Side drawer opened from the header's hamburger button (`Hyundai_v1.html`'s `.drawer` /
-/// `.scrim`). Lists locally-cached conversations (`ChatCacheRepository`, keyed by this device/bot -
-/// there's no server-side "list my rooms" endpoint, so this is exactly what's been seen on this
-/// device) with rename/delete, a New Chat button, and - when the bot exposes more than one -
-/// a language switcher row. The prototype's Menu panel (nav items) is still out of scope - that's
-/// host-app navigation, see design/Hyundai_v1_implementation_plan.md §0.
-///
-/// New Chat button / Assistant Mode / Appearance styling (font, weight, size, color, spacing)
-/// ported 1:1 from `.new-chat-btn` / `.theme-row-label` / `.appearance-label` / `.theme-toggle` /
-/// `.theme-opt` / `.theme-opt.selected` / `.drawer-footer` in design/Hyundai_v1.html.
+/// Side drawer opened from the header's hamburger button - ported to match the Android SDK's
+/// `ChatHistorySidebar` structure/wording exactly: the "< Menu" dismiss row (a redundant close
+/// affordance - it does exactly what tapping the scrim outside the drawer already does),
+/// "AI Chatbot - History" title, New Chat button, conversation list, and footer settings section
+/// all mirror Android's copy/order/casing 1:1. Lists locally-cached conversations
+/// (`ChatCacheRepository`, keyed by this device/bot - there's no server-side "list my rooms"
+/// endpoint, so this is exactly what's been seen on this device) with rename/delete, and - when
+/// the bot exposes more than one - a language switcher row.
 struct ChatDrawer: View {
     var conversations: [CachedConversation] = []
     var activeConversationId: String?
     var languages: [SessionLanguage] = []
+    var onDismiss: () -> Void = {}
     var onNewChat: () -> Void = {}
     var onConversationSelected: (String) -> Void = { _ in }
     var onConversationRenamed: (String, String) -> Void = { _, _ in }
@@ -41,16 +40,29 @@ struct ChatDrawer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Chats")
-                .font(headFont(size: 17, weight: .semibold))
-                .foregroundColor(colors.textPrimary)
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+            // Dismiss header - matches Android's `ChatHistorySidebar` exactly: a redundant close
+            // affordance (same effect as tapping the scrim) with its own bordered row.
+            Button(action: onDismiss) {
+                HStack(spacing: 12) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(colors.accent)
+                    Text("Menu")
+                        .font(textFont(size: 17, weight: .semibold))
+                        .foregroundColor(colors.accent)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .frame(height: 74)
+            }
+            .buttonStyle(.plain)
+            .overlay(Rectangle().stroke(colors.line, lineWidth: 1))
 
-            Rectangle()
-                .fill(colors.line)
-                .frame(height: 1)
+            Text("AI Chatbot - History")
+                .font(textFont(size: 20, weight: .semibold))
+                .foregroundColor(colors.textPrimary)
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 16)
 
             // .new-chat-btn: margin 4px 14px 10px, bg accent, white text, Hyundai Sans Head 600 13.5px, padding 11, square corners.
             Button(action: onNewChat) {
@@ -66,7 +78,6 @@ struct ChatDrawer: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
-            .padding(.top, 4)
             .padding(.bottom, 10)
 
             // "CONVERSATIONS" section label - matches Android's ChatHistorySidebar.
@@ -102,11 +113,11 @@ struct ChatDrawer: View {
 
             // .drawer-footer: border-top 1px line, padding 12px 14px 18px.
             VStack(alignment: .leading, spacing: 0) {
-                footerRow(label: "Assistant Mode", topDivider: false) {
+                footerRow(label: "ASSISTANT MODE", topDivider: false) {
                     toggleButton("Training", icon: "graduationcap", selected: assistantMode == .training) { assistantMode = .training }
-                    toggleButton("Customer", icon: "headphones", selected: assistantMode == .customer) { assistantMode = .customer }
+                    toggleButton("Customer", icon: "person.fill", selected: assistantMode == .customer) { assistantMode = .customer }
                 }
-                footerRow(label: "Appearance", topDivider: true) {
+                footerRow(label: "APPEARANCE", topDivider: true) {
                     toggleButton("Light", icon: "sun.max", selected: appearanceOverride == .light) { appearanceOverride = .light }
                     toggleButton("Dark", icon: "moon.fill", selected: appearanceOverride == .dark) { appearanceOverride = .dark }
                 }
@@ -182,7 +193,7 @@ struct ChatDrawer: View {
     private var languageRow: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle().fill(colors.line).frame(height: 1).padding(.top, 14)
-            Text("Language")
+            Text("LANGUAGE")
                 .font(headFont(size: 11, weight: .semibold))
                 .kerning(0.4)
                 .foregroundColor(colors.textSecondary)
@@ -190,20 +201,22 @@ struct ChatDrawer: View {
                 .padding(.top, 14)
                 .padding(.bottom, 8)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(languages) { language in
                         Button(action: { onLanguageSelected(language) }) {
                             Text(language.value)
-                                .font(headFont(size: 12.5, weight: .semibold))
-                                .foregroundColor(language.isDefault ? colors.accentContrast : colors.textSecondary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(language.isDefault ? colors.accent : colors.backgroundSunken)
+                                .font(headFont(size: 15, weight: .semibold))
+                                .foregroundColor(language.isDefault ? colors.accent : colors.textPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(language.isDefault ? colors.backgroundElevated : colors.backgroundSunken)
+                                .overlay {
+                                    if language.isDefault { Rectangle().stroke(colors.line, lineWidth: 1) }
+                                }
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 6)
             }
         }
     }
@@ -253,9 +266,9 @@ struct ChatDrawer: View {
         return .system(size: size, weight: weight)
     }
 
-    private func textFont(size: CGFloat) -> Font {
-        if let name = typography.textFontName { return .custom(name, size: size) }
-        return .system(size: size)
+    private func textFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        if let name = typography.textFontName { return .custom(name, size: size).weight(weight) }
+        return .system(size: size, weight: weight)
     }
 
     private static let timestampFormatter: DateFormatter = {
