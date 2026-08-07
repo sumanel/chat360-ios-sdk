@@ -4,42 +4,35 @@ import SwiftUI
 /// `ChatController` the SDK's public API has always presented - replacing the WebView content
 /// entirely, mirroring how the Android SDK's `Chat360.startBot()` now always launches
 /// `ChatComposeActivity` instead of the old WebView Activity.
-///
-/// Just a thin `.id()`-keyed wrapper around `Chat360ChatSession` - see that type for why "new
-/// session" recreates the whole subtree instead of resetting one `ChatViewModel` in place.
 @available(iOS 15.0, *)
 struct Chat360NativeChatScreen: View {
     let botConfig: Chat360Config
-    @State private var sessionId = UUID()
 
     init(botConfig: Chat360Config) {
         self.botConfig = botConfig
     }
 
     var body: some View {
-        Chat360ChatSession(botConfig: botConfig, onNewSession: { sessionId = UUID() })
-            .id(sessionId)
+        Chat360ChatSession(botConfig: botConfig)
     }
 }
 
-/// Owns the `ChatViewModel`/connection for exactly one chat session. `onNewSession` (wired to the
-/// header's "+" button) doesn't reset this instance - it changes the parent's `.id()`, which tears
-/// this whole view down (running `.onDisappear` -> `viewModel.disconnect()`) and rebuilds a fresh
-/// one with a brand-new `ChatViewModel`/`ChatRepository`. Reusing one `ChatRepository` across
-/// sessions instead would be wrong: `disconnect()` latches `manuallyDisconnected = true`
-/// permanently, so a second `connect()` on the same instance would silently never auto-reconnect.
+/// Owns the `ChatViewModel`/connection for the lifetime of the chat screen. "New chat" (the
+/// header's "+" button / the drawer's New Chat button) no longer tears this view down - it calls
+/// `ChatViewModel.startNewChat()`, which creates a new locally-cached conversation and re-runs
+/// session-init on the existing `ChatRepository` (`ChatRepository.startNewSession()`) so the
+/// backend allocates a genuinely new room, while `conversations`/`shortcuts`/`languages` state
+/// (and the local cache DB connection) stays put across the switch.
 @available(iOS 15.0, *)
 private struct Chat360ChatSession: View {
     @StateObject private var viewModel: ChatViewModel
     let botConfig: Chat360Config
-    let onNewSession: () -> Void
     /// `nil` means "follow the system setting" - lives here (not in `ChatDrawer`) so it survives
     /// the drawer closing/reopening across the lifetime of one session.
     @State private var appearanceOverride: ColorScheme?
 
-    init(botConfig: Chat360Config, onNewSession: @escaping () -> Void) {
+    init(botConfig: Chat360Config) {
         self.botConfig = botConfig
-        self.onNewSession = onNewSession
         _viewModel = StateObject(wrappedValue: ChatViewModel(
             baseUrl: botConfig.resolvedBaseUrl,
             botId: botConfig.botId ?? "",
@@ -50,7 +43,7 @@ private struct Chat360ChatSession: View {
 
     var body: some View {
         NavigationView {
-            ChatScreen(viewModel: viewModel, onNewSession: onNewSession, appearanceOverride: $appearanceOverride)
+            ChatScreen(viewModel: viewModel, appearanceOverride: $appearanceOverride)
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarItems(leading: Button(action: {
                     try? Chat360Bot.shared.closeChatBot()

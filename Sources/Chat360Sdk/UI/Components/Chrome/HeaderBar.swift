@@ -4,14 +4,17 @@ import SwiftUI
 /// header has no persistent bot-name/avatar area to swap, so it's surfaced as a status line
 /// instead; the per-message name/avatar swap lives in `BotMessageRow`.
 ///
-/// `onMenuTap` has no drawer to open yet (chat360 is single-room-per-session with no
-/// multi-conversation history endpoint - see design/Hyundai_v1_implementation_plan.md §4) - the
-/// button exists so a drawer can be wired in later without another header change.
+/// `onMenuTap` opens `ChatDrawer`'s conversation list/settings; `shortcuts` (from session-init's
+/// `bot_settings.bot_shortcuts`) renders as a menu next to it when non-empty.
 struct HeaderBar: View {
     var connected: Bool
     var assignedAgent: AssignedAgent?
+    var shortcuts: [SessionShortcut] = []
     var onMenuTap: () -> Void = {}
     var onNewSession: () -> Void = {}
+    var onShortcutSelected: (SessionShortcut) -> Void = { _ in }
+    /// Manual refresh/reconnect - bypasses the automatic backoff, reuses the current room.
+    var onReconnectTap: () -> Void = {}
 
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
@@ -38,6 +41,28 @@ struct HeaderBar: View {
                 }
             }
             .frame(maxWidth: .infinity)
+
+            // Order matches Android's HeaderBar: refresh, then shortcuts, then new-chat.
+            Button(action: onReconnectTap) {
+                Image(systemName: "arrow.clockwise")
+                    // Dimmed while connected (nothing to fix), full-strength while not - the same
+                    // "something's wrong, tap to retry" affordance Android's refresh icon gives.
+                    .foregroundColor(connected ? colors.textSecondary : colors.textPrimary)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+
+            if !shortcuts.isEmpty {
+                Menu {
+                    ForEach(shortcuts) { shortcut in
+                        Button(shortcut.label) { onShortcutSelected(shortcut) }
+                    }
+                } label: {
+                    Image(systemName: "bolt")
+                        .foregroundColor(colors.textPrimary)
+                        .frame(width: 32, height: 32)
+                }
+            }
 
             Button(action: onNewSession) {
                 Image(systemName: "plus")

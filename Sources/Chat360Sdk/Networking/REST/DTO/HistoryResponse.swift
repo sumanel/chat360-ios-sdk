@@ -8,6 +8,9 @@ struct HistoryResponse: Decodable {
     var next_cursor: Int?
     var previous_cursor: Int?
 
+    /// Empty-response fallback for a disabled/failed history fetch.
+    init() {}
+
     private enum CodingKeys: String, CodingKey { case history, current_length, next_cursor, previous_cursor }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

@@ -114,4 +114,10 @@ struct ChatUiState: Equatable {
     /// A `chat_inactivity_message` with `auto_archival` - the session is closing for inactivity,
     /// so the input bar disables.
     var isArchived: Bool = false
+    /// True once a fetched history page's `previous_cursor` was non-nil - an older page exists to load.
+    var hasMoreHistory: Bool = false
+    /// Guards concurrent `loadMoreHistory()` calls (e.g. rapid scroll-to-top repeats).
+    var isLoadingMoreHistory: Bool = false
+    /// Reflects `NWPathMonitor` - a send while this is false fails immediately instead of timing out.
+    var isOffline: Bool = false
 }

@@ -3,7 +3,7 @@ import Foundation
 /// Loose decode target for any server -> client socket frame. Fields are the ones actually read
 /// by the dispatch chain below (close/ack/echo/typing/bot) - everything else is discarded rather
 /// than guessed at.
-public struct RawSocketEnvelope: Decodable, Equatable {
+public struct RawSocketEnvelope: Codable, Equatable {
     public var user: String? = nil
     public var type: String? = nil
     public var data: JSONValue? = nil
@@ -55,7 +55,10 @@ public enum IncomingSocketEvent: Equatable {
     case pong
     case closeConnection(suppressReconnect: Bool)
     case ack(chatMsgId: String?)
-    case echoedUserMessage(chatMsgId: String?)
+    /// `text` is the user's own message text, present so history/cache replay can reconstruct the
+    /// user's side of the conversation - a live echo already rendered optimistically at send time,
+    /// so callers should only render this when replaying (from cache or a REST history fetch).
+    case echoedUserMessage(chatMsgId: String?, text: String?)
     case typingStatus(isTyping: Bool)
     case botMessage(BotNode)
     /// A `highlight` frame's `assigned_user` - takes precedence over any other msgType the same frame might carry.
@@ -88,7 +91,7 @@ public extension RawSocketEnvelope {
         }
 
         if user == "end_user" {
-            return .echoedUserMessage(chatMsgId: chat_msg_id)
+            return .echoedUserMessage(chatMsgId: chat_msg_id, text: message?.contentOrNull)
         }
 
         if type == "typing_status" {

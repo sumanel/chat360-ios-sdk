@@ -10,7 +10,6 @@ import UIKit
 /// layered on top.
 struct ChatScreen: View {
     @ObservedObject var viewModel: ChatViewModel
-    var onNewSession: () -> Void = {}
     var appearanceOverride: Binding<ColorScheme?> = .constant(nil)
 
     @Environment(\.chat360Colors) private var baseColors
@@ -64,8 +63,11 @@ struct ChatScreen: View {
                 HeaderBar(
                     connected: state.isConnected,
                     assignedAgent: state.assignedAgent,
+                    shortcuts: viewModel.shortcuts,
                     onMenuTap: { withAnimation { isDrawerOpen = true } },
-                    onNewSession: onNewSession
+                    onNewSession: { viewModel.startNewChat() },
+                    onShortcutSelected: { viewModel.selectShortcut($0) },
+                    onReconnectTap: { viewModel.reconnectNow() }
                 )
 
                 if let error = state.error {
@@ -87,6 +89,19 @@ struct ChatScreen: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 14) {
+                                // Scroll-to-top pagination trigger - invisible, sits above the
+                                // oldest loaded message so it comes into view exactly when the
+                                // user scrolls all the way up.
+                                if state.hasMoreHistory {
+                                    Color.clear
+                                        .frame(height: 1)
+                                        .onAppear { viewModel.loadMoreHistory() }
+                                }
+                                if state.isLoadingMoreHistory {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                }
                                 ForEach(listMessages) { message in
                                     Group {
                                         if message.fromUser {
@@ -123,10 +138,20 @@ struct ChatScreen: View {
                     .transition(.opacity)
 
                 ChatDrawer(
+                    conversations: viewModel.conversations,
+                    activeConversationId: viewModel.activeConversationId,
+                    languages: viewModel.languages,
                     onNewChat: {
                         withAnimation { isDrawerOpen = false }
-                        onNewSession()
+                        viewModel.startNewChat()
                     },
+                    onConversationSelected: { id in
+                        withAnimation { isDrawerOpen = false }
+                        viewModel.openConversation(id)
+                    },
+                    onConversationRenamed: { id, title in viewModel.renameConversation(id, title: title) },
+                    onConversationDeleted: { id in viewModel.deleteConversation(id) },
+                    onLanguageSelected: { language in viewModel.switchLanguage(language) },
                     appearanceOverride: appearanceOverride
                 )
                 .transition(.move(edge: .leading))

@@ -29,6 +29,9 @@ final class ChatRepository {
     private var pendingInitJumpTargetId: String?
     private var suppressReconnect = false
     private var manuallyDisconnected = false
+    /// The node id of the last bot-authored (not agent) message actually dispatched - a repeat of
+    /// this id (e.g. a frame replayed by a reconnect) is dropped rather than shown twice.
+    private var lastDispatchedBotNodeId: String?
 
     private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
     private var onConnected: () -> Void = {}
@@ -37,6 +40,18 @@ final class ChatRepository {
     private var onMessageTimedOut: (String) -> Void = { _ in }
     private var onOpenUrl: (String) -> Void = { _ in }
     private var onFeedbackRequested: () -> Void = {}
+    private var onAppearanceLoadedCallback: (BotAppearanceDetails?, String?) -> Void = { _, _ in }
+    private var onSessionResumedCallback: (Bool, AssignedAgent?) -> Void = { _, _ in }
+    /// Cache hook: given the just-established server `room_id`, looks up/creates the matching
+    /// local conversation and replays it from cache if present, returning whether it did (`true`
+    /// skips the REST history/conversation-starter fetch - a local cache hit already rendered
+    /// content). Re-invoked by `startNewSession()` on "New chat", not just the initial `connect()`.
+    private var onConversationStarted: (String) async -> Bool = { _ in false }
+    /// Cache hook: every renderable raw frame (bot message / inactivity notice), handed over as
+    /// the exact wire JSON string so it can be persisted and replayed later through the same
+    /// `RawSocketEnvelope.toIncomingEvent()` pipeline as a live frame.
+    private var onRawIncoming: (String) -> Void = { _ in }
+    private var onBotSettingsLoaded: ([SessionShortcut], [SessionLanguage]) -> Void = { _, _ in }
     /// From session init's `configs.should_ask_feedback` - gates whether LiveChatEnded also closes the socket.
     private var shouldAskFeedback = false
 
@@ -84,7 +99,11 @@ final class ChatRepository {
         onSessionResumed: @escaping (_ takeover: Bool, _ agent: AssignedAgent?) -> Void = { _, _ in },
         /// Mirrors the widget's shouldAskFeedback-gated close: the session ended but is being
         /// held open (see `.liveChatEnded` below) so the UI can show the post-chat survey first.
-        onFeedbackRequested: @escaping () -> Void = {}
+        onFeedbackRequested: @escaping () -> Void = {},
+        /// Cache hooks - see the stored-property doc comments above. Re-used by `startNewSession()`.
+        onConversationStarted: @escaping (String) async -> Bool = { _ in false },
+        onRawIncoming: @escaping (String) -> Void = { _ in },
+        onBotSettingsLoaded: @escaping ([SessionShortcut], [SessionLanguage]) -> Void = { _, _ in }
     ) async {
         self.onEvent = onEvent
         self.onConnected = onConnected
@@ -94,7 +113,20 @@ final class ChatRepository {
         self.onMessageTimedOut = onMessageTimedOut
         self.onOpenUrl = onOpenUrl
         self.onFeedbackRequested = onFeedbackRequested
+        self.onAppearanceLoadedCallback = onAppearanceLoaded
+        self.onSessionResumedCallback = onSessionResumed
+        self.onConversationStarted = onConversationStarted
+        self.onRawIncoming = onRawIncoming
+        self.onBotSettingsLoaded = onBotSettingsLoaded
 
+        await establishSession()
+    }
+
+    /// Runs REST session-init, fetches appearance, seeds history (cache-first via
+    /// `onConversationStarted`, falling back to conversation-starter content), then opens the
+    /// socket. Shared by `connect()` and `startNewSession()` - both just differ in what state was
+    /// reset beforehand.
+    private func establishSession() async {
         do {
             // The widget derives website_url/current_url from the browser's own window.location,
             // which always points at the chat360-hosted page regardless of who embeds it - a
@@ -110,6 +142,7 @@ final class ChatRepository {
             roomId = session.room_id
             currentTargetId = session.targetId
             shouldAskFeedback = session.configs?.should_ask_feedback ?? false
+            onBotSettingsLoaded(session.botShortcuts, session.languages)
             // An INIT node means the flow hasn't started: after the socket opens, jump to the
             // session's targetId so the bot emits its first message. Only when the host app wants
             // the bot to speak first at all - see `conversationStarterEnabled`.
@@ -119,10 +152,14 @@ final class ChatRepository {
                 let blank = (user.operator_name?.isEmpty ?? true) && (user.user_designation?.isEmpty ?? true) && (user.avatar?.isEmpty ?? true)
                 return blank ? nil : AssignedAgent(name: user.operator_name, designation: user.user_designation, avatarUrl: user.avatar)
             }
-            onSessionResumed(session.takeover, resumedAgent)
+            onSessionResumedCallback(session.takeover, resumedAgent)
 
-            await fetchAppearance(host: host, onAppearanceLoaded: onAppearanceLoaded)
-            let hadHistory = historyEnabled ? await loadHistory() : false
+            await fetchAppearance(host: host, onAppearanceLoaded: onAppearanceLoadedCallback)
+            // Cache lookup first (an empty local cache falls through to the REST fetch inside the
+            // ViewModel's own hook, see `ChatViewModel.activateConversation`) - the local cache is
+            // the durable source of truth once it has anything, matching how the web reference
+            // widget behaves (session-init seeds once, never a destructive resync).
+            let hadHistory = historyEnabled ? await onConversationStarted(session.room_id) : false
             // A room with no history yet shows the conversation-starter content as the opening
             // bubbles instead of an empty welcome screen, using the exact same wire parsing as
             // any other frame. Skipped when a system-jump is about to fire (nodeType == INIT,
@@ -137,18 +174,49 @@ final class ChatRepository {
         }
     }
 
-    /// Returns true if any history was found (and dispatched), so callers can fall back to conversation-starter content on a genuinely fresh room.
-    private func loadHistory() async -> Bool {
-        guard let room = roomId else { return false }
-        do {
-            let response = try await apiService.getHistory(roomId: room)
-            for item in response.history { onEvent(item.toIncomingEvent()) }
-            return !response.history.isEmpty
-        } catch {
-            // Non-fatal: a fresh room has no history yet, and a failed fetch shouldn't block
-            // connecting - the live socket is the source of truth either way.
-            return false
-        }
+    /// Tears the current session down (socket, timers, in-flight acks) and re-runs session-init
+    /// from scratch, so the backend allocates a genuinely new room instead of resuming the one
+    /// `connect()`/the previous session established. Reuses whatever `onConversationStarted`/
+    /// `onRawIncoming`/etc. hooks `connect()` already wired up - callers (the ViewModel) are
+    /// expected to have already created the new local conversation row and pointed
+    /// `activeConversationId` at it before calling this, so `onConversationStarted` binds to it
+    /// instead of creating yet another one.
+    func startNewSession() async {
+        manuallyDisconnected = false
+        heartbeat.stop()
+        reconnectManager.cancel()
+        ackTracker.cancelAll()
+        wsClient.close()
+        ownerId = nil
+        roomId = nil
+        currentTargetId = nil
+        lastBotNode = nil
+        pendingInitJumpTargetId = nil
+        lastDispatchedBotNodeId = nil
+        await establishSession()
+    }
+
+    /// Manual refresh/reconnect - bypasses `ReconnectManager`'s backoff and reuses the existing
+    /// `ownerId`/`roomId` (unlike `startNewSession()`, which allocates a new room). No-op once the
+    /// repository has been `disconnect()`-ed.
+    func reconnectNow() {
+        guard !manuallyDisconnected else { return }
+        reconnectManager.cancel()
+        heartbeat.stop()
+        wsClient.close()
+        openSocket()
+    }
+
+    /// Thin REST wrapper for the first (most recent) history page - `historyEnabled = false` short-circuits to an empty response.
+    func fetchHistory(roomId: String) async -> HistoryResponse {
+        guard historyEnabled else { return HistoryResponse() }
+        return (try? await apiService.getHistory(roomId: roomId)) ?? HistoryResponse()
+    }
+
+    /// Thin REST wrapper for an older page, `cursor` from a previous response's `previous_cursor`.
+    func fetchMoreHistory(roomId: String, cursor: Int) async -> HistoryResponse {
+        guard historyEnabled else { return HistoryResponse() }
+        return (try? await apiService.getHistory(roomId: roomId, taskType: "PREVIOUS", taskValue: cursor)) ?? HistoryResponse()
     }
 
     /// Best-effort like loadHistory()/fetchAppearance() - a failed/empty fetch just means no starter bubbles, never blocks connecting.
@@ -224,6 +292,14 @@ final class ChatRepository {
         let event = envelope.toIncomingEvent()
         switch event {
         case .botMessage(let node):
+            // Drops a bot-authored frame whose node id repeats the last one actually dispatched -
+            // e.g. a frame the server replays around a reconnect. Agent-authored (admin/operator)
+            // messages are never deduped this way: a human agent can legitimately send the same
+            // node/text twice in a row.
+            if node.author == .bot, let nodeId = node.nodeId, nodeId == lastDispatchedBotNodeId {
+                return
+            }
+            if node.author == .bot { lastDispatchedBotNodeId = node.nodeId }
             lastBotNode = node
             currentTargetId = node.targetId ?? currentTargetId
             handleWindowEventNode(node.content)
@@ -232,11 +308,14 @@ final class ChatRepository {
             // closes the socket.
             if let endUrlMessage = node.endUrlMessage { onOpenUrl(endUrlMessage) }
             if node.endSessionRequested { disconnect() }
+            onRawIncoming(raw)
+        case .inactivityNotice:
+            onRawIncoming(raw)
         case .ack(let chatMsgId):
             ackTracker.acknowledge(chatMsgId)
         // The server also uses the echoed end_user message itself as a delivery ack, not only
         // the explicit `ack` type.
-        case .echoedUserMessage(let chatMsgId):
+        case .echoedUserMessage(let chatMsgId, _):
             ackTracker.acknowledge(chatMsgId)
         case .closeConnection(let suppress):
             if suppress { suppressReconnect = true }
@@ -313,6 +392,27 @@ final class ChatRepository {
             nodeType: node?.nodeType,
             post_data: .string(sanitized),
             variables: node?.variable.map { [$0: sanitized] }
+        )
+        return sendTracked(outgoing)
+    }
+
+    /// Answers a header shortcuts-menu tap. Unlike `jumpToNode` (a silent, untracked system jump -
+    /// used for IFRAME advance/language switch), this is user-authored: sent as a real tracked
+    /// message so the server records it and the resulting bubble can be marked failed on
+    /// ack-timeout like any other reply. `targetId` overrides the current node's; `currentId`/
+    /// `nodeType`/`variables` still come from the last bot node the same way any other reply does.
+    @discardableResult
+    func sendShortcut(targetId: String, label: String) -> String {
+        let node = lastBotNode
+        let outgoing = OutgoingMessage(
+            message: .string(label),
+            bot_id: botId,
+            targetId: targetId,
+            room_id: roomId,
+            currentId: node?.nodeId,
+            nodeType: node?.nodeType,
+            post_data: .string(label),
+            variables: node?.variable.map { [$0: label] }
         )
         return sendTracked(outgoing)
     }

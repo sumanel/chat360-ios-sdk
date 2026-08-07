@@ -1,26 +1,87 @@
 import Foundation
+import Combine
+import Network
 
 @MainActor
 final class ChatViewModel: ObservableObject {
     @Published private(set) var uiState = ChatUiState()
+    /// Locally-cached conversation list, sourced from `ChatCacheRepository` - drives `ChatDrawer`'s
+    /// history list. Refreshed on every cache write via `conversationsChanged`.
+    @Published private(set) var conversations: [CachedConversation] = []
+    /// From session-init's `bot_settings.bot_shortcuts` - renders as the header's shortcuts menu.
+    @Published private(set) var shortcuts: [SessionShortcut] = []
+    /// From session-init's `bot_settings.languages` - renders as the drawer's language chip row.
+    @Published private(set) var languages: [SessionLanguage] = []
 
     private let repository: ChatRepository
+    private let botId: String
+    private let cache: ChatCacheRepository
     /// Raw (unrendered) text accumulated so far per streamId - chunk text arrives raw precisely
     /// so it can be concatenated as one string before RichTextParser ever sees it: a chunk
     /// boundary can land inside an HTML tag, and parsing each chunk individually would leave tag
     /// fragments as literal text. PlainTextContent re-parses this same accumulated string on
     /// every render, so no stripping happens here.
     private var streamRawText: [String: String] = [:]
+    /// The conversation currently *displayed* - can diverge from `connectedConversationId` when
+    /// the user is browsing an older cached conversation from the drawer (see `openConversation`).
+    /// Published so `ChatDrawer` can highlight it in the conversation list.
+    @Published private(set) var activeConversationId: String?
+    /// The conversation the live `ChatRepository` socket is actually bound to - set once per
+    /// `connect()`/`startNewSession()`, never by `openConversation()`. Chat360 has no "resume an
+    /// arbitrary past room" endpoint, so this is always exactly one conversation: whichever one
+    /// `startConnecting()`/`startNewChat()` most recently established. Live socket
+    /// events/reconnects only ever belong to *this* conversation - caching and rendering both key
+    /// off it, never off `activeConversationId`, so browsing an old conversation can never
+    /// misattribute a live frame into it.
+    private var connectedConversationId: String?
+    private var activeRoomId: String?
+    /// True while replaying cached/history messages through `handleEvent` - suppresses the
+    /// re-caching that would otherwise happen (an already-cached message being re-appended is not
+    /// a new message) and the echoed-user-message rendering that would otherwise double a message
+    /// already shown optimistically at send time.
+    private var restoringFromCache = false
+    /// The REST history endpoint's `previous_cursor` from the last fetched page - `nil` once
+    /// there's nothing older to fetch, matching `uiState.hasMoreHistory`.
+    private var previousHistoryCursor: Int?
+    private let cacheDecoder = JSONDecoder()
+    private let cacheEncoder = JSONEncoder()
+    private var cacheSubscription: AnyCancellable?
+    private let pathMonitor = NWPathMonitor()
 
     init(baseUrl: String, botId: String, historyEnabled: Bool = true, conversationStarterEnabled: Bool = true) {
         self.repository = ChatRepository(baseUrl: baseUrl, botId: botId, historyEnabled: historyEnabled, conversationStarterEnabled: conversationStarterEnabled)
+        self.botId = botId
+        self.cache = .shared
+        observeCache()
+        observeConnectivity()
         startConnecting()
     }
 
     /// Test/DI seam.
-    init(repository: ChatRepository) {
+    init(repository: ChatRepository, botId: String = "", cache: ChatCacheRepository = .shared) {
         self.repository = repository
+        self.botId = botId
+        self.cache = cache
+        observeCache()
+        observeConnectivity()
         startConnecting()
+    }
+
+    private func observeCache() {
+        conversations = cache.conversations(botId: botId)
+        cacheSubscription = cache.conversationsChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                self.conversations = self.cache.conversations(botId: self.botId)
+            }
+    }
+
+    private func observeConnectivity() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in self?.uiState.isOffline = path.status != .satisfied }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "com.chat360.connectivity"))
     }
 
     private func startConnecting() {
@@ -48,12 +109,233 @@ final class ChatViewModel: ObservableObject {
                     self.uiState.isLiveChat = takeover
                     if let agent { self.uiState.assignedAgent = agent }
                 },
-                onFeedbackRequested: { [weak self] in self?.uiState.showFeedbackPrompt = true }
+                onFeedbackRequested: { [weak self] in self?.uiState.showFeedbackPrompt = true },
+                onConversationStarted: { [weak self] roomId in
+                    guard let self else { return false }
+                    return await self.activateConversation(roomId)
+                },
+                onRawIncoming: { [weak self] raw in
+                    guard let self, let conversationId = self.connectedConversationId else { return }
+                    self.cache.cacheRaw(conversationId: conversationId, raw: raw)
+                },
+                onBotSettingsLoaded: { [weak self] shortcuts, languages in
+                    self?.shortcuts = shortcuts
+                    self?.languages = languages
+                }
             )
         }
     }
 
+    /// Cache hook invoked once the server's `room_id` is known - looks up/creates the matching
+    /// local conversation, binds it, and replays cached messages if any exist. Returns `true` when
+    /// it did (skipping the REST history/conversation-starter fetch that follows in
+    /// `ChatRepository.establishSession()`).
+    private func activateConversation(_ roomId: String) async -> Bool {
+        activeRoomId = roomId
+        let (conversationId, hasCachedMessages) = cache.activateForRoom(botId: botId, roomId: roomId, pendingId: connectedConversationId)
+        connectedConversationId = conversationId
+        activeConversationId = conversationId
+        previousHistoryCursor = nil
+        if hasCachedMessages {
+            replayFromCache(conversationId: conversationId)
+            return true
+        }
+        return await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+    }
+
+    private func replayFromCache(conversationId: String) {
+        streamRawText.removeAll()
+        uiState.messages = []
+        uiState.hasMoreHistory = false
+        restoringFromCache = true
+        defer { restoringFromCache = false }
+        for cached in cache.messages(conversationId: conversationId) {
+            switch cached.kind {
+            case .user:
+                appendMessage(ChatMessage(chatMsgId: cached.chatMsgId, text: cached.payload, fromUser: true))
+            case .raw:
+                guard let data = cached.payload.data(using: .utf8),
+                      let envelope = try? cacheDecoder.decode(RawSocketEnvelope.self, from: data) else { continue }
+                handleEvent(envelope.toIncomingEvent())
+            }
+        }
+        // Browsing a conversation other than the one the live socket is bound to is read-only -
+        // there's no live room behind it to answer a quick-reply/form/etc. into (see
+        // `openConversation`'s doc comment), so every row's reply affordances stay locked
+        // regardless of whether the original live flow had already locked them.
+        if conversationId != connectedConversationId {
+            uiState.messages = uiState.messages.map { m in
+                var m = m
+                m.repliesEnabled = false
+                return m
+            }
+        }
+    }
+
+    /// Network-seed path - only reached when the local cache has nothing yet for this
+    /// conversation. Fetches the first (most recent) history page, replays it, then persists it as
+    /// the conversation's RAW cache so future opens replay from cache instead.
+    private func refreshConversationHistory(conversationId: String, roomId: String) async -> Bool {
+        let response = await repository.fetchHistory(roomId: roomId)
+        guard activeConversationId == conversationId else { return !response.history.isEmpty }
+        streamRawText.removeAll()
+        uiState.messages = []
+        uiState.isArchived = false
+        uiState.isLiveChat = false
+        uiState.assignedAgent = nil
+        restoringFromCache = true
+        for item in response.history { handleEvent(item.toIncomingEvent()) }
+        restoringFromCache = false
+        let rawPayloads = response.history.compactMap { envelope -> String? in
+            guard let data = try? cacheEncoder.encode(envelope) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+        cache.replaceRawHistory(conversationId: conversationId, rawEnvelopes: rawPayloads)
+        previousHistoryCursor = response.previous_cursor
+        uiState.hasMoreHistory = response.previous_cursor != nil
+        return !response.history.isEmpty
+    }
+
+    /// Scroll-to-top pagination - fetches one older page and prepends it in-memory only (not
+    /// persisted to cache, matching Android's own deliberate simplification: the cache holds the
+    /// most-recently-fetched page plus everything observed live since, and pages loaded this way
+    /// are re-fetched from network again on the next cold reopen rather than staying cached).
+    func loadMoreHistory() {
+        guard uiState.hasMoreHistory, !uiState.isLoadingMoreHistory,
+              let cursor = previousHistoryCursor, let roomId = activeRoomId else { return }
+        uiState.isLoadingMoreHistory = true
+        Task { [weak self] in
+            guard let self else { return }
+            let response = await self.repository.fetchMoreHistory(roomId: roomId, cursor: cursor)
+            guard self.activeRoomId == roomId else { return }
+            let older = response.history.compactMap { self.olderMessage(from: $0) }
+            self.uiState.messages = older + self.uiState.messages
+            self.previousHistoryCursor = response.previous_cursor
+            self.uiState.hasMoreHistory = response.previous_cursor != nil
+            self.uiState.isLoadingMoreHistory = false
+        }
+    }
+
+    /// Converts one older history frame into a display message without handleEvent's live-state
+    /// side effects (isLiveChat/assignedAgent/etc. reflect *current* status, not history).
+    private func olderMessage(from envelope: RawSocketEnvelope) -> ChatMessage? {
+        switch envelope.toIncomingEvent() {
+        case .botMessage(let node):
+            if node.text == nil, case .unsupported = node.content { return nil }
+            if case .windowEvent = node.content { return nil }
+            return ChatMessage(text: node.text ?? "", fromUser: false, content: node.content, repliesEnabled: false, author: node.author)
+        case .echoedUserMessage(let chatMsgId, let text):
+            guard let text, !text.isEmpty else { return nil }
+            return ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true)
+        case .inactivityNotice(let message, _):
+            guard let message else { return nil }
+            return ChatMessage(text: message, fromUser: false)
+        default:
+            return nil
+        }
+    }
+
+    /// Header/drawer "New chat" - creates a fresh local conversation, points `activeConversationId`
+    /// at it, then tears the socket down and re-runs session-init so the backend allocates a
+    /// genuinely new room (mirrors the Android SDK's `ChatRepository.startNewSession()`).
+    func startNewChat() {
+        let newId = cache.createConversation(botId: botId)
+        connectedConversationId = newId
+        activeConversationId = newId
+        activeRoomId = nil
+        streamRawText.removeAll()
+        uiState.messages = []
+        uiState.hasMoreHistory = false
+        uiState.isArchived = false
+        uiState.isLiveChat = false
+        uiState.assignedAgent = nil
+        uiState.error = nil
+        Task { [weak self] in
+            await self?.repository.startNewSession()
+        }
+    }
+
+    /// Sidebar tap on a past conversation - shows its cached transcript read-only. Chat360's
+    /// backend has no "resume an arbitrary past room" endpoint (session-init always allocates a
+    /// room; it doesn't accept one), so only the conversation created by the *current* live
+    /// session can keep sending - opening an older one is browsing its history, not resuming it.
+    func openConversation(_ conversationId: String) {
+        guard conversationId != activeConversationId else { return }
+        activeConversationId = conversationId
+        activeRoomId = conversations.first { $0.id == conversationId }?.roomId
+        replayFromCache(conversationId: conversationId)
+    }
+
+    func renameConversation(_ conversationId: String, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        cache.renameConversation(conversationId: conversationId, title: trimmed)
+    }
+
+    /// Deletes a cached conversation. Deleting the *connected* one always starts a fresh chat -
+    /// its live room's cache row is gone, so nothing should keep writing into it. Deleting a
+    /// merely-*displayed* (browsed) one falls back to another cached conversation, or a fresh
+    /// chat if none remain (mirrors `ChatViewModel.deleteConversation` on Android).
+    func deleteConversation(_ conversationId: String) {
+        let wasConnected = conversationId == connectedConversationId
+        let wasActive = conversationId == activeConversationId
+        cache.deleteConversation(conversationId: conversationId)
+        if wasConnected {
+            startNewChat()
+            return
+        }
+        guard wasActive else { return }
+        if let fallback = conversations.first(where: { $0.id != conversationId }) {
+            openConversation(fallback.id)
+        } else {
+            startNewChat()
+        }
+    }
+
+    /// Header shortcuts-menu tap - sent as a real tracked user-authored message (mirrors Android's
+    /// `sendShortcut`), so it also appears, caches, and gets ack-timeout coverage like any other reply.
+    func selectShortcut(_ shortcut: SessionShortcut) {
+        let chatMsgId = repository.sendShortcut(targetId: shortcut.targetId, label: shortcut.label)
+        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: shortcut.label, fromUser: true))
+    }
+
+    /// Drawer language-chip tap - a flow restart: clears the transcript and every bit of
+    /// live-session state before jumping to that language's entry node, mirroring Android's
+    /// `switchLanguage` (which explicitly resets the same fields, since leaking e.g. a stale
+    /// `isLiveChat`/`assignedAgent`/`showFeedbackPrompt` into the new language's flow would show
+    /// stale live-chat/feedback UI on top of what's meant to be a fresh start). Also proactively
+    /// reconnects first if the socket isn't currently connected - a silent jump into a dead socket
+    /// would otherwise just do nothing.
+    func switchLanguage(_ language: SessionLanguage) {
+        if let connectedConversationId, activeConversationId != connectedConversationId {
+            activeConversationId = connectedConversationId
+        }
+        streamRawText.removeAll()
+        uiState.messages = []
+        uiState.isAgentTyping = false
+        uiState.isLiveChat = false
+        uiState.assignedAgent = nil
+        uiState.isArchived = false
+        uiState.showFeedbackPrompt = false
+        if !uiState.isConnected {
+            repository.reconnectNow()
+        }
+        repository.jumpToNode(language.key)
+    }
+
+    /// Manual refresh/reconnect - bypasses the automatic reconnect backoff, reuses the current room.
+    func reconnectNow() {
+        repository.reconnectNow()
+    }
+
     private func handleEvent(_ event: IncomingSocketEvent) {
+        // A live frame arriving while the user is browsing a different (non-connected)
+        // conversation from the drawer must not render into that unrelated transcript - it still
+        // got cached correctly (`onRawIncoming` keys off `connectedConversationId`, not this), so
+        // reopening the connected conversation will show it. Replay (cache or REST history) is
+        // always allowed through: it only ever runs against whatever `activeConversationId` was
+        // just set to immediately before it started.
+        guard restoringFromCache || activeConversationId == connectedConversationId else { return }
         switch event {
         case .botMessage(let node):
             // An Unsupported node with no text at all renders nothing (yet) rather than an empty
@@ -104,8 +386,16 @@ final class ChatViewModel: ObservableObject {
         case .inactivityNotice(let message, let autoArchive):
             if let message { appendMessage(ChatMessage(text: message, fromUser: false)) }
             if autoArchive { uiState.isArchived = true }
-        // Ack/echoed-user/pong only drive ChatRepository's internal bookkeeping (ack-timeout
-        // cancellation, heartbeat reset) - nothing further to reflect in the UI.
+        // A live echo of the user's own message only drives ChatRepository's ack-timeout
+        // bookkeeping - the bubble already rendered optimistically when the user hit send.
+        // Replaying cached/history content is the one case this needs to actually render:
+        // there was no live optimistic append for it, so without this the user's own side of a
+        // restored conversation would be silently missing.
+        case .echoedUserMessage(let chatMsgId, let text):
+            guard restoringFromCache, let text, !text.isEmpty else { return }
+            appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        // Ack/pong only drive ChatRepository's internal bookkeeping (ack-timeout cancellation,
+        // heartbeat reset) - nothing further to reflect in the UI.
         default:
             break
         }
@@ -134,13 +424,25 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Appending any message locks the quick replies of everything before it (widget behavior).
+    /// A user-authored message also persists to the local cache, keyed by `connectedConversationId`
+    /// (the room the live socket is actually bound to) - never by `activeConversationId`, which can
+    /// point at a different, merely-browsed conversation with no live room behind it at all.
+    /// Sending anything while browsing an old conversation snaps the display back to the connected
+    /// one first, since there's nowhere coherent else for the message to land.
     private func appendMessage(_ message: ChatMessage) {
+        if message.fromUser, !restoringFromCache, let connectedConversationId, activeConversationId != connectedConversationId {
+            activeConversationId = connectedConversationId
+            replayFromCache(conversationId: connectedConversationId)
+        }
         uiState.messages = uiState.messages.map { m in
             var m = m
             m.repliesEnabled = false
             return m
         }
         uiState.messages.append(message)
+        if message.fromUser, !restoringFromCache, let conversationId = connectedConversationId {
+            cache.cacheUserMessage(conversationId: conversationId, text: message.text, chatMsgId: message.chatMsgId)
+        }
     }
 
     func selectQuickReply(messageId: String, option: BotContent.MultiChoice.Option) {
@@ -436,13 +738,21 @@ final class ChatViewModel: ObservableObject {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         // The empty-message guard only applies outside live chat - live chat allows an empty submit through.
         guard !text.isEmpty || uiState.isLiveChat else { return }
-        let chatMsgId = repository.sendFreeText(text)
         uiState.inputText = ""
+        // No point handing this to the socket layer at all while offline - it would just sit
+        // until the ack-timeout fires. Marking it failed immediately gives the user a retry
+        // affordance right away instead of a multi-second stall.
+        guard !uiState.isOffline else {
+            appendMessage(ChatMessage(chatMsgId: UUID().uuidString, text: text, fromUser: true, failed: true))
+            return
+        }
+        let chatMsgId = repository.sendFreeText(text)
         appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
     }
 
     func disconnect() {
         repository.disconnect()
+        pathMonitor.cancel()
     }
 
     /// Re-sends the user message that led to `messageId`'s AI response as a new outgoing message,

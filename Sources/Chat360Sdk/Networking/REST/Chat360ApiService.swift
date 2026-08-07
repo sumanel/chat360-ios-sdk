@@ -48,9 +48,15 @@ final class Chat360ApiService {
         return try decoder.decode([RawSocketEnvelope].self, from: data)
     }
 
-    func getHistory(roomId: String, limit: Int = 10) async throws -> HistoryResponse {
+    /// `taskType`/`taskValue` page further back in history - pass `taskType: "PREVIOUS"` with the
+    /// previous response's `previous_cursor` as `taskValue` to fetch the next older page. Omit
+    /// both for the first (most recent) page.
+    func getHistory(roomId: String, limit: Int = 10, taskType: String? = nil, taskValue: Int? = nil) async throws -> HistoryResponse {
         var components = URLComponents(string: "\(trimmedBaseUrl)/api/clientwidget_updated/chatbox/messages/\(roomId)")
-        components?.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let taskType { query.append(URLQueryItem(name: "task_type", value: taskType)) }
+        if let taskValue { query.append(URLQueryItem(name: "task_value", value: String(taskValue))) }
+        components?.queryItems = query
         guard let url = components?.url else { throw Chat360ApiError.invalidURL("chatbox/messages/\(roomId)") }
         let data = try await execute(URLRequest(url: url))
         return try decoder.decode(HistoryResponse.self, from: data)
