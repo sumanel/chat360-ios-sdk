@@ -11,6 +11,14 @@ import UIKit
 struct ChatScreen: View {
     @ObservedObject var viewModel: ChatViewModel
     var appearanceOverride: Binding<ColorScheme?> = .constant(nil)
+    /// True when the host app configured its own full `.custom` color palette (e.g. a client's
+    /// own brand, like the demo app's Hyundai theme) - in that case the bot's server-side
+    /// appearance colors never apply at all, not even before the user has touched the
+    /// Light/Dark toggle. Without this, a `.custom`-branded bot whose own appearance API also
+    /// happens to return colors would flash the wrong (server) colors on first render and only
+    /// "stabilize" into the correct custom palette once the user manually picked Light or Dark -
+    /// since that's the only thing that made `effectiveColors` below stop applying overrides.
+    var suppressServerColorOverrides: Bool = false
 
     @Environment(\.chat360Colors) private var baseColors
     @Environment(\.chat360Branding) private var baseBranding
@@ -32,6 +40,7 @@ struct ChatScreen: View {
     /// accent - the most visually obvious ones) no matter what the user picked. See
     /// .claude/appearance-toggle-vs-server-colors.md.
     private var effectiveColors: Chat360Colors {
+        guard !suppressServerColorOverrides else { return baseColors }
         guard appearanceOverride.wrappedValue == nil else { return baseColors }
         return baseColors.applyingOverrides(viewModel.uiState.colorOverrides)
     }

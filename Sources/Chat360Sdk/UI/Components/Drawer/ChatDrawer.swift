@@ -33,6 +33,12 @@ struct ChatDrawer: View {
 
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    /// What's actually on screen right now - `appearanceOverride` alone is `nil` under "follow
+    /// system", which would otherwise leave neither Light nor Dark looking selected even though
+    /// one of them is, in fact, exactly what's being shown.
+    private var effectiveColorScheme: ColorScheme { appearanceOverride ?? systemColorScheme }
 
     @State private var assistantMode: AssistantMode = .customer
     @State private var renamingConversation: CachedConversation?
@@ -102,8 +108,8 @@ struct ChatDrawer: View {
                     toggleButton("Customer", icon: "person.fill", selected: assistantMode == .customer) { assistantMode = .customer }
                 }
                 footerRow(label: "APPEARANCE", topDivider: true) {
-                    toggleButton("Light", icon: "sun.max", selected: appearanceOverride == .light) { appearanceOverride = .light }
-                    toggleButton("Dark", icon: "moon.fill", selected: appearanceOverride == .dark) { appearanceOverride = .dark }
+                    toggleButton("Light", icon: "sun.max", selected: effectiveColorScheme == .light) { appearanceOverride = .light }
+                    toggleButton("Dark", icon: "moon.fill", selected: effectiveColorScheme == .dark) { appearanceOverride = .dark }
                 }
                 // Only shown when the bot actually offers a choice - a single-language bot has
                 // nothing to switch between.

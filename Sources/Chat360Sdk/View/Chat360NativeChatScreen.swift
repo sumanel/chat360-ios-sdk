@@ -43,7 +43,11 @@ private struct Chat360ChatSession: View {
 
     var body: some View {
         NavigationView {
-            ChatScreen(viewModel: viewModel, appearanceOverride: $appearanceOverride)
+            ChatScreen(
+                viewModel: viewModel,
+                appearanceOverride: $appearanceOverride,
+                suppressServerColorOverrides: botConfig.themePreset == .custom
+            )
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarItems(leading: Button(action: {
                     try? Chat360Bot.shared.closeChatBot()
