@@ -9,18 +9,19 @@ private enum AssistantMode {
 }
 
 /// Side drawer opened from the header's hamburger button - ported to match the Android SDK's
-/// `ChatHistorySidebar` structure/wording exactly: the "< Menu" dismiss row (a redundant close
-/// affordance - it does exactly what tapping the scrim outside the drawer already does),
-/// "AI Chatbot - History" title, New Chat button, conversation list, and footer settings section
-/// all mirror Android's copy/order/casing 1:1. Lists locally-cached conversations
-/// (`ChatCacheRepository`, keyed by this device/bot - there's no server-side "list my rooms"
-/// endpoint, so this is exactly what's been seen on this device) with rename/delete, and - when
-/// the bot exposes more than one - a language switcher row.
+/// `ChatHistorySidebar` copy/order/casing: "AI Chatbot - History" title, New Chat button,
+/// conversation list, and footer settings section. Android also has a "< Menu" dismiss row above
+/// the title, but that's a redundant close affordance there (same effect as tapping the scrim) -
+/// omitted here since the host screen already has its own back button
+/// (`Chat360ChatSession`'s `navigationBarItems(leading:)`), and the scrim tap still closes the
+/// drawer either way. Lists locally-cached conversations (`ChatCacheRepository`, keyed by this
+/// device/bot - there's no server-side "list my rooms" endpoint, so this is exactly what's been
+/// seen on this device) with rename/delete, and - when the bot exposes more than one - a language
+/// switcher row.
 struct ChatDrawer: View {
     var conversations: [CachedConversation] = []
     var activeConversationId: String?
     var languages: [SessionLanguage] = []
-    var onDismiss: () -> Void = {}
     var onNewChat: () -> Void = {}
     var onConversationSelected: (String) -> Void = { _ in }
     var onConversationRenamed: (String, String) -> Void = { _, _ in }
@@ -40,28 +41,11 @@ struct ChatDrawer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Dismiss header - matches Android's `ChatHistorySidebar` exactly: a redundant close
-            // affordance (same effect as tapping the scrim) with its own bordered row.
-            Button(action: onDismiss) {
-                HStack(spacing: 12) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(colors.accent)
-                    Text("Menu")
-                        .font(textFont(size: 17, weight: .semibold))
-                        .foregroundColor(colors.accent)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .frame(height: 74)
-            }
-            .buttonStyle(.plain)
-            .overlay(Rectangle().stroke(colors.line, lineWidth: 1))
-
             Text("AI Chatbot - History")
                 .font(textFont(size: 20, weight: .semibold))
                 .foregroundColor(colors.textPrimary)
                 .padding(.horizontal, 18)
-                .padding(.top, 16)
+                .padding(.top, 24)
                 .padding(.bottom, 16)
 
             // .new-chat-btn: margin 4px 14px 10px, bg accent, white text, Hyundai Sans Head 600 13.5px, padding 11, square corners.

@@ -151,7 +151,6 @@ struct ChatScreen: View {
                     conversations: viewModel.conversations,
                     activeConversationId: viewModel.activeConversationId,
                     languages: viewModel.languages,
-                    onDismiss: { withAnimation { isDrawerOpen = false } },
                     onNewChat: {
                         withAnimation { isDrawerOpen = false }
                         viewModel.startNewChat()
