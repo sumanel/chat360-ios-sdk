@@ -110,6 +110,10 @@ final class Chat360ApiService {
 
     private func execute(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
+        // TEMP diagnostic logging for the "connecting..." / Chat360ApiError RCA - remove once resolved.
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            print("[Chat360ApiService] \(http.statusCode) for \(request.url?.absoluteString ?? "?") - body: \(String(data: data, encoding: .utf8) ?? "<non-utf8>")")
+        }
         try validate(response, url: request.url)
         return data
     }

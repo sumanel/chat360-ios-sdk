@@ -61,8 +61,14 @@ private struct Chat360ThemeModifier: ViewModifier {
     /// Not preset-dependent (unlike colors/typography/branding) - it's a behavior toggle set, not
     /// a look, so it applies as-is regardless of `.standard` vs `.custom`.
     var inputBarConfig: Chat360InputBarConfig
+    /// Wins over the system/`@Environment(\.colorScheme)` reading when set. Threaded explicitly
+    /// rather than relying on `.preferredColorScheme(_:)` alone to propagate down to this
+    /// modifier's own environment read - that propagation isn't reliable across the
+    /// `NavigationView`/hosting-controller boundary this sits behind, so a manual light/dark
+    /// override could silently fail to actually change any colors while still looking selected.
+    var colorSchemeOverride: ColorScheme?
 
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorScheme) private var systemColorScheme
 
     func body(content: Content) -> some View {
         let light: Chat360Colors
@@ -81,6 +87,7 @@ private struct Chat360ThemeModifier: ViewModifier {
             typography = DefaultChat360Typography
             branding = DefaultBranding
         }
+        let colorScheme = colorSchemeOverride ?? systemColorScheme
         let resolvedColors = (colorScheme == .dark ? dark : light).applyingOverrides(colorOverrides)
 
         return content
@@ -99,7 +106,8 @@ public extension View {
         customTypography: Chat360Typography? = nil,
         customBranding: Chat360Branding? = nil,
         colorOverrides: Chat360ColorOverrides? = nil,
-        inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig()
+        inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig(),
+        colorSchemeOverride: ColorScheme? = nil
     ) -> some View {
         modifier(Chat360ThemeModifier(
             preset: preset,
@@ -108,7 +116,8 @@ public extension View {
             customTypography: customTypography,
             customBranding: customBranding,
             colorOverrides: colorOverrides,
-            inputBarConfig: inputBarConfig
+            inputBarConfig: inputBarConfig,
+            colorSchemeOverride: colorSchemeOverride
         ))
     }
 }

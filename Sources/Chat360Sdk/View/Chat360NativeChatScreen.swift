@@ -66,7 +66,8 @@ private struct Chat360ChatSession: View {
             customDarkColors: botConfig.customDarkColors,
             customTypography: botConfig.customTypography,
             customBranding: botConfig.customBranding,
-            inputBarConfig: botConfig.inputBarConfig
+            inputBarConfig: botConfig.inputBarConfig,
+            colorSchemeOverride: appearanceOverride
         )
         .preferredColorScheme(appearanceOverride)
         .onDisappear { viewModel.disconnect() }

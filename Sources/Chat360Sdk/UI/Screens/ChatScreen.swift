@@ -26,8 +26,15 @@ struct ChatScreen: View {
     @State private var mediaFieldPickerTarget: FormFieldTarget?
     @State private var isDrawerOpen = false
 
+    /// The bot's server-side appearance colors normally apply on top of the theme (see the type
+    /// doc above) - but once the user has explicitly picked Light/Dark from the drawer, that
+    /// choice wins completely instead, server overrides included. Otherwise the toggle would look
+    /// broken: the server colors would keep winning for the fields they set (background, bubbles,
+    /// accent - the most visually obvious ones) no matter what the user picked. See
+    /// .claude/appearance-toggle-vs-server-colors.md.
     private var effectiveColors: Chat360Colors {
-        baseColors.applyingOverrides(viewModel.uiState.colorOverrides)
+        guard appearanceOverride.wrappedValue == nil else { return baseColors }
+        return baseColors.applyingOverrides(viewModel.uiState.colorOverrides)
     }
 
     private var effectiveBranding: Chat360Branding {
