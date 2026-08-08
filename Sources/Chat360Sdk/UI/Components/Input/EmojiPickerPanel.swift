@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// A curated representative subset stands in for a full bundled emoji dataset - same practical
-/// scope as the Android port's own picker, not a byte-for-byte data port.
+/// A curated emoji set, not the full system picker.
 private let smileysAndPeople = [
     "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
     "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",

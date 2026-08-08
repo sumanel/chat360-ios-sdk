@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Ports the AUTOSUGGESTION sub-case of CUSTOMINPUT as a plain choice list rather than the
-/// source's "tap to open a searchable dialog, then confirm" two-step flow - a single tap both
+/// Renders the AUTOSUGGESTION sub-case of CUSTOMINPUT as a plain choice list: a single tap both
 /// selects and submits, matching how MULTI_CHOICE already behaves natively.
 struct AutoSuggestionContent: View {
     var message: ChatMessage

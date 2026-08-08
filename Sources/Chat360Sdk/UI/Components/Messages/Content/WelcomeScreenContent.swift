@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Ports the WELCOME_SCREEN node's card content + `onCardClick` exactly (see
-/// `BotContent.WelcomeScreen`'s doc); the "pinned outside the scroll list" placement for whichever
-/// WELCOME_SCREEN message is currently the latest is handled by the caller (`ChatScreen`), not here.
+/// Renders the WELCOME_SCREEN node's card content and `onCardClick`; the "pinned outside the
+/// scroll list" placement for whichever WELCOME_SCREEN message is currently the latest is handled
+/// by the caller (`ChatScreen`), not here.
 struct WelcomeScreenContent: View {
     var message: ChatMessage
     var content: BotContent.WelcomeScreen

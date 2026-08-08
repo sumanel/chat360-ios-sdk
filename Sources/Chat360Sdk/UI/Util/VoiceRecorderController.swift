@@ -11,9 +11,9 @@ struct VoiceRecording {
 private let sampleIntervalSeconds: TimeInterval = 0.1
 private let maxSamples = 60
 
-/// Records a voice note via `AVAudioRecorder` (AAC/m4a, matching the Android side's MediaRecorder
-/// format swap vs. the widget's original WAV output). `amplitudes`/`isRecording`/`elapsedMs` are
-/// `@Published` so a live waveform can observe them directly.
+/// Records a voice note via `AVAudioRecorder` (AAC/m4a format).
+/// `amplitudes`/`isRecording`/`elapsedMs` are `@Published` so a live waveform can
+/// observe them directly.
 @MainActor
 final class VoiceRecorderController: NSObject, ObservableObject {
     @Published private(set) var isRecording = false
@@ -89,8 +89,8 @@ final class VoiceRecorderController: NSObject, ObservableObject {
         amplitudes = Array((amplitudes + [level]).suffix(maxSamples))
     }
 
-    /// Converts `AVAudioRecorder`'s dBFS metering value to a 0-32767 scale, matching the range
-    /// `VoiceWaveformBars` expects (mirrors Android's `MediaRecorder.maxAmplitude` range).
+    /// Converts `AVAudioRecorder`'s dBFS metering value to the 0-32767 scale `VoiceWaveformBars`
+    /// expects.
     private func amplitudeLevel(fromDb db: Float) -> Int {
         guard db.isFinite else { return 0 }
         let minDb: Float = -60

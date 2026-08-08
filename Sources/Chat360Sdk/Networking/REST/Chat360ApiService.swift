@@ -3,6 +3,10 @@ import Foundation
 enum Chat360ApiError: Error {
     case invalidURL(String)
     case httpError(code: Int, url: URL?)
+    /// A 2xx response whose `{success, data}` envelope had no `data` - distinct from `httpError`
+    /// since it's not an HTTP-level failure and should never be mistaken for one (e.g. never
+    /// satisfies a `code == 401` check).
+    case malformedResponse(endpoint: String)
 }
 
 /// Minimal native REST client for the Chat360 backend, used in place of the WebView.
@@ -38,8 +42,8 @@ final class Chat360ApiService {
         return try decoder.decode(SessionInitResponse.self, from: data)
     }
 
-    /// Mirrors `getFirstMessages()`: a bare JSON array of frames (not wrapped like
-    /// `HistoryResponse`), each decodable the same way history/live frames are.
+    /// A bare JSON array of frames (not wrapped like `HistoryResponse`), each decodable the same
+    /// way history/live frames are.
     func getFirstMessages(botId: String) async throws -> [RawSocketEnvelope] {
         guard let url = URL(string: "\(trimmedBaseUrl)/api/chatbox/short-data/\(botId)") else {
             throw Chat360ApiError.invalidURL("short-data/\(botId)")
@@ -62,7 +66,7 @@ final class Chat360ApiService {
         return try decoder.decode(HistoryResponse.self, from: data)
     }
 
-    /// Mirrors `uploadFile()`: multipart POST, response is a JSON array of URLs.
+    /// Multipart POST; response is a JSON array of URLs.
     func uploadMedia(
         roomId: String,
         botId: String,
@@ -116,7 +120,6 @@ final class Chat360ApiService {
 
     private func execute(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
-        // TEMP diagnostic logging for the "connecting..." / Chat360ApiError RCA - remove once resolved.
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             print("[Chat360ApiService] \(http.statusCode) for \(request.url?.absoluteString ?? "?") - body: \(String(data: data, encoding: .utf8) ?? "<non-utf8>")")
         }

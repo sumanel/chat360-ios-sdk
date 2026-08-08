@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// Renders a MEDIA node. Images load inline via `AsyncImage`; video/audio show a play chip that
-/// opens the file in the system player - full inline playback (AVPlayer) is a later refinement.
-/// `content.dynamicButtons` render as quick-reply pills below, reusing the same
-/// `carousel-text-reply` wire path and index convention as `TextCarouselContent`'s own dynamic
-/// buttons (see that file's tap handler for the shared -(i+1) encoding).
+/// opens the file in the system player rather than playing inline. `content.dynamicButtons`
+/// render as quick-reply pills below, reusing the same `carousel-text-reply` wire path and index
+/// convention as `TextCarouselContent`'s own dynamic buttons (see that file's tap handler for the
+/// shared -(i+1) encoding).
 struct MediaContent: View {
     var message: ChatMessage
     var content: BotContent.Media

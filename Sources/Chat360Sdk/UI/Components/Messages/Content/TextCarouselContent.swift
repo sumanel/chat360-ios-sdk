@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Ports the TEXT_CAROUSEL node - both wire generations (`type1`/`type2`) render through this one
-/// card shape.
+/// Renders the TEXT_CAROUSEL node - both wire generations (`type1`/`type2`) render through this
+/// one card shape.
 struct TextCarouselContent: View {
     var message: ChatMessage
     var content: BotContent.TextCarousel

@@ -8,7 +8,7 @@ struct AttachmentPayload {
     var mimeType: String
 }
 
-/// Matches the widget's 10MB cap.
+/// 10MB cap on attachment size.
 let maxAttachmentBytes = 10_000_000
 
 enum AttachmentReader {
@@ -27,8 +27,8 @@ enum AttachmentReader {
     }
 }
 
-/// Opens the system document picker for any file type (the closest iOS equivalent of Android's
-/// `GetContent("*/*")` - it also surfaces Photos via the Files app's own integration).
+/// Opens the system document picker for any file type - it also surfaces Photos via the Files
+/// app's own integration.
 struct AttachmentDocumentPicker: UIViewControllerRepresentable {
     var onPicked: (AttachmentPayload) -> Void
 
@@ -53,9 +53,8 @@ struct AttachmentDocumentPicker: UIViewControllerRepresentable {
     }
 }
 
-/// Ports the FILE_UPLOAD node's `enableCameraInput` option via the platform's own Camera app
-/// instead of a custom live-preview UI, the same way the Android side defers to the system Camera
-/// activity rather than reimplementing a getUserMedia-style preview screen.
+/// The FILE_UPLOAD node's `enableCameraInput` option is answered via the platform's own Camera
+/// app instead of a custom live-preview UI.
 struct AttachmentCameraCapture: UIViewControllerRepresentable {
     var onPicked: (AttachmentPayload) -> Void
 

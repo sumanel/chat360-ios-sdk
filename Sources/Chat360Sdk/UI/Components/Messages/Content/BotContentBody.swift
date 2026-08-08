@@ -30,8 +30,8 @@ struct BotContentBody: View {
             EmptyView()
         case .emailPrompt:
             EmailPromptContent(message: message, isLiveChat: isLiveChat, onValueChange: actions.onPromptValueChange, onSubmit: actions.onEmailSubmit)
-        // A non-international PhonePrompt has no dedicated widget in the source either - the
-        // always-visible bottom input bar already answers it as free text.
+        // A non-international PhonePrompt has no dedicated prompt UI - the always-visible bottom
+        // input bar already answers it as free text.
         case .phonePrompt(let content):
             if content.allowInternational {
                 PhonePromptContent(message: message, content: content, isLiveChat: isLiveChat, onValueChange: actions.onPromptValueChange, onSubmit: actions.onPhoneSubmit)

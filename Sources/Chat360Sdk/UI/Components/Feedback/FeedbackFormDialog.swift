@@ -2,8 +2,8 @@ import SwiftUI
 
 private let defaultFeedbackRating = 5
 
-/// Field types this pass renders - checkbox-matrix/radio-matrix/rank/file fall back to a plain
-/// notice, a deliberately bounded first cut of the 11-type builder.
+/// Field types rendered directly; checkbox-matrix/radio-matrix/rank/file fall back to a plain
+/// notice rather than being silently dropped.
 private let supportedFeedbackFieldTypes: Set<String> = ["label", "textarea", "textbox", "dropdown", "radio", "checkbox", "date"]
 
 /// The post-chat configurable survey: a rating (star/emoji) picks which
@@ -21,8 +21,8 @@ struct FeedbackFormDialog: View {
     private var showDefaultForm: Bool { feedbackConfig.show_default_form }
     private var defaultRating: Int { (feedbackConfig.rating?.scale).flatMap { $0 > 0 ? $0 : nil } ?? defaultFeedbackRating }
 
-    // Ports the source's own (asymmetric) initial state: showing the default form starts with no
-    // rating picked yet; relying on trigger_rules instead starts with the top rating pre-selected.
+    // Asymmetric initial state: showing the default form starts with no rating picked yet; relying
+    // on trigger_rules instead starts with the top rating pre-selected.
     @State private var rating: Int?
     @State private var attemptedSubmit = false
     @State private var values: [String: String] = [:]
@@ -234,8 +234,7 @@ private struct FeedbackFieldRow: View {
                 .padding(12)
                 .background(colors.inputBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-        // Source renders this as a native <Select>; here it's a single-select list instead - same
-        // data (label doubles as value here) and interaction (pick exactly one), just a different widget.
+        // Single-select list where the label doubles as the option's value; exactly one can be picked.
         case "dropdown":
             let options = normalizeFeedbackOptions(field.options)
             VStack(alignment: .leading, spacing: 4) {
@@ -268,7 +267,7 @@ private struct FeedbackFieldRow: View {
                 }
             }
         default:
-            // checkbox-matrix/radio-matrix/rank/file aren't ported yet - an honest placeholder
+            // checkbox-matrix/radio-matrix/rank/file aren't supported yet - an honest placeholder
             // beats silently dropping the field.
             Text("This field type (\(type)) isn't supported in the app yet.")
                 .font(textFont(size: 12))

@@ -2,9 +2,9 @@ import SwiftUI
 
 private let fileUploadImageExtensions: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff", "bmp", "jfif"]
 
-/// Mirrors the dropzone prompt: a tappable "upload" row inside the bot bubble, plus (when
-/// `enableCameraInput` is set and the allowed types include an image extension) a second row to
-/// capture a photo directly instead of picking one.
+/// A tappable "upload" row inside the bot bubble, plus (when `enableCameraInput` is set and the
+/// allowed types include an image extension) a second row to capture a photo directly instead of
+/// picking one.
 struct FileUploadPromptContent: View {
     var content: BotContent.FileUploadPrompt
     var isLiveChat: Bool

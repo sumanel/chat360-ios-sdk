@@ -2,10 +2,9 @@ import Foundation
 import Speech
 import AVFoundation
 
-/// Continuous dictation via `SFSpeechRecognizer` - mirrors the widget's Web Speech API usage:
-/// a single running `transcript` updates as the user talks. Unlike Android's `SpeechRecognizer`
-/// (which completes after each utterance and has to be manually restarted), iOS's recognition
-/// task stays open across pauses on its own, so there's no per-utterance restart loop needed here.
+/// Continuous dictation via `SFSpeechRecognizer`: a single running `transcript` updates as the
+/// user talks. The recognition task stays open across pauses on its own, so there's no
+/// per-utterance restart loop needed here.
 @MainActor
 final class SpeechToTextController: NSObject, ObservableObject {
     @Published private(set) var isListening = false

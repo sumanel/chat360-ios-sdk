@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Mirrors the DOWNLOAD_MEDIA node: a tappable chip that opens the file (iOS has no
-/// app-level download-manager equivalent to Android's `DownloadManager` for arbitrary URLs, so
-/// this opens the file's URL - Safari/the system handles the actual download).
+/// Mirrors the DOWNLOAD_MEDIA node: a tappable chip that opens the file. iOS has no app-level
+/// download-manager API for arbitrary URLs, so this opens the file's URL - Safari/the system
+/// handles the actual download.
 struct DownloadMediaContent: View {
     var content: BotContent.DownloadMedia
 

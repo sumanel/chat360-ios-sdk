@@ -2,7 +2,7 @@ import SwiftUI
 
 private let formErrorColorForm = Color(red: 0xDC / 255, green: 0x26 / 255, blue: 0x26 / 255)
 
-/// Ports the FORM field set (TEXT/NUMBER/EMAIL/PHONE/SELECT/DATE/MEDIA), with the exact per-field
+/// Renders the FORM field set (TEXT/NUMBER/EMAIL/PHONE/SELECT/DATE/MEDIA), with the exact per-field
 /// validation matrix from `FormFieldValidator` (required, format, length/count bounds,
 /// "Test"-word blocks, phone blocklist, alpha-only). Field types without a dedicated renderer
 /// (RCS-specific, etc.) fall back to `.other` and render as a disabled placeholder row rather

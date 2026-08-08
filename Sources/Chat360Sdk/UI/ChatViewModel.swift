@@ -16,6 +16,7 @@ final class ChatViewModel: ObservableObject {
     private let repository: ChatRepository
     private let botId: String
     private let cache: ChatCacheRepository
+    private let chatHistoryRepository: ChatHistoryRepository?
     /// Raw (unrendered) text accumulated so far per streamId - chunk text arrives raw precisely
     /// so it can be concatenated as one string before RichTextParser ever sees it: a chunk
     /// boundary can land inside an HTML tag, and parsing each chunk individually would leave tag
@@ -48,13 +49,23 @@ final class ChatViewModel: ObservableObject {
     private var cacheSubscription: AnyCancellable?
     private let pathMonitor = NWPathMonitor()
 
-    init(baseUrl: String, botId: String, historyEnabled: Bool = true, conversationStarterEnabled: Bool = true) {
+    init(
+        baseUrl: String,
+        botId: String,
+        historyEnabled: Bool = true,
+        conversationStarterEnabled: Bool = true,
+        clientId: String? = nil,
+        apiKey: String? = nil,
+        endUserId: String? = nil
+    ) {
         self.repository = ChatRepository(baseUrl: baseUrl, botId: botId, historyEnabled: historyEnabled, conversationStarterEnabled: conversationStarterEnabled)
         self.botId = botId
         self.cache = .shared
+        self.chatHistoryRepository = Self.buildChatHistoryRepository(baseUrl: baseUrl, botId: botId, clientId: clientId, apiKey: apiKey, endUserId: endUserId)
         observeCache()
         observeConnectivity()
         startConnecting()
+        refreshRoomsFromThirdPartyTasks()
     }
 
     /// Test/DI seam.
@@ -62,9 +73,58 @@ final class ChatViewModel: ObservableObject {
         self.repository = repository
         self.botId = botId
         self.cache = cache
+        self.chatHistoryRepository = nil
         observeCache()
         observeConnectivity()
         startConnecting()
+    }
+
+    /// Fire-and-forget rooms/list refresh - see `ChatHistoryRepository` doc: a failure never
+    /// affects `conversations` (it just keeps showing whatever's already cached), only flips
+    /// `uiState.isHistoryUnavailable` so a host UI can show a retry affordance.
+    private func refreshRoomsFromThirdPartyTasks() {
+        guard let chatHistoryRepository else { return }
+        Task { [weak self] in
+            let succeeded = await chatHistoryRepository.refreshRooms()
+            self?.uiState.isHistoryUnavailable = !succeeded
+        }
+    }
+
+    /// History (the rooms list backed by the `third-party-tasks` API) requires `clientId`,
+    /// `apiKey`, `endUserId`, and `botId` *all* set - there is no partially-configured mode.
+    /// Leaving all three third-party fields unset is a valid choice (history is simply off);
+    /// setting only some of them is almost certainly a host-app integration mistake, so it's
+    /// always logged loudly - but never crashes the host app, in any build configuration, since a
+    /// third-party SDK misconfiguration must never be able to take down the whole app.
+    private static func buildChatHistoryRepository(
+        baseUrl: String,
+        botId: String,
+        clientId: String?,
+        apiKey: String?,
+        endUserId: String?
+    ) -> ChatHistoryRepository? {
+        let hasClientId = !(clientId ?? "").isEmpty
+        let hasApiKey = !(apiKey ?? "").isEmpty
+        let hasEndUserId = !(endUserId ?? "").isEmpty
+        let hasAnyThirdPartyConfig = hasClientId || hasApiKey || hasEndUserId
+        let hasAllThirdPartyConfig = hasClientId && hasApiKey && hasEndUserId && !botId.isEmpty
+        if hasAnyThirdPartyConfig && !hasAllThirdPartyConfig {
+            let message = "Chat360 history is misconfigured: clientId, apiKey, and endUserId must " +
+                "ALL be set together (botId is already required) to enable the rooms/history " +
+                "list. Got clientId=\(hasClientId), apiKey=\(hasApiKey), endUserId=\(hasEndUserId). " +
+                "History will stay disabled until all are provided."
+            print("[Chat360] \(message)")
+        }
+        guard hasAllThirdPartyConfig, let clientId, let apiKey, let endUserId else { return nil }
+        let thirdPartyApi = ThirdPartyTasksApiService(baseUrl: baseUrl)
+        return ChatHistoryRepository(
+            apiService: thirdPartyApi,
+            tokenManager: ThirdPartyTokenManager(apiService: thirdPartyApi, clientId: clientId, apiKey: apiKey),
+            cache: .shared,
+            clientId: clientId,
+            botId: botId,
+            endUserId: endUserId
+        )
     }
 
     private func observeCache() {
@@ -197,9 +257,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Scroll-to-top pagination - fetches one older page and prepends it in-memory only (not
-    /// persisted to cache, matching Android's own deliberate simplification: the cache holds the
-    /// most-recently-fetched page plus everything observed live since, and pages loaded this way
-    /// are re-fetched from network again on the next cold reopen rather than staying cached).
+    /// persisted to cache: the cache holds the most-recently-fetched page plus everything observed
+    /// live since, and pages loaded this way are re-fetched from network again on the next cold
+    /// reopen rather than staying cached).
     func loadMoreHistory() {
         guard uiState.hasMoreHistory, !uiState.isLoadingMoreHistory,
               let cursor = previousHistoryCursor, let roomId = activeRoomId else { return }
@@ -237,7 +297,7 @@ final class ChatViewModel: ObservableObject {
 
     /// Header/drawer "New chat" - creates a fresh local conversation, points `activeConversationId`
     /// at it, then tears the socket down and re-runs session-init so the backend allocates a
-    /// genuinely new room (mirrors the Android SDK's `ChatRepository.startNewSession()`).
+    /// genuinely new room.
     func startNewChat() {
         let newId = cache.createConversation(botId: botId)
         connectedConversationId = newId
@@ -269,17 +329,25 @@ final class ChatViewModel: ObservableObject {
     func renameConversation(_ conversationId: String, title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let roomId = conversations.first { $0.id == conversationId }?.roomId
         cache.renameConversation(conversationId: conversationId, title: trimmed)
+        if let roomId, let chatHistoryRepository {
+            Task { await chatHistoryRepository.renameRoom(roomId: roomId, roomName: trimmed) }
+        }
     }
 
     /// Deletes a cached conversation. Deleting the *connected* one always starts a fresh chat -
     /// its live room's cache row is gone, so nothing should keep writing into it. Deleting a
     /// merely-*displayed* (browsed) one falls back to another cached conversation, or a fresh
-    /// chat if none remain (mirrors `ChatViewModel.deleteConversation` on Android).
+    /// chat if none remain.
     func deleteConversation(_ conversationId: String) {
         let wasConnected = conversationId == connectedConversationId
         let wasActive = conversationId == activeConversationId
+        let roomId = conversations.first { $0.id == conversationId }?.roomId
         cache.deleteConversation(conversationId: conversationId)
+        if let roomId, let chatHistoryRepository {
+            Task { await chatHistoryRepository.markRoomInactive(roomId: roomId) }
+        }
         if wasConnected {
             startNewChat()
             return
@@ -292,18 +360,17 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Header shortcuts-menu tap - sent as a real tracked user-authored message (mirrors Android's
-    /// `sendShortcut`), so it also appears, caches, and gets ack-timeout coverage like any other reply.
+    /// Header shortcuts-menu tap - sent as a real tracked user-authored message, so it also
+    /// appears, caches, and gets ack-timeout coverage like any other reply.
     func selectShortcut(_ shortcut: SessionShortcut) {
         let chatMsgId = repository.sendShortcut(targetId: shortcut.targetId, label: shortcut.label)
         appendMessage(ChatMessage(chatMsgId: chatMsgId, text: shortcut.label, fromUser: true))
     }
 
     /// Drawer language-chip tap - a flow restart: clears the transcript and every bit of
-    /// live-session state before jumping to that language's entry node, mirroring Android's
-    /// `switchLanguage` (which explicitly resets the same fields, since leaking e.g. a stale
+    /// live-session state before jumping to that language's entry node, since leaking e.g. a stale
     /// `isLiveChat`/`assignedAgent`/`showFeedbackPrompt` into the new language's flow would show
-    /// stale live-chat/feedback UI on top of what's meant to be a fresh start). Also proactively
+    /// stale live-chat/feedback UI on top of what's meant to be a fresh start. Also proactively
     /// reconnects first if the socket isn't currently connected - a silent jump into a dead socket
     /// would otherwise just do nothing.
     func switchLanguage(_ language: SessionLanguage) {
@@ -345,11 +412,10 @@ final class ChatViewModel: ObservableObject {
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
             // isLiveChat flips true on the transfer notice OR any admin/operator-authored message,
-            // and - unlike the source, which never resets it except via update_status - also
-            // flips back false on the next bot-authored message. Deliberate simplification: it
-            // makes replaying loaded history alone correctly reconstruct whether the session is
-            // *currently* live, at the minor cost of diverging from source in the rare case a bot
-            // message is ever injected mid-live-session.
+            // and also flips back false on the next bot-authored message (rather than staying
+            // true until an explicit update_status). This makes replaying loaded history alone
+            // correctly reconstruct whether the session is *currently* live, at the cost of not
+            // reflecting the rare case where a bot message is injected mid-live-session.
             let isTransferNotice: Bool = { if case .agentTransferNotice = node.content { return true }; return false }()
             uiState.isLiveChat = isTransferNotice || node.author == .agent
 
@@ -423,7 +489,7 @@ final class ChatViewModel: ObservableObject {
         uiState.pendingUrlToOpen = nil
     }
 
-    /// Appending any message locks the quick replies of everything before it (widget behavior).
+    /// Appending any message locks the quick replies of everything before it.
     /// A user-authored message also persists to the local cache, keyed by `connectedConversationId`
     /// (the room the live socket is actually bound to) - never by `activeConversationId`, which can
     /// point at a different, merely-browsed conversation with no live room behind it at all.
@@ -628,8 +694,8 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Validates every field with FormFieldValidator before sending - on failure, marks
-    /// attemptedSubmit so FormContent starts showing each field's inline error, matching the
-    /// widget's "errors appear once you try to submit" behavior.
+    /// attemptedSubmit so FormContent starts showing each field's inline error, but only once
+    /// the user has tried to submit.
     func submitForm(messageId: String) {
         guard let index = uiState.messages.firstIndex(where: { $0.id == messageId }),
               case .form(let form) = uiState.messages[index].content else { return }
@@ -757,7 +823,7 @@ final class ChatViewModel: ObservableObject {
 
     /// Re-sends the user message that led to `messageId`'s AI response as a new outgoing message,
     /// removing the old AI bubble locally first. Not a distinct "regenerate" wire concept - the
-    /// backend just sees a repeated user message; see design/Hyundai_v1_implementation_plan.md §3.4.
+    /// backend just sees a repeated user message.
     func regenerate(messageId: String) {
         guard let index = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
         guard let userMessage = uiState.messages[..<index].last(where: { $0.fromUser }) else { return }
@@ -766,8 +832,8 @@ final class ChatViewModel: ObservableObject {
         appendMessage(ChatMessage(chatMsgId: chatMsgId, text: userMessage.text, fromUser: true))
     }
 
-    /// Toggles inline like/dislike on a bot message. Local UI state only for now - see
-    /// design/Hyundai_v1_implementation_plan.md §3.4 for why this isn't sent anywhere yet.
+    /// Toggles inline like/dislike on a bot message. Local UI state only for now - not yet sent
+    /// anywhere over the wire.
     func setMessageFeedback(messageId: String, feedback: MessageFeedback) {
         guard let index = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
         uiState.messages[index].feedback = uiState.messages[index].feedback == feedback ? nil : feedback

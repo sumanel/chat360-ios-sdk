@@ -78,6 +78,54 @@ final class ChatCacheRepository {
         return (id, !messages(conversationId: id).isEmpty)
     }
 
+    /// Merges the third-party-tasks `rooms/list` result into the cache: every `tp-room:`-prefixed
+    /// row from the previous fetch is added, updated, or removed to match the new response, so
+    /// the cache always reflects the latest server state rather than accumulating stale rooms.
+    /// Rooms already marked inactive (soft-deleted via `room/update/status`) are dropped so a
+    /// background refresh can't resurrect a conversation the user just deleted.
+    func syncThirdPartyRooms(botId: String, rooms: [RoomDto]) {
+        let fetchedAt = Self.now()
+        let active = rooms.filter { !($0.status?.caseInsensitiveCompare("inactive") == .orderedSame) }
+        let refreshedIds = Set(active.map { "tp-room:\($0.room_id)" })
+        database.perform { db in
+            _ = sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION;", nil, nil, nil)
+            if let stmt = sqlitePrepare(db, "SELECT id FROM chat_conversations WHERE botId = ? AND id LIKE 'tp-room:%'", [botId]) {
+                var staleIds: [String] = []
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    if let id = sqliteColumnText(stmt, 0), !refreshedIds.contains(id) { staleIds.append(id) }
+                }
+                sqlite3_finalize(stmt)
+                for staleId in staleIds {
+                    if let deleteStmt = sqlitePrepare(db, "DELETE FROM chat_conversations WHERE id = ?", [staleId]) {
+                        _ = sqlite3_step(deleteStmt)
+                        sqlite3_finalize(deleteStmt)
+                    }
+                }
+            }
+            for (index, room) in active.enumerated() {
+                let id = "tp-room:\(room.room_id)"
+                let title = room.room_name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let displayTitle = title.isEmpty ? "Conversation" : title
+                let updatedAt = fetchedAt - Int64(index)
+                if let insertStmt = sqlitePrepare(db, """
+                    INSERT OR IGNORE INTO chat_conversations (id, botId, roomId, title, createdAt, updatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, [id, botId, room.room_id, displayTitle, updatedAt, updatedAt]) {
+                    _ = sqlite3_step(insertStmt)
+                    sqlite3_finalize(insertStmt)
+                }
+                if let updateStmt = sqlitePrepare(db, """
+                    UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = ? WHERE id = ?
+                    """, [room.room_id, displayTitle, updatedAt, id]) {
+                    _ = sqlite3_step(updateStmt)
+                    sqlite3_finalize(updateStmt)
+                }
+            }
+            _ = sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+        }
+        conversationsChanged.send()
+    }
+
     func renameConversation(conversationId: String, title: String) {
         let now = Self.now()
         database.perform { db in

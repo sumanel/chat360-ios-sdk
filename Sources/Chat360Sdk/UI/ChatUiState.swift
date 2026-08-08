@@ -48,8 +48,8 @@ struct VoiceMessageInfo: Equatable {
     var durationMs: Int64
 }
 
-/// Inline like/dislike on a bot message - local UI state only, no wire message exists yet for
-/// per-message feedback (see design/Hyundai_v1_implementation_plan.md §3.4).
+/// Inline like/dislike on a bot message - local UI state only; no wire message exists yet for
+/// per-message feedback.
 enum MessageFeedback: Equatable {
     case like
     case dislike
@@ -120,4 +120,11 @@ struct ChatUiState: Equatable {
     var isLoadingMoreHistory: Bool = false
     /// Reflects `NWPathMonitor` - a send while this is false fails immediately instead of timing out.
     var isOffline: Bool = false
+    /// True when the third-party-tasks `rooms/list` fetch most recently failed (network error,
+    /// bad credentials, etc.) - distinguishes "history unavailable right now" from "this user
+    /// genuinely has no past conversations yet" (the latter is just an empty conversations list).
+    /// Never set when history isn't configured at all (`clientId`/`apiKey`/`endUserId` unset on
+    /// `Chat360Config`) - that case simply isn't using history. Cleared on the next successful
+    /// refresh.
+    var isHistoryUnavailable: Bool = false
 }

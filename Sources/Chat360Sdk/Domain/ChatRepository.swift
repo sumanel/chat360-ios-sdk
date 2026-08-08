@@ -97,8 +97,8 @@ final class ChatRepository {
         /// history replays - lets a killed-and-reopened app resume mid-live-chat correctly
         /// instead of assuming a fresh bot-flow session.
         onSessionResumed: @escaping (_ takeover: Bool, _ agent: AssignedAgent?) -> Void = { _, _ in },
-        /// Mirrors the widget's shouldAskFeedback-gated close: the session ended but is being
-        /// held open (see `.liveChatEnded` below) so the UI can show the post-chat survey first.
+        /// The session ended but is being held open (see `.liveChatEnded` below) so the UI can
+        /// show the post-chat survey first when feedback is configured to be asked for.
         onFeedbackRequested: @escaping () -> Void = {},
         /// Cache hooks - see the stored-property doc comments above. Re-used by `startNewSession()`.
         onConversationStarted: @escaping (String) async -> Bool = { _ in false },
@@ -128,10 +128,9 @@ final class ChatRepository {
     /// reset beforehand.
     private func establishSession() async {
         do {
-            // The widget derives website_url/current_url from the browser's own window.location,
-            // which always points at the chat360-hosted page regardless of who embeds it - a
-            // native client mimics that with the bot host itself (the backend 400s on
-            // non-URL-shaped values like a bare app identifier).
+            // The backend expects website_url/current_url to be URL-shaped (it 400s on
+            // non-URL-shaped values like a bare app identifier), so the bot host itself is used
+            // rather than any real app-side URL.
             let host = hostFromBaseUrl(baseUrl)
             let session = try await apiService.getSession(
                 botId: botId,
@@ -157,16 +156,15 @@ final class ChatRepository {
             await fetchAppearance(host: host, onAppearanceLoaded: onAppearanceLoadedCallback)
             // Cache lookup first (an empty local cache falls through to the REST fetch inside the
             // ViewModel's own hook, see `ChatViewModel.activateConversation`) - the local cache is
-            // the durable source of truth once it has anything, matching how the web reference
-            // widget behaves (session-init seeds once, never a destructive resync).
+            // the durable source of truth once it has anything: session-init seeds it once and
+            // never triggers a destructive resync.
             let hadHistory = historyEnabled ? await onConversationStarted(session.room_id) : false
             // A room with no history yet shows the conversation-starter content as the opening
             // bubbles instead of an empty welcome screen, using the exact same wire parsing as
             // any other frame. Skipped when a system-jump is about to fire (nodeType == INIT,
-            // see above): that jump delivers the same first node over the socket, and running
-            // both left the opening bubble appended twice - see
-            // .claude/duplicate-welcome-message-rca.md. Also gated on `conversationStarterEnabled`
-            // - when false, a room with no history just shows the welcome/logo screen instead.
+            // see above): that jump delivers the same first node over the socket, so running both
+            // would append the opening bubble twice. Also gated on `conversationStarterEnabled` -
+            // when false, a room with no history just shows the welcome/logo screen instead.
             if conversationStarterEnabled, !hadHistory, session.nodeType != "INIT" { await loadConversationStarter() }
             openSocket()
         } catch {
@@ -427,8 +425,8 @@ final class ChatRepository {
     func sendPhone(_ value: String) -> String { sendFreeText(value) }
 
     /// Answers an international PHONE node with `splitVariable` set: country code and national
-    /// number land in two separate variables, and `doNotUpdateVariable`/`multiple_vars` are set
-    /// exactly as the widget sends them.
+    /// number land in two separate variables, with `doNotUpdateVariable`/`multiple_vars` both set
+    /// to true.
     @discardableResult
     func sendSplitPhone(countryCode: String, nationalNumber: String, countryCodeVar: String) -> String {
         let node = lastBotNode

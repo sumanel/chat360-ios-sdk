@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// `assignedAgent` mirrors the header's name/status swap once a human agent is assigned - this
-/// header has no persistent bot-name/avatar area to swap, so it's surfaced as a status line
-/// instead; the per-message name/avatar swap lives in `BotMessageRow`.
+/// `assignedAgent` surfaces the assigned human agent's name as a status line once a human agent
+/// is assigned - this header has no persistent bot-name/avatar area, so the swap happens via the
+/// status line instead; the per-message name/avatar swap lives in `BotMessageRow`.
 ///
 /// `onMenuTap` opens `ChatDrawer`'s conversation list/settings; `shortcuts` (from session-init's
 /// `bot_settings.bot_shortcuts`) renders as a menu next to it when non-empty.
@@ -42,11 +42,11 @@ struct HeaderBar: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Order matches Android's HeaderBar: refresh, then shortcuts, then new-chat.
+            // Order: refresh, then shortcuts, then new-chat.
             Button(action: onReconnectTap) {
                 Image(systemName: "arrow.clockwise")
-                    // Dimmed while connected (nothing to fix), full-strength while not - the same
-                    // "something's wrong, tap to retry" affordance Android's refresh icon gives.
+                    // Dimmed while connected (nothing to fix), full-strength while not - a
+                    // "something's wrong, tap to retry" affordance.
                     .foregroundColor(connected ? colors.textSecondary : colors.textPrimary)
                     .frame(width: 32, height: 32)
             }

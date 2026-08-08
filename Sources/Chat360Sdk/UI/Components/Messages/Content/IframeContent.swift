@@ -1,13 +1,11 @@
 import SwiftUI
 import WebKit
 
-/// Ports the IFRAME node, including its `postMessage` auto-advance: the widget listens on its own
-/// `window` for a `message` event from the embedded page and jumps the bot flow forward when
-/// `data.type === moveForEvent`. A native `WKWebView` has no parent/child browsing context to
-/// listen from outside, so the equivalent here is injecting a small script into the embedded page
-/// itself that listens on its *own* `window` and relays a match back to Swift through a
-/// `WKScriptMessageHandler` - same trigger condition and origin check, different plumbing to get
-/// there natively.
+/// Implements the IFRAME node's `postMessage` auto-advance: the bot flow must jump forward when
+/// the embedded page posts a `message` event with `data.type === moveForEvent`. A native
+/// `WKWebView` has no parent/child browsing context to listen from outside, so the equivalent
+/// here is injecting a small script into the embedded page itself that listens on its *own*
+/// `window` and relays a match back to Swift through a `WKScriptMessageHandler`.
 struct IframeContent: View {
     var content: BotContent.IframeContent
     var onAdvance: (String) -> Void

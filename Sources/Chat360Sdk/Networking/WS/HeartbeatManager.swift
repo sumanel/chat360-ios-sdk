@@ -1,8 +1,8 @@
 import Foundation
 
-/// Mirrors the widget's ping/pong cycle: `pingWaitingTimer` (2s) is used as both the
-/// idle-before-ping delay AND the wait-for-pong delay. Any incoming frame (not just a pong)
-/// reschedules the next ping - only a pong cancels the currently-pending "waiting for pong" timer.
+/// The ping/pong cycle: `pingWaitingTimer` (2s) is used as both the idle-before-ping delay AND
+/// the wait-for-pong delay. Any incoming frame (not just a pong) reschedules the next ping - only
+/// a pong cancels the currently-pending "waiting for pong" timer.
 final class HeartbeatManager {
     private let scheduler: Scheduler
     private let pingWaitingTimer: TimeInterval

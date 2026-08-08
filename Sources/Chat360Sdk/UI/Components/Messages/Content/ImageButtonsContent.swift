@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Ports the IMAGE_BUTTON node - a Carousel-shaped card per slide, each with its own buttons.
+/// Renders the IMAGE_BUTTON node as a Carousel-shaped card per slide, each with its own buttons.
 struct ImageButtonsContent: View {
     var message: ChatMessage
     var content: BotContent.ImageButtons

@@ -1,8 +1,8 @@
 import Foundation
 
 /// The disabled-date rule set shared by standalone DATE prompts and FORM DATE fields. Two rarer
-/// source rules are intentionally not ported here (flagged as a known gap, not silently dropped):
-/// the "referredDate" fencing relative to another variable's date, and the
+/// rules are intentionally not supported here (a known gap, not silently dropped): the
+/// "referredDate" fencing relative to another variable's date, and the
 /// disabledDaysFromCd/onlyEnableDaysFromCd rolling-window-from-today variants.
 public struct DateRules: Equatable {
     public var isScheduledDate: Bool

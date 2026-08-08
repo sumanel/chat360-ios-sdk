@@ -37,8 +37,7 @@ struct ChatScreen: View {
     /// doc above) - but once the user has explicitly picked Light/Dark from the drawer, that
     /// choice wins completely instead, server overrides included. Otherwise the toggle would look
     /// broken: the server colors would keep winning for the fields they set (background, bubbles,
-    /// accent - the most visually obvious ones) no matter what the user picked. See
-    /// .claude/appearance-toggle-vs-server-colors.md.
+    /// accent - the most visually obvious ones) no matter what the user picked.
     private var effectiveColors: Chat360Colors {
         guard !suppressServerColorOverrides else { return baseColors }
         guard appearanceOverride.wrappedValue == nil else { return baseColors }
@@ -71,9 +70,9 @@ struct ChatScreen: View {
             VStack(spacing: 0) {
                 // Paints the system status bar's background to match `colors.statusBar` - a
                 // zero-height colored view whose `.ignoresSafeArea(edges: .top)` extends its fill
-                // backward behind the status bar without taking any layout space itself. Mirrors
-                // Android's `ChatComposeActivity` setting `Window.statusBarColor` directly - iOS
-                // has no equivalent direct API, so this paints the same visual result instead.
+                // backward behind the status bar without taking any layout space itself. iOS has
+                // no direct API to set the status bar color, so this paints the same visual
+                // result instead.
                 effectiveColors.statusBar
                     .frame(height: 0)
                     .frame(maxWidth: .infinity)

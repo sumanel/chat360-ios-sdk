@@ -1,11 +1,9 @@
 import Foundation
 
-/// Ports the exact `validate(values)` matrix from the widget's `Form/index.tsx:215-308` -
-/// per-field-type checks first (each with its own message), then the generic required check,
-/// then a single OR-chain whose failures all share one generic message. Order matches the source
-/// exactly, including the quirk that the EMAIL/TEXT "Test"-word and alpha-only checks run
-/// *before* the required check (so, as in the source, they can fire on values that also happen to
-/// be blank) - faithfulness to the reference behavior matters more than smoothing that over.
+/// Per-field-type checks first (each with its own message), then the generic required check,
+/// then a single OR-chain whose failures all share one generic message. The order is
+/// deliberate, including the quirk that the EMAIL/TEXT "Test"-word and alpha-only checks run
+/// *before* the required check, so they can fire on values that also happen to be blank.
 enum FormFieldValidator {
 
     private static let blockedPhoneNumbers: Set<String> = {

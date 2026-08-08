@@ -32,6 +32,27 @@ public class Chat360Config : NSObject {
     /// Which input bar affordances (attachment, emoji, dictation, mic) are offered - defaults to
     /// all on. Not exposed to Objective-C since `Chat360InputBarConfig` is a Swift-only struct.
     public var inputBarConfig: Chat360InputBarConfig = Chat360InputBarConfig()
+    /// Enables the SDK's rooms/history list (`ChatDrawer`'s "conversations" section), backed by
+    /// the `third-party-tasks` backend API family (rooms list, rename, soft-delete). This and
+    /// `apiKey`, `endUserId` must **all three** be set together (in addition to `botId`, which is
+    /// already required for everything else) - if only some are set, the SDK logs a loud warning
+    /// and leaves history disabled; leaving all three unset is a valid choice and simply means
+    /// the host app isn't using history. Identifies this host app/integration to the backend -
+    /// ask Chat360 for this value, it is not the same as `botId`.
+    @objc public var clientId: String?
+    /// `x-api-key` header used once to exchange `clientId` for a short-lived bearer token (see
+    /// `clientId` for the all-or-nothing rule with `endUserId`). Sent from the device on every
+    /// token refresh - treat it like any other client-side API key (fine for a mobile client
+    /// calling a backend you control, not a substitute for a server-side secret).
+    @objc public var apiKey: String?
+    /// Identifies the current end user - the identity the `third-party-tasks` backend scopes
+    /// `rooms/list` results to, so only this user's rooms come back. Sent on the wire as the
+    /// `agent_id` query parameter (matching the `agent_id` field the backend returns per room) -
+    /// that's the backend's own naming for this identity, not a claim that it's a *support*
+    /// agent; it is **not** the app's live-chat handoff/assigned-agent concept elsewhere in this
+    /// SDK. Use whatever identifier your backend integration already uses to key a user's rooms.
+    /// See `clientId` for the all-or-nothing rule.
+    @objc public var endUserId: String?
 
     @objc public init(botId: String,
                       appId: String,

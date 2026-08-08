@@ -1,23 +1,21 @@
 import SwiftUI
 
-/// Decorative only - mirrors `Hyundai_v1.html`'s Assistant Mode toggle, but there's no `mode`
-/// concept anywhere in `Chat360Config`/`SessionInitResponse`/the WS wire protocol, so picking a
-/// mode here doesn't change anything about the session. Local `@State`, not persisted.
+/// Decorative only - there's no `mode` concept anywhere in `Chat360Config`/`SessionInitResponse`/
+/// the WS wire protocol, so picking a mode here doesn't change anything about the session. Local
+/// `@State`, not persisted.
 private enum AssistantMode {
     case training
     case customer
 }
 
-/// Side drawer opened from the header's hamburger button - ported to match the Android SDK's
-/// `ChatHistorySidebar` copy/order/casing: "AI Chatbot - History" title, New Chat button,
-/// conversation list, and footer settings section. Android also has a "< Menu" dismiss row above
-/// the title, but that's a redundant close affordance there (same effect as tapping the scrim) -
-/// omitted here since the host screen already has its own back button
-/// (`Chat360ChatSession`'s `navigationBarItems(leading:)`), and the scrim tap still closes the
-/// drawer either way. Lists locally-cached conversations (`ChatCacheRepository`, keyed by this
-/// device/bot - there's no server-side "list my rooms" endpoint, so this is exactly what's been
-/// seen on this device) with rename/delete, and - when the bot exposes more than one - a language
-/// switcher row.
+/// Side drawer opened from the header's hamburger button: "AI Chatbot - History" title, New Chat
+/// button, conversation list, and footer settings section. There's no separate "< Menu" dismiss
+/// row above the title - that would be a redundant close affordance since the host screen already
+/// has its own back button (`Chat360ChatSession`'s `navigationBarItems(leading:)`), and the scrim
+/// tap still closes the drawer either way. Lists locally-cached conversations
+/// (`ChatCacheRepository`, keyed by this device/bot - there's no server-side "list my rooms"
+/// endpoint, so this is exactly what's been seen on this device) with rename/delete, and - when
+/// the bot exposes more than one - a language switcher row.
 struct ChatDrawer: View {
     var conversations: [CachedConversation] = []
     var activeConversationId: String?
@@ -54,7 +52,6 @@ struct ChatDrawer: View {
                 .padding(.top, 24)
                 .padding(.bottom, 16)
 
-            // .new-chat-btn: margin 4px 14px 10px, bg accent, white text, Hyundai Sans Head 600 13.5px, padding 11, square corners.
             Button(action: onNewChat) {
                 HStack(spacing: 8) {
                     Image(systemName: "plus")
@@ -70,7 +67,6 @@ struct ChatDrawer: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
 
-            // "CONVERSATIONS" section label - matches Android's ChatHistorySidebar.
             if !conversations.isEmpty {
                 Text("CONVERSATIONS")
                     .font(headFont(size: 11, weight: .semibold))
@@ -101,7 +97,6 @@ struct ChatDrawer: View {
 
             Spacer(minLength: 0)
 
-            // .drawer-footer: border-top 1px line, padding 12px 14px 18px.
             VStack(alignment: .leading, spacing: 0) {
                 footerRow(label: "ASSISTANT MODE", topDivider: false) {
                     toggleButton("Training", icon: "graduationcap", selected: assistantMode == .training) { assistantMode = .training }
@@ -211,7 +206,6 @@ struct ChatDrawer: View {
         }
     }
 
-    // .theme-row-label (+ .appearance-label's extra top divider/margin for the second row).
     private func footerRow<Content: View>(label: String, topDivider: Bool, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if topDivider {
@@ -225,7 +219,6 @@ struct ChatDrawer: View {
                 .padding(.horizontal, 6)
                 .padding(.top, topDivider ? 14 : 2)
                 .padding(.bottom, 8)
-            // .theme-toggle: flex row, bg-sunken, padding 4, gap 4, square corners.
             HStack(spacing: 4) {
                 content()
             }
@@ -234,8 +227,6 @@ struct ChatDrawer: View {
         }
     }
 
-    // .theme-opt / .theme-opt.selected: flex:1, Hyundai Sans Head 600 12.5px, 7px icon-label gap,
-    // padding 9px vertical, no border, transparent when unselected; selected gets bg-elevated + accent text.
     private func toggleButton(_ title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 7) {

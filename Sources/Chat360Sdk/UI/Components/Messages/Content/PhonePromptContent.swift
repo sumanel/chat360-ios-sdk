@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Ports the international PHONE variant only - a plain (non-international) PHONE node has no
-/// dedicated widget or validation in the source either, so `BotContentBody` never routes here for
-/// it; the always-visible bottom input bar answers it as free text.
+/// Handles the international PHONE variant only - a plain (non-international) PHONE node has no
+/// dedicated validation UI, so `BotContentBody` never routes here for it; the always-visible
+/// bottom input bar answers it as free text.
 struct PhonePromptContent: View {
     var message: ChatMessage
     var content: BotContent.PhonePrompt

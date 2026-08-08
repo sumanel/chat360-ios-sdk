@@ -1,8 +1,8 @@
 import Foundation
 
 /// Per-message delivery tracking. The underlying `URLSessionWebSocketTask` already queues writes
-/// made before the handshake completes, so there is nothing to buffer here - only the ack-timeout
-/// half of the widget's original logic applies.
+/// made before the handshake completes, so there is nothing to buffer here - only ack-timeout
+/// tracking applies.
 final class AckTracker {
     private let scheduler: Scheduler
     private let ackTimeout: TimeInterval

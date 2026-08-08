@@ -11,7 +11,7 @@ struct BotContentActions {
     var onFormFieldChange: (_ fieldIndex: Int, _ value: String) -> Void = { _, _ in }
     var onMediaFieldPicked: (_ fieldIndex: Int, _ bytes: Data, _ fileName: String, _ mimeType: String) -> Void = { _, _, _, _ in }
     /// Triggers whatever picker UI should run for a FORM MEDIA field at `fieldIndex`; the picker
-    /// itself calls `onMediaFieldPicked` once it resolves. Wired to a real picker in Phase 7.
+    /// itself calls `onMediaFieldPicked` once it resolves. Not yet wired to an actual picker.
     var onPickMediaField: (_ fieldIndex: Int) -> Void = { _ in }
     var onFormSubmit: () -> Void = {}
     /// Shared by EmailPrompt (value only) and PhonePrompt (country code + national number).

@@ -1,10 +1,10 @@
 import Foundation
 import SQLite3
 
-/// One cached conversation's metadata - the Swift analog of Android's Room
-/// `CachedConversationEntity`. `id` is a client-generated UUID (the conversation's own identity),
-/// distinct from `roomId` (the server-assigned room, nullable until the session establishing it
-/// has actually run) - a conversation can exist locally before the server has assigned it a room.
+/// One cached conversation's metadata. `id` is a client-generated UUID (the conversation's own
+/// identity), distinct from `roomId` (the server-assigned room, nullable until the session
+/// establishing it has actually run) - a conversation can exist locally before the server has
+/// assigned it a room.
 public struct CachedConversation: Equatable, Identifiable {
     public var id: String
     public var botId: String
@@ -31,11 +31,10 @@ struct CachedMessage {
     var createdAt: Int64
 }
 
-/// Thin SQLite3 wrapper mirroring Android's Room `ChatCacheDatabase`: a `chat_conversations`
-/// metadata table joined to a `chat_messages` payload table (`ON DELETE CASCADE`), one file
-/// shared by the whole process. All access happens on a private serial queue - SQLite connections
-/// opened without the `SQLITE_OPEN_FULLMUTEX` flag (the default via `sqlite3_open`) aren't safe to
-/// call concurrently from multiple threads.
+/// Thin SQLite3 wrapper: a `chat_conversations` metadata table joined to a `chat_messages` payload
+/// table (`ON DELETE CASCADE`), one file shared by the whole process. All access happens on a
+/// private serial queue - SQLite connections opened without the `SQLITE_OPEN_FULLMUTEX` flag (the
+/// default via `sqlite3_open`) aren't safe to call concurrently from multiple threads.
 final class ChatCacheDatabase {
     static let shared = ChatCacheDatabase()
 
@@ -97,8 +96,7 @@ final class ChatCacheDatabase {
     /// Runs `body` synchronously on the serial DB queue. Deliberately blocking (not `async`) -
     /// SQLite reads/writes to a small local file are fast, and a synchronous API lets
     /// `cacheRaw`/`cacheUserMessage` be called durably from any thread (including a WebSocket
-    /// callback thread) without racing a view's own lifetime, mirroring Android's deliberate
-    /// `runBlocking` durability-over-cancellation choice for the same call site.
+    /// callback thread) without racing a view's own lifetime.
     @discardableResult
     func perform<T>(_ body: (OpaquePointer?) -> T) -> T {
         queue.sync { body(db) }

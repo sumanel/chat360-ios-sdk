@@ -1,8 +1,8 @@
 import Foundation
 
-/// Mirrors the widget's reconnect logic: delay = baseDelay * intervalCount, doubling intervalCount
-/// after each scheduled attempt and resetting to 1 on a successful open. Pure state - no socket
-/// reference - so it's unit-testable with a virtual-time scheduler.
+/// Reconnect backoff: delay = baseDelay * intervalCount, doubling intervalCount after each
+/// scheduled attempt and resetting to 1 on a successful open. Pure state - no socket reference -
+/// so it's unit-testable with a virtual-time scheduler.
 final class ReconnectManager {
     private let scheduler: Scheduler
     private let baseDelay: TimeInterval

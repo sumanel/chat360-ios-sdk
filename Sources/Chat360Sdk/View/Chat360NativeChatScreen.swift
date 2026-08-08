@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// Hosts the native `ChatScreen` (the `rewrite/native-kotlin`-equivalent port) behind the same
-/// `ChatController` the SDK's public API has always presented - replacing the WebView content
-/// entirely, mirroring how the Android SDK's `Chat360.startBot()` now always launches
-/// `ChatComposeActivity` instead of the old WebView Activity.
+/// Hosts the native `ChatScreen` behind the same `ChatController` the SDK's public API presents.
 @available(iOS 15.0, *)
 struct Chat360NativeChatScreen: View {
     let botConfig: Chat360Config
@@ -18,7 +15,7 @@ struct Chat360NativeChatScreen: View {
 }
 
 /// Owns the `ChatViewModel`/connection for the lifetime of the chat screen. "New chat" (the
-/// header's "+" button / the drawer's New Chat button) no longer tears this view down - it calls
+/// header's "+" button / the drawer's New Chat button) does not tear this view down - it calls
 /// `ChatViewModel.startNewChat()`, which creates a new locally-cached conversation and re-runs
 /// session-init on the existing `ChatRepository` (`ChatRepository.startNewSession()`) so the
 /// backend allocates a genuinely new room, while `conversations`/`shortcuts`/`languages` state
@@ -37,7 +34,10 @@ private struct Chat360ChatSession: View {
             baseUrl: botConfig.resolvedBaseUrl,
             botId: botConfig.botId ?? "",
             historyEnabled: botConfig.historyEnabled,
-            conversationStarterEnabled: botConfig.conversationStarterEnabled
+            conversationStarterEnabled: botConfig.conversationStarterEnabled,
+            clientId: botConfig.clientId,
+            apiKey: botConfig.apiKey,
+            endUserId: botConfig.endUserId
         ))
     }
 

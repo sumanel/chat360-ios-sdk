@@ -1,8 +1,7 @@
 import Foundation
 
-/// Ports the exact regexes/checks from the widget's `src/utils/common.ts` - the server-side
-/// contract for what counts as a valid email/phone/name doesn't change just because the client
-/// is native now.
+/// The server-side contract for what counts as a valid email/phone/name is fixed independently
+/// of the client, so these regexes/checks must match it exactly.
 enum InputValidators {
     private static let emailPattern =
         #"^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@"# +
@@ -17,7 +16,7 @@ enum InputValidators {
         matchesFully(email.lowercased(), pattern: emailPattern)
     }
 
-    /// Blocks the literal word "test" as an email local-part/domain - a widget-specific guard, not a real format rule.
+    /// Blocks the literal word "test" as an email local-part/domain - a deliberate guard, not a real format rule.
     static func validateTest(_ value: String) -> Bool {
         containsMatch(value.lowercased(), pattern: testEmailPattern, caseInsensitive: true)
     }

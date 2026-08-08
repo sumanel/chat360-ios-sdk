@@ -108,8 +108,8 @@ public extension RawSocketEnvelope {
             return .inactivityNotice(message: text, autoArchive: auto_archival == true)
         }
 
-        // No widget renders `validation_error` specially - the frame's own top-level `message` is
-        // displayed as a plain bot bubble, same as any other text-only node.
+        // `validation_error` frames aren't rendered specially - the frame's own top-level
+        // `message` is displayed as a plain bot bubble, same as any other text-only node.
         if type == "validation_error" {
             let text = message?.contentOrNull.flatMap { $0.isEmpty ? nil : $0 }
             return .botMessage(BotNode(
@@ -164,7 +164,7 @@ public extension RawSocketEnvelope {
     }
 }
 
-/// Ports the highlight-message extraction: `assigned_user -> {avatar, user_designation, operator_name}`.
+/// Extracts a highlight message's `assigned_user -> {avatar, user_designation, operator_name}`.
 private extension JSONValue {
     func toAssignedAgent() -> AssignedAgent {
         AssignedAgent(
@@ -287,7 +287,7 @@ extension JSONValue {
         return result
     }
 
-    /// Ports `_parseMedia()`: a single media item, media_url + optional title/download flag.
+    /// A single media item: media_url + optional title/download flag.
     private func mediaContent(_ variables: [String: String]) -> BotContent? {
         guard let rawUrl = string("media_url") else { return nil }
         let url = resolveVariables(rawUrl, variables)
@@ -302,7 +302,7 @@ extension JSONValue {
         ))
     }
 
-    /// Ports `_extractCarouselData()`: parallel arrays (carousel_url/links/captions/headings) -> cards.
+    /// Parallel arrays (carousel_url/links/captions/headings) -> cards.
     private func carouselContent(_ variables: [String: String]) -> BotContent? {
         guard let urlEntries = self["carousel_url"]?.arrayValue else { return nil }
         let links = self["link_carousel"]?.arrayValue?.stringsOrNull()
@@ -321,7 +321,7 @@ extension JSONValue {
         return cards.isEmpty ? nil : .carousel(.init(cards: cards))
     }
 
-    /// Ports `_parseFileUpload()`: which extensions the node accepts, keyed off its fileType toggles.
+    /// Which extensions the node accepts, keyed off its fileType toggles.
     private func fileUploadContent(_ variables: [String: String]) -> BotContent {
         let extensionsByKey: [String: [String]] = [
             "image": ["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff", "bmp", "jfif"],
@@ -345,7 +345,7 @@ extension JSONValue {
         return .fileUploadPrompt(.init(promptText: prompt, allowedExtensions: allowed, allowCamera: boolean("enableCameraInput")))
     }
 
-    /// Ports `_extractFileName()`: a downloadable link, named either explicitly or from the URL.
+    /// A downloadable link, named either explicitly or from the URL.
     private func downloadMediaContent(_ variables: [String: String]) -> BotContent? {
         guard let rawUrl = string("media_url") else { return nil }
         let url = resolveVariables(rawUrl, variables)
@@ -354,14 +354,14 @@ extension JSONValue {
         return .downloadMedia(.init(fileUrl: url, fileName: name))
     }
 
-    /// Ports `_extractRatingData()`: star_custom -> star (scale = rating_max, default 5), else emoji (fixed scale of 5).
+    /// star_custom -> star (scale = rating_max, default 5), else emoji (fixed scale of 5).
     private func ratingContent() -> BotContent {
         let style = string("rating_type") == "star_custom" ? "star" : "emoji"
         let scale = style == "star" ? (string("rating_max").flatMap { Int($0) } ?? 5) : 5
         return .rating(.init(style: style, scale: scale))
     }
 
-    /// Ports `_extractFormData()`: one Field per `elements[]` entry.
+    /// One Field per `elements[]` entry.
     private func formContent(_ variables: [String: String]) -> BotContent? {
         guard let elements = self["elements"]?.arrayValue else { return nil }
         let fields: [BotContent.Form.Field] = elements.enumerated().compactMap { index, element in
@@ -401,7 +401,7 @@ extension JSONValue {
         return .form(.init(fields: fields, submitButtonText: submitText))
     }
 
-    /// Ports the widget's per-element `validation` object.
+    /// Parses each element's own `validation` object.
     private func fieldValidation(dateFormat: String?) -> BotContent.Form.FieldValidation? {
         guard let v = self["validation"], v.objectValue != nil else { return nil }
         let dateRules: DateRules?
@@ -411,7 +411,7 @@ extension JSONValue {
                 disabledDays: v["disabledDays"]?.arrayValue?.map { $0.boolOrNull == true },
                 disabledDates: v["disableDates"]?.arrayValue?.stringsOrNull().compactMap { $0 },
                 // FORM's own field names for these two flags (isFutureDisabled/isPrevDisabled)
-                // differ from the standalone DATE node's (isFutureDate/isPrevDate) - ported as-is.
+                // differ from the standalone DATE node's (isFutureDate/isPrevDate).
                 disableFuture: v.boolean("isFutureDisabled"),
                 disablePrevious: v.boolean("isPrevDisabled"),
                 dateFormat: dateFormat.flatMap { $0.isEmpty ? nil : $0 } ?? "DD MMM YYYY"
@@ -439,7 +439,7 @@ extension JSONValue {
         containsKey("isScheduledDate") || containsKey("disableDates") || containsKey("isFutureDisabled") || containsKey("isPrevDisabled")
     }
 
-    /// Ports `_extractDateData()`'s core rules for a standalone DATE node.
+    /// Core disabled-date rules for a standalone DATE node.
     private func standaloneDateRules() -> DateRules {
         DateRules(
             isScheduledDate: boolean("isScheduledDate"),
@@ -455,7 +455,7 @@ extension JSONValue {
         )
     }
 
-    /// Ports `_extractTimeData()`: disabledSlots is "hh:mm-hh:mm" range strings, expanded to hour->minutes.
+    /// disabledSlots is "hh:mm-hh:mm" range strings, expanded to hour->minutes.
     private func timeContent() -> BotContent {
         let slots = self["disabledSlots"]?.arrayValue?.stringsOrNull().compactMap { $0 } ?? []
         var disabled: [Int: [Int]] = [:]
@@ -481,8 +481,8 @@ extension JSONValue {
         return .timePrompt(.init(disabledSlots: disabled, disablePrevious: boolean("disablePrev")))
     }
 
-    /// Ports `_extractWindowEventData()`: should_send_data defaults true, send_data values go
-    /// through the same @variable substitution as everything else.
+    /// should_send_data defaults true; send_data values go through the same @variable
+    /// substitution as everything else.
     private func windowEventContent(_ variables: [String: String]) -> BotContent {
         let shouldSend = self["should_send_data"]?.boolOrNull ?? true
         let shouldReceive = self["should_receive_data"]?.boolOrNull ?? false
@@ -496,7 +496,7 @@ extension JSONValue {
         return .windowEvent(.init(shouldSend: shouldSend, sendData: sendData, shouldReceive: shouldReceive))
     }
 
-    /// Ports `_extractPhoneData()`: international mode is the only variant with a dedicated widget/validation.
+    /// International mode is the only variant with dedicated handling/validation.
     private func phoneContent() -> BotContent {
         .phonePrompt(.init(
             allowInternational: boolean("allowInternationalNumber"),
@@ -505,7 +505,7 @@ extension JSONValue {
         ))
     }
 
-    /// Ports `_extractMultiOptionData()`: choices is a plain string array, filtered like MULTI_CHOICE's buttons.
+    /// choices is a plain string array, filtered the same way as MULTI_CHOICE's buttons.
     private func multiOptionContent(_ variables: [String: String]) -> BotContent? {
         guard let choices = self["choices"]?.arrayValue else { return nil }
         let options: [BotContent.MultiOption.Option] = choices.enumerated().compactMap { index, element in
@@ -527,9 +527,9 @@ extension JSONValue {
         var url: String?
     }
 
-    /// Ports `_extractImageButtonData()`: per-slide buttons come from `img_buttons` (falling back
-    /// to the legacy `link_carousel_text`, one reply button per slide); each button's targetId is
-    /// resolved from the flat `buttons` array by cumulative position across all slides.
+    /// Per-slide buttons come from `img_buttons` (falling back to the legacy
+    /// `link_carousel_text`, one reply button per slide); each button's targetId is resolved
+    /// from the flat `buttons` array by cumulative position across all slides.
     private func imageButtonContent(_ variables: [String: String]) -> BotContent? {
         guard let urlEntries = self["carousel_url"]?.arrayValue else { return nil }
         let descriptions = self["link_carousel"]?.arrayValue?.stringsOrNull()
@@ -593,7 +593,7 @@ extension JSONValue {
         }
     }
 
-    /// Ports `_extractTextCarouselData()`: both `type1`/`type2` wire generations map onto one card shape.
+    /// Both `type1`/`type2` wire generations map onto one card shape.
     private func textCarouselContent(_ variables: [String: String]) -> BotContent? {
         guard let rawCards = self["text_cards"]?.arrayValue else { return nil }
         let isType2 = string("text_carousel_type") == "type2"
@@ -635,7 +635,7 @@ extension JSONValue {
         return .textCarousel(.init(cards: cards, dynamicButtons: dynamicButtons))
     }
 
-    /// Ports `_extractIFrameData()`: plain embedded WebView, no postMessage bridge beyond `moveForEvent`.
+    /// Plain embedded WebView, no postMessage bridge beyond `moveForEvent`.
     private func iframeContent(nodeTargetId: String?) -> BotContent? {
         guard let src = string("src"), !src.isEmpty else { return nil }
         return .iframeContent(.init(
@@ -646,7 +646,6 @@ extension JSONValue {
         ))
     }
 
-    /// Ports `_extractWelcomeScreenData()`.
     private func welcomeScreenContent(_ variables: [String: String]) -> BotContent? {
         let cards: [BotContent.WelcomeScreen.Card] = (self["text_cards"]?.arrayValue ?? []).compactMap { entry in
             guard entry.objectValue != nil else { return nil }
@@ -671,7 +670,7 @@ extension JSONValue {
         ))
     }
 
-    /// Ports the AUTOSUGGESTION sub-case of CUSTOMINPUT: options are a "{&}"-delimited string.
+    /// The AUTOSUGGESTION sub-case of CUSTOMINPUT: options are a "{&}"-delimited string.
     private func autoSuggestionContent(_ variables: [String: String]) -> BotContent.AutoSuggestion? {
         guard self["dataType"]?.string("type") == "AUTOSUGGESTION" else { return nil }
         guard let raw = string("autoSuggestionOptions") else { return nil }
@@ -707,7 +706,7 @@ private func matches(_ text: String, pattern: String) -> Bool {
     text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
 }
 
-/// Ports `updateContent()`: replace each known variable name (word-bounded) with its value.
+/// Replaces each known variable name (word-bounded) with its value.
 private func resolveVariables(_ text: String, _ variables: [String: String]) -> String {
     guard text.contains("@"), !variables.isEmpty else { return text }
     let pattern = variables.keys.map { NSRegularExpression.escapedPattern(for: $0) + "\\b" }.joined(separator: "|")
@@ -739,7 +738,7 @@ private extension Array where Element == String? {
 
 private let variableReferencePattern = #"@[A-Za-z0-9_]+"#
 
-/// Ports `isChoiceTextPopulated()`: hide choices whose @variables are empty/unresolved.
+/// Hides choices whose @variables are empty/unresolved.
 private func isTextPopulated(_ text: String, _ variables: [String: String]) -> Bool {
     if text.strippingHtml().isEmpty { return false }
     if text.contains("@") {
@@ -771,7 +770,7 @@ extension String {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Ports `normalizeMessageNewlines()`: LLM nodes send literal "\n" escape sequences in text.
+    /// LLM nodes send literal "\n" escape sequences in text; this converts them to real newlines.
     func normalizedNewlines() -> String {
         replacingOccurrences(of: "\\r\\n", with: "\n")
             .replacingOccurrences(of: "\\n", with: "\n")

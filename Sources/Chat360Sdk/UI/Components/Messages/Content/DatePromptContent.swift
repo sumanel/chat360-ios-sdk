@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Ports the standalone DATE node - a button opening a calendar, submitting the pick immediately.
-/// SwiftUI's `DatePicker` (unlike Compose's Material3 one) has no per-day enable/disable hook, so
-/// disabled dates are enforced on confirm instead of grayed out in the calendar itself.
+/// A button opening a calendar, submitting the pick immediately. SwiftUI's `DatePicker` (unlike
+/// Compose's Material3 one) has no per-day enable/disable hook, so disabled dates are enforced on
+/// confirm instead of grayed out in the calendar itself.
 struct DatePromptContent: View {
     var message: ChatMessage
     var content: BotContent.DatePrompt

@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
 
-/// Ports the standalone TIME node: hour/minute steppers (12-hour) + AM/PM, blocked by disabledSlots.
+/// Renders the standalone TIME node: hour/minute steppers (12-hour) + AM/PM, blocked by disabledSlots.
 struct TimePromptContent: View {
     var message: ChatMessage
     var content: BotContent.TimePrompt
