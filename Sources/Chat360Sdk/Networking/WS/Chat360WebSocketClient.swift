@@ -58,9 +58,8 @@ final class Chat360WebSocketClient: NSObject {
         }
     }
 
-    /// Best-effort send, mirroring the Kotlin client's `webSocket?.send(text) ?: false`: returns
-    /// whether there was a live task to attempt the send on, not delivery confirmation (which is
-    /// what `AckTracker` is for).
+    /// Best-effort send: returns whether there was a live task to attempt the send on, not
+    /// delivery confirmation (which is what `AckTracker` is for).
     @discardableResult
     func send(_ text: String) -> Bool {
         guard let task else { return false }

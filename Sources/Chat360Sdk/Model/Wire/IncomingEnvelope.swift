@@ -728,7 +728,7 @@ private func resolveVariables(_ text: String, _ variables: [String: String]) -> 
 }
 
 /// `[String?]?.at(index)` -> `String?`, collapsing both "out of range" and "element itself nil"
-/// into nil, matching Kotlin's `list?.getOrNull(index)` on a `List<String?>?`.
+/// into nil.
 private extension Array where Element == String? {
     func at(_ index: Int) -> String? {
         guard indices.contains(index) else { return nil }

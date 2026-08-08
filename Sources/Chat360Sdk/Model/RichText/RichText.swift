@@ -44,7 +44,7 @@ public struct RichText: Equatable {
 }
 
 extension RichText {
-    /// Convenience accessor mirroring the Kotlin test helper `RichText.text()`.
+    /// Convenience accessor for just the text runs.
     var textRuns: [TextRun] {
         runs.compactMap {
             if case .text(let run) = $0 { return run }

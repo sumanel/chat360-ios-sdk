@@ -175,9 +175,8 @@ final class ChatCacheRepository {
         }
     }
 
-    /// Delete-then-insert, wrapped in one transaction for atomicity (Room's
-    /// `@Transaction`-annotated `replaceMessages` equivalent). Used to seed a conversation's cache
-    /// from a freshly-fetched network history page.
+    /// Delete-then-insert, wrapped in one transaction for atomicity. Used to seed a conversation's
+    /// cache from a freshly-fetched network history page.
     func replaceRawHistory(conversationId: String, rawEnvelopes: [String]) {
         let fetchedAt = Self.now()
         database.perform { db in
@@ -207,8 +206,7 @@ final class ChatCacheRepository {
     }
 
     /// Appends a locally-authored user message and derives the conversation's title from it (the
-    /// first 80 chars, whitespace-collapsed) - matches Android's `cacheUserMessage` heuristic so
-    /// the sidebar's list reads the same way on both platforms.
+    /// first 80 chars, whitespace-collapsed).
     func cacheUserMessage(conversationId: String, text: String, chatMsgId: String?) {
         let now = Self.now()
         database.perform { db in

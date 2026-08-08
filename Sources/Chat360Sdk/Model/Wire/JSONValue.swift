@@ -1,10 +1,9 @@
 import Foundation
 
-/// A loose, dynamically-typed JSON value - the Swift analog of kotlinx.serialization's
-/// `JsonElement`/`JsonObject`/`JsonArray`/`JsonPrimitive`. Used wherever the Android wire models
-/// decode into a raw JSON tree and walk it manually (bot node payloads, form field validation
-/// blobs, feedback field options) rather than a fixed `Codable` shape, since the server's node
-/// payloads vary per `nodeType` and aren't worth a struct per shape.
+/// A loose, dynamically-typed JSON value. Used wherever the wire models decode into a raw JSON
+/// tree and walk it manually (bot node payloads, form field validation blobs, feedback field
+/// options) rather than a fixed `Codable` shape, since the server's node payloads vary per
+/// `nodeType` and aren't worth a struct per shape.
 public indirect enum JSONValue: Equatable {
     case string(String)
     case number(Double)
@@ -47,8 +46,7 @@ extension JSONValue: Codable {
     }
 }
 
-// MARK: - Dynamic access, mirroring the Kotlin `JsonObject`/`JsonPrimitive` extension helpers
-// used throughout `IncomingEnvelope.kt` (`string(key)`, `boolean(key)`, `int(key)`, `double(key)`).
+// MARK: - Dynamic access helpers (`string(key)`, `boolean(key)`, `int(key)`, `double(key)`).
 
 public extension JSONValue {
     subscript(key: String) -> JSONValue? {
@@ -76,8 +74,7 @@ public extension JSONValue {
         return false
     }
 
-    /// Mirrors `JsonPrimitive.contentOrNull`: the raw string form of a string/number/bool leaf,
-    /// or nil for object/array/null/missing.
+    /// The raw string form of a string/number/bool leaf, or nil for object/array/null/missing.
     var contentOrNull: String? {
         switch self {
         case .string(let value): return value
@@ -98,7 +95,7 @@ public extension JSONValue {
         self[key]?.contentOrNull
     }
 
-    /// Mirrors the Kotlin `JsonObject.boolean(key)` helper: a true JSON boolean, or the string "1".
+    /// A true JSON boolean, or the string "1".
     func boolean(_ key: String) -> Bool {
         guard let value = self[key] else { return false }
         return value.boolOrNull ?? (value.contentOrNull == "1")

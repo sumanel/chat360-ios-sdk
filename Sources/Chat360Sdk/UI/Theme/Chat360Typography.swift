@@ -1,9 +1,8 @@
 import Foundation
 
 /// The two font roles every component reads through `\.chat360Typography` - never a font name
-/// directly. `nil` means "use the platform system font" (SwiftUI's analog of Compose's
-/// `FontFamily.SansSerif` default, since SwiftUI has no standalone "font family" type - a family
-/// only becomes concrete once paired with a size via `Font.custom(_:size:)`).
+/// directly. `nil` means "use the platform system font" - SwiftUI has no standalone "font family"
+/// type, so a family only becomes concrete once paired with a size via `Font.custom(_:size:)`.
 public struct Chat360Typography: Equatable {
     public var headFontName: String?
     public var textFontName: String?

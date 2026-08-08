@@ -6,8 +6,7 @@ protocol Cancellable {
 }
 
 /// Abstracts "run this block after N seconds" so `AckTracker`/`HeartbeatManager`/`ReconnectManager`
-/// can be driven by a real clock in production and a virtual clock in tests (mirrors the Kotlin
-/// side's `CoroutineScope` + `kotlinx-coroutines-test`'s `TestCoroutineScheduler`/`advanceTimeBy`).
+/// can be driven by a real clock in production and a virtual clock in tests.
 protocol Scheduler {
     @discardableResult
     func schedule(after delay: TimeInterval, _ block: @escaping () -> Void) -> Cancellable

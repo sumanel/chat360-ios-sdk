@@ -5,8 +5,7 @@ import Foundation
 /// upload, location, etc.) depending on `replyType`/`msgType`.
 ///
 /// Field names deliberately mix snake_case and camelCase to match the exact wire format the
-/// backend expects (same mix as the Android/Kotlin `OutgoingMessage`) - do not "clean up" the
-/// naming, it isn't a Swift style choice.
+/// backend expects - do not "clean up" the naming, it isn't a Swift style choice.
 struct OutgoingMessage: Encodable {
     var type: String = "message"
     var isLive: Bool = false
