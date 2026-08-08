@@ -2,19 +2,17 @@ import Foundation
 import Combine
 import SQLite3
 
-/// Local conversation-history cache - the Swift port of Android's `ChatCacheRepository`. Thin
-/// wrapper around `ChatCacheDatabase`: almost pure pass-through SQL, plus id generation and the
-/// title-from-first-message heuristic. Deliberately synchronous (SQLite on a small local file is
-/// fast) rather than `async`, so `cacheRaw` can be called durably from a WebSocket callback thread
-/// without depending on a `Task`'s lifetime.
+/// Local conversation-history cache. Thin wrapper around `ChatCacheDatabase`: almost pure
+/// pass-through SQL, plus id generation and the title-from-first-message heuristic. Deliberately
+/// synchronous (SQLite on a small local file is fast) rather than `async`, so `cacheRaw` can be
+/// called durably from a WebSocket callback thread without depending on a `Task`'s lifetime.
 final class ChatCacheRepository {
     static let shared = ChatCacheRepository(database: .shared)
 
     private let database: ChatCacheDatabase
     /// Fires after any write that could change the conversation list (create/rename/touch/delete)
-    /// - callers re-query `conversations(botId:)` in response. Mirrors what Room's
-    /// `Flow<List<...>>` auto-invalidation gives Android for free; SQLite has no such push
-    /// mechanism, so this is the explicit substitute.
+    /// - callers re-query `conversations(botId:)` in response. SQLite has no built-in push
+    /// mechanism for query invalidation, so this is the explicit substitute.
     let conversationsChanged = PassthroughSubject<Void, Never>()
 
     init(database: ChatCacheDatabase) {
