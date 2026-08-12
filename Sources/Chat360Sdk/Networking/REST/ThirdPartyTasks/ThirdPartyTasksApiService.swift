@@ -63,6 +63,31 @@ final class ThirdPartyTasksApiService {
         return response
     }
 
+    func fetchChatHistory(
+        roomId: String,
+        sessionId: String,
+        bearerToken: String,
+        limit: Int? = nil,
+        offset: Int? = nil
+    ) async throws -> ChatHistoryResponse {
+        var components = URLComponents(string: "\(trimmedBaseUrl)/api/third-party-tasks/chat/history")
+        var query = [
+            URLQueryItem(name: "room_id", value: roomId),
+            URLQueryItem(name: "session_id", value: sessionId),
+        ]
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
+        if let offset { query.append(URLQueryItem(name: "offset", value: String(offset))) }
+        components?.queryItems = query
+        guard let url = components?.url else { throw Chat360ApiError.invalidURL("third-party-tasks/chat/history") }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        let data = try await execute(request)
+        guard let response = try decoder.decode(ChatHistoryEnvelope.self, from: data).data else {
+            throw Chat360ApiError.malformedResponse(endpoint: "chat/history")
+        }
+        return response
+    }
+
     func updateRoom(roomId: String, clientId: String, roomName: String, bearerToken: String) async throws -> RoomUpdateResponse {
         guard let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/room/update") else {
             throw Chat360ApiError.invalidURL("third-party-tasks/room/update")

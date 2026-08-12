@@ -23,7 +23,7 @@ final class ChatCacheRepository {
 
     func conversations(botId: String) -> [CachedConversation] {
         database.perform { db in
-            guard let stmt = sqlitePrepare(db, "SELECT id, botId, roomId, title, createdAt, updatedAt FROM chat_conversations WHERE botId = ? ORDER BY updatedAt DESC", [botId]) else { return [] }
+            guard let stmt = sqlitePrepare(db, "SELECT id, botId, roomId, sessionId, title, createdAt, updatedAt FROM chat_conversations WHERE botId = ? ORDER BY updatedAt DESC", [botId]) else { return [] }
             defer { sqlite3_finalize(stmt) }
             var results: [CachedConversation] = []
             while sqlite3_step(stmt) == SQLITE_ROW {
@@ -31,9 +31,10 @@ final class ChatCacheRepository {
                     id: sqliteColumnText(stmt, 0) ?? "",
                     botId: sqliteColumnText(stmt, 1) ?? "",
                     roomId: sqliteColumnText(stmt, 2),
-                    title: sqliteColumnText(stmt, 3) ?? "New conversation",
-                    createdAt: sqlite3_column_int64(stmt, 4),
-                    updatedAt: sqlite3_column_int64(stmt, 5)
+                    sessionId: sqliteColumnText(stmt, 3),
+                    title: sqliteColumnText(stmt, 4) ?? "New conversation",
+                    createdAt: sqlite3_column_int64(stmt, 5),
+                    updatedAt: sqlite3_column_int64(stmt, 6)
                 ))
             }
             return results
@@ -105,16 +106,20 @@ final class ChatCacheRepository {
                 let title = room.room_name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let displayTitle = title.isEmpty ? "Conversation" : title
                 let updatedAt = fetchedAt - Int64(index)
+                // The most recent session is the one `chat/history` should be fetched against if
+                // this room has no cached messages yet - the server doesn't offer a way to fetch
+                // history spanning multiple sessions in one call.
+                let sessionId = room.session_ids.last
                 if let insertStmt = sqlitePrepare(db, """
-                    INSERT OR IGNORE INTO chat_conversations (id, botId, roomId, title, createdAt, updatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """, [id, botId, room.room_id, displayTitle, updatedAt, updatedAt]) {
+                    INSERT OR IGNORE INTO chat_conversations (id, botId, roomId, sessionId, title, createdAt, updatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, [id, botId, room.room_id, sessionId, displayTitle, updatedAt, updatedAt]) {
                     _ = sqlite3_step(insertStmt)
                     sqlite3_finalize(insertStmt)
                 }
                 if let updateStmt = sqlitePrepare(db, """
-                    UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = ? WHERE id = ?
-                    """, [room.room_id, displayTitle, updatedAt, id]) {
+                    UPDATE chat_conversations SET roomId = ?, sessionId = ?, title = ?, updatedAt = ? WHERE id = ?
+                    """, [room.room_id, sessionId, displayTitle, updatedAt, id]) {
                     _ = sqlite3_step(updateStmt)
                     sqlite3_finalize(updateStmt)
                 }
@@ -187,6 +192,27 @@ final class ChatCacheRepository {
                 let insertStmt = sqlitePrepare(db, """
                     INSERT INTO chat_messages (conversationId, kind, payload, chatMsgId, createdAt) VALUES (?, ?, ?, NULL, ?)
                     """, [conversationId, CachedMessageKind.raw.rawValue, envelope, fetchedAt + Int64(index)])
+                if let insertStmt { _ = sqlite3_step(insertStmt); sqlite3_finalize(insertStmt) }
+            }
+            _ = sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+        }
+    }
+
+    /// Delete-then-insert, wrapped in one transaction for atomicity. Seeds a `tp-room:` conversation
+    /// from a freshly-fetched `third-party-tasks/chat/history` page - the counterpart of
+    /// `replaceRawHistory` for that flat, non-websocket message shape.
+    func replaceThirdPartyHistory(conversationId: String, messages: [ChatHistoryMessage]) {
+        let fetchedAt = Self.now()
+        let encoder = JSONEncoder()
+        database.perform { db in
+            _ = sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION;", nil, nil, nil)
+            let deleteStmt = sqlitePrepare(db, "DELETE FROM chat_messages WHERE conversationId = ?", [conversationId])
+            if let deleteStmt { _ = sqlite3_step(deleteStmt); sqlite3_finalize(deleteStmt) }
+            for (index, message) in messages.enumerated() {
+                guard let data = try? encoder.encode(message), let payload = String(data: data, encoding: .utf8) else { continue }
+                let insertStmt = sqlitePrepare(db, """
+                    INSERT INTO chat_messages (conversationId, kind, payload, chatMsgId, createdAt) VALUES (?, ?, ?, ?, ?)
+                    """, [conversationId, CachedMessageKind.thirdPartyHistory.rawValue, payload, message.message_id, fetchedAt + Int64(index)])
                 if let insertStmt { _ = sqlite3_step(insertStmt); sqlite3_finalize(insertStmt) }
             }
             _ = sqlite3_exec(db, "COMMIT;", nil, nil, nil)

@@ -9,6 +9,10 @@ public struct CachedConversation: Equatable, Identifiable {
     public var id: String
     public var botId: String
     public var roomId: String?
+    /// The `third-party-tasks` session backing this room, if any - required to fetch
+    /// `chat/history` for a `tp-room:`-prefixed conversation. `nil` for the SDK's own
+    /// websocket-backed conversations, which never call that endpoint.
+    public var sessionId: String?
     public var title: String
     public var createdAt: Int64
     public var updatedAt: Int64
@@ -20,6 +24,10 @@ enum CachedMessageKind: String {
     case raw = "RAW"
     /// A locally-authored user message - plain display text, no wire shape to replay.
     case user = "USER"
+    /// A flat `third-party-tasks` `chat/history` message (JSON-encoded `ChatHistoryMessage`) -
+    /// a different wire shape from `raw`, so replayed by decoding that type directly rather than
+    /// through `RawSocketEnvelope.toIncomingEvent()`.
+    case thirdPartyHistory = "THIRD_PARTY_HISTORY"
 }
 
 struct CachedMessage {
@@ -58,11 +66,13 @@ final class ChatCacheDatabase {
             id TEXT PRIMARY KEY NOT NULL,
             botId TEXT NOT NULL,
             roomId TEXT,
+            sessionId TEXT,
             title TEXT NOT NULL DEFAULT 'New conversation',
             createdAt INTEGER NOT NULL,
             updatedAt INTEGER NOT NULL
         );
         """)
+        addSessionIdColumnIfMissing()
         exec("CREATE INDEX IF NOT EXISTS idx_chat_conversations_bot_room ON chat_conversations(botId, roomId);")
         exec("""
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -76,6 +86,21 @@ final class ChatCacheDatabase {
         );
         """)
         exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversationId);")
+    }
+
+    /// Existing installs predate the `sessionId` column - `CREATE TABLE IF NOT EXISTS` above is a
+    /// no-op for them, so it's added here instead. Checked via `PRAGMA table_info` rather than
+    /// just trying `ALTER TABLE ADD COLUMN` and swallowing the error, since a fresh install's table
+    /// (created with the column already in the schema above) would otherwise fail that unconditionally.
+    private func addSessionIdColumnIfMissing() {
+        guard let stmt = sqlitePrepare(db, "PRAGMA table_info(chat_conversations);") else { return }
+        var hasSessionId = false
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if sqliteColumnText(stmt, 1) == "sessionId" { hasSessionId = true }
+        }
+        sqlite3_finalize(stmt)
+        guard !hasSessionId else { return }
+        exec("ALTER TABLE chat_conversations ADD COLUMN sessionId TEXT;")
     }
 
     private static func databasePath() -> String {

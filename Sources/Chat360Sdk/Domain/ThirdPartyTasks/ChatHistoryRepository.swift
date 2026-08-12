@@ -52,6 +52,24 @@ final class ChatHistoryRepository {
         }
     }
 
+    /// Fetches one room's message history from `third-party-tasks/chat/history` and seeds the
+    /// cache with it. Best-effort like `refreshRooms()` - a failure just leaves the conversation's
+    /// cache empty rather than surfacing an error, since this only ever runs when the cache already
+    /// had nothing to show.
+    @discardableResult
+    func fetchChatHistory(conversationId: String, roomId: String, sessionId: String) async -> Bool {
+        do {
+            let response = try await withAuthRetry { token in
+                try await self.apiService.fetchChatHistory(roomId: roomId, sessionId: sessionId, bearerToken: token)
+            }
+            cache.replaceThirdPartyHistory(conversationId: conversationId, messages: response.messages)
+            return !response.messages.isEmpty
+        } catch {
+            print("[Chat360] third-party-tasks chat/history failed: \(error)")
+            return false
+        }
+    }
+
     /// Best-effort remote rename - failure never blocks the local rename the caller already applied.
     func renameRoom(roomId: String, roomName: String) async {
         do {

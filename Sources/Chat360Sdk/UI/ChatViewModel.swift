@@ -217,6 +217,10 @@ final class ChatViewModel: ObservableObject {
                 guard let data = cached.payload.data(using: .utf8),
                       let envelope = try? cacheDecoder.decode(RawSocketEnvelope.self, from: data) else { continue }
                 handleEvent(envelope.toIncomingEvent())
+            case .thirdPartyHistory:
+                guard let data = cached.payload.data(using: .utf8),
+                      let message = try? cacheDecoder.decode(ChatHistoryMessage.self, from: data) else { continue }
+                appendMessage(thirdPartyMessage(from: message))
             }
         }
         // Browsing a conversation other than the one the live socket is bound to is read-only -
@@ -230,6 +234,18 @@ final class ChatViewModel: ObservableObject {
                 return m
             }
         }
+    }
+
+    /// `chat/history`'s flat `sender_type` (user/bot/agent) maps onto `ChatMessage`'s
+    /// `fromUser`/`author` pair the same way a live/websocket message would.
+    private func thirdPartyMessage(from message: ChatHistoryMessage) -> ChatMessage {
+        ChatMessage(
+            chatMsgId: message.message_id,
+            text: message.text,
+            fromUser: message.sender_type == "user",
+            repliesEnabled: false,
+            author: message.sender_type == "agent" ? .agent : .bot
+        )
     }
 
     /// Network-seed path - only reached when the local cache has nothing yet for this
@@ -319,11 +335,26 @@ final class ChatViewModel: ObservableObject {
     /// backend has no "resume an arbitrary past room" endpoint (session-init always allocates a
     /// room; it doesn't accept one), so only the conversation created by the *current* live
     /// session can keep sending - opening an older one is browsing its history, not resuming it.
+    ///
+    /// A `tp-room:` conversation synced in from `rooms/list` only ever has a title cached, never
+    /// messages (that list doesn't return any) - so an empty cache here means "never fetched", not
+    /// "empty conversation", and is filled in from `chat/history` before replaying.
     func openConversation(_ conversationId: String) {
         guard conversationId != activeConversationId else { return }
         activeConversationId = conversationId
-        activeRoomId = conversations.first { $0.id == conversationId }?.roomId
-        replayFromCache(conversationId: conversationId)
+        let conversation = conversations.first { $0.id == conversationId }
+        activeRoomId = conversation?.roomId
+        guard let chatHistoryRepository, let roomId = conversation?.roomId, let sessionId = conversation?.sessionId,
+              cache.messages(conversationId: conversationId).isEmpty else {
+            replayFromCache(conversationId: conversationId)
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            await chatHistoryRepository.fetchChatHistory(conversationId: conversationId, roomId: roomId, sessionId: sessionId)
+            guard self.activeConversationId == conversationId else { return }
+            self.replayFromCache(conversationId: conversationId)
+        }
     }
 
     func renameConversation(_ conversationId: String, title: String) {
