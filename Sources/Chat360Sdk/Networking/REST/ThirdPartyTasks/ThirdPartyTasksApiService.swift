@@ -94,6 +94,7 @@ final class ThirdPartyTasksApiService {
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "room_id": roomId,
             "client_id": clientId,
+            "status": "inactive",
         ])
         let data = try await execute(request)
         guard let response = try decoder.decode(RoomStatusEnvelope.self, from: data).data else {
