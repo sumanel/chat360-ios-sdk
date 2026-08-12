@@ -11,17 +11,20 @@ public struct Chat360InputBarConfig: Equatable {
     public var showDictation: Bool
     /// Voice message recording.
     public var showMic: Bool
+    public var inputPlaceholder: String
 
     public init(
         showAttachment: Bool = true,
         showEmoji: Bool = true,
         showDictation: Bool = true,
-        showMic: Bool = true
+        showMic: Bool = true,
+        inputPlaceholder: String = "Type a message…"
     ) {
         self.showAttachment = showAttachment
         self.showEmoji = showEmoji
         self.showDictation = showDictation
         self.showMic = showMic
+        self.inputPlaceholder = inputPlaceholder
     }
 }
 
