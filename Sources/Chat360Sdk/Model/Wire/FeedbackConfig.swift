@@ -5,6 +5,14 @@ public struct FeedbackConfig: Codable {
         public var style: String = "star"
         public var scale: Int = 5
         public init(style: String = "star", scale: Int = 5) { self.style = style; self.scale = scale }
+
+        enum CodingKeys: String, CodingKey { case style, scale }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            style = try container.decode(String.self, forKey: .style, default: "star")
+            scale = try container.decode(Int.self, forKey: .scale, default: 5)
+        }
     }
 
     public struct FeedbackField: Codable {
@@ -28,6 +36,22 @@ public struct FeedbackConfig: Codable {
             self.placeholder = placeholder; self.subtext = subtext; self.options = options
             self.rows = rows; self.columns = columns; self.scaleMax = scaleMax
         }
+
+        enum CodingKeys: String, CodingKey { case id, type, label, required, placeholder, subtext, options, rows, columns, scaleMax }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            type = try container.decode(String.self, forKey: .type)
+            label = try container.decodeIfPresent(String.self, forKey: .label)
+            required = try container.decode(Bool.self, forKey: .required, default: false)
+            placeholder = try container.decodeIfPresent(String.self, forKey: .placeholder)
+            subtext = try container.decodeIfPresent(String.self, forKey: .subtext)
+            options = try container.decodeIfPresent(JSONValue.self, forKey: .options)
+            rows = try container.decodeIfPresent(JSONValue.self, forKey: .rows)
+            columns = try container.decodeIfPresent(JSONValue.self, forKey: .columns)
+            scaleMax = try container.decodeIfPresent(Int.self, forKey: .scaleMax)
+        }
     }
 
     public struct FeedbackFormDefinition: Codable {
@@ -41,6 +65,17 @@ public struct FeedbackConfig: Codable {
             self.id = id; self.title = title; self.widgetTitle = widgetTitle
             self.twoColumnLayout = twoColumnLayout; self.fields = fields
         }
+
+        enum CodingKeys: String, CodingKey { case id, title, widgetTitle, twoColumnLayout, fields }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decodeIfPresent(String.self, forKey: .id)
+            title = try container.decodeIfPresent(String.self, forKey: .title)
+            widgetTitle = try container.decodeIfPresent(String.self, forKey: .widgetTitle)
+            twoColumnLayout = try container.decode(Bool.self, forKey: .twoColumnLayout, default: false)
+            fields = try container.decode([FeedbackField].self, forKey: .fields, default: [])
+        }
     }
 
     public struct TriggerCondition: Codable {
@@ -53,6 +88,17 @@ public struct FeedbackConfig: Codable {
         public init(type: String = "rating", op: String, value: Double? = nil, min: Double? = nil, max: Double? = nil) {
             self.type = type; self.op = op; self.value = value; self.min = min; self.max = max
         }
+
+        enum CodingKeys: String, CodingKey { case type, op, value, min, max }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try container.decode(String.self, forKey: .type, default: "rating")
+            op = try container.decode(String.self, forKey: .op)
+            value = try container.decodeIfPresent(Double.self, forKey: .value)
+            min = try container.decodeIfPresent(Double.self, forKey: .min)
+            max = try container.decodeIfPresent(Double.self, forKey: .max)
+        }
     }
 
     public struct TriggerRule: Codable {
@@ -64,6 +110,16 @@ public struct FeedbackConfig: Codable {
         public init(id: String? = nil, priority: Int = 0, condition: TriggerCondition, formId: String) {
             self.id = id; self.priority = priority; self.condition = condition; self.formId = formId
         }
+
+        enum CodingKeys: String, CodingKey { case id, priority, condition, formId }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decodeIfPresent(String.self, forKey: .id)
+            priority = try container.decode(Int.self, forKey: .priority, default: 0)
+            condition = try container.decode(TriggerCondition.self, forKey: .condition)
+            formId = try container.decode(String.self, forKey: .formId)
+        }
     }
 
     public var rating: RatingConfig?
@@ -73,6 +129,16 @@ public struct FeedbackConfig: Codable {
 
     public init(rating: RatingConfig? = nil, forms: [String: FeedbackFormDefinition] = [:], trigger_rules: [TriggerRule] = [], show_default_form: Bool = false) {
         self.rating = rating; self.forms = forms; self.trigger_rules = trigger_rules; self.show_default_form = show_default_form
+    }
+
+    enum CodingKeys: String, CodingKey { case rating, forms, trigger_rules, show_default_form }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rating = try container.decodeIfPresent(RatingConfig.self, forKey: .rating)
+        forms = try container.decode([String: FeedbackFormDefinition].self, forKey: .forms, default: [:])
+        trigger_rules = try container.decode([TriggerRule].self, forKey: .trigger_rules, default: [])
+        show_default_form = try container.decode(Bool.self, forKey: .show_default_form, default: false)
     }
 }
 

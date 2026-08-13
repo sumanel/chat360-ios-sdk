@@ -8,6 +8,16 @@ public struct TokenEnvelope: Codable {
         self.success = success
         self.data = data
     }
+
+    enum CodingKeys: String, CodingKey {
+        case success, data
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decode(Bool.self, forKey: .success, default: false)
+        data = try container.decodeIfPresent(TokenResponse.self, forKey: .data)
+    }
 }
 
 public struct TokenResponse: Codable {
@@ -25,5 +35,12 @@ public struct TokenResponse: Codable {
         self.bearerToken = bearerToken
         self.tokenType = tokenType
         self.expiresIn = expiresIn
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bearerToken = try container.decode(String.self, forKey: .bearerToken)
+        tokenType = try container.decode(String.self, forKey: .tokenType, default: "Bearer")
+        expiresIn = try container.decode(Int64.self, forKey: .expiresIn, default: 3600)
     }
 }

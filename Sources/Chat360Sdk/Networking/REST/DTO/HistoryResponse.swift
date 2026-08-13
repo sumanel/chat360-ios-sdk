@@ -12,4 +12,16 @@ public struct HistoryResponse: Codable {
         self.next_cursor = next_cursor
         self.previous_cursor = previous_cursor
     }
+
+    enum CodingKeys: String, CodingKey {
+        case history, current_length, next_cursor, previous_cursor
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        history = try container.decode([RawSocketEnvelope].self, forKey: .history, default: [])
+        current_length = try container.decodeIfPresent(Int.self, forKey: .current_length)
+        next_cursor = try container.decodeIfPresent(Int.self, forKey: .next_cursor)
+        previous_cursor = try container.decodeIfPresent(Int.self, forKey: .previous_cursor)
+    }
 }

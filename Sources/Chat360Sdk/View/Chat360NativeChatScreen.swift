@@ -3,25 +3,51 @@ import SwiftUI
 @available(iOS 16.0, *)
 public struct Chat360NativeChatScreen: View {
     @StateObject private var viewModel: ChatViewModel
-    private let uiConfig: Chat360UIConfig
+    private let botConfig: Chat360Config
 
     public init(botConfig: Chat360Config) {
+        self.botConfig = botConfig
         let resolvedBaseUrl = Chat360Bot.shared.getBaseUrl() ?? (botConfig.isDebug ? "https://staging.chat360.io" : "https://app.chat360.io")
         let resolvedBotId = botConfig.botId ?? ""
 
         let repository = ChatRepository(
             baseUrl: resolvedBaseUrl,
             botId: resolvedBotId,
-            historyEnabled: true,
+            historyEnabled: botConfig.historyEnabled,
             sessionStore: UserDefaultsSessionStore()
         )
         let cache = ChatCacheRepository(dao: ChatCacheDatabase.shared.dao)
-        _viewModel = StateObject(wrappedValue: ChatViewModel(repository: repository, botId: resolvedBotId, cache: cache))
-        self.uiConfig = Chat360UIConfig()
+        let historyRepository = Chat360NativeChatScreen.buildChatHistoryRepository(botConfig: botConfig, baseUrl: resolvedBaseUrl, botId: resolvedBotId, cache: cache)
+        _viewModel = StateObject(wrappedValue: ChatViewModel(
+            repository: repository,
+            botId: resolvedBotId,
+            cache: cache,
+            chatHistoryRepository: historyRepository,
+            suppressInitialBotMessages: botConfig.uiConfig?.behavior.suppressInitialBotMessages ?? false
+        ))
+    }
+
+    private static func buildChatHistoryRepository(botConfig: Chat360Config, baseUrl: String, botId: String, cache: ChatCacheRepository) -> ChatHistoryRepository? {
+        let trimmedClientId = botConfig.clientId.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        let trimmedApiKey = botConfig.apiKey.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        let trimmedEndUserId = botConfig.endUserId.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        guard let clientId = trimmedClientId, let apiKey = trimmedApiKey, let endUserId = trimmedEndUserId, !botId.isEmpty else {
+            return nil
+        }
+        let thirdPartyApi = ThirdPartyTasksApiService(baseUrl: baseUrl)
+        let tokenManager = ThirdPartyTokenManager(apiService: thirdPartyApi, clientId: clientId, apiKey: apiKey)
+        return ChatHistoryRepository(apiService: thirdPartyApi, tokenManager: tokenManager, cache: cache, clientId: clientId, botId: botId, endUserId: endUserId)
     }
 
     public var body: some View {
-        Chat360Theme(config: uiConfig) {
+        Chat360Theme(
+            preset: botConfig.themePreset,
+            customLightColors: botConfig.customLightColors,
+            customDarkColors: botConfig.customDarkColors,
+            customTypography: botConfig.customTypography,
+            customBranding: botConfig.customBranding,
+            config: botConfig.uiConfig ?? Chat360UIConfig()
+        ) {
             ChatScreen(viewModel: viewModel)
         }
     }

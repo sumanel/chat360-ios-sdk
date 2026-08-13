@@ -8,6 +8,16 @@ public struct RoomsListEnvelope: Codable {
         self.success = success
         self.data = data
     }
+
+    enum CodingKeys: String, CodingKey {
+        case success, data
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decode(Bool.self, forKey: .success, default: false)
+        data = try container.decodeIfPresent(RoomsListResponse.self, forKey: .data)
+    }
 }
 
 public struct RoomsListResponse: Codable {
@@ -31,6 +41,15 @@ public struct RoomsListResponse: Codable {
         self.rooms = rooms
         self.totalCount = totalCount
         self.hasMore = hasMore
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        clientId = try container.decodeIfPresent(String.self, forKey: .clientId)
+        botId = try container.decodeIfPresent(String.self, forKey: .botId)
+        rooms = try container.decode([RoomDto].self, forKey: .rooms, default: [])
+        totalCount = try container.decode(Int.self, forKey: .totalCount, default: 0)
+        hasMore = try container.decode(Bool.self, forKey: .hasMore, default: false)
     }
 }
 
@@ -67,5 +86,17 @@ public struct RoomDto: Codable {
         self.updatedAt = updatedAt
         self.sessionIds = sessionIds
         self.sessionCount = sessionCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        roomId = try container.decode(String.self, forKey: .roomId)
+        roomName = try container.decode(String.self, forKey: .roomName, default: "")
+        agentId = try container.decodeIfPresent(String.self, forKey: .agentId)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        sessionIds = try container.decode([String].self, forKey: .sessionIds, default: [])
+        sessionCount = try container.decode(Int.self, forKey: .sessionCount, default: 0)
     }
 }

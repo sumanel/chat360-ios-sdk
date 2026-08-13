@@ -8,6 +8,16 @@ public struct RoomUpdateEnvelope: Codable {
         self.success = success
         self.data = data
     }
+
+    enum CodingKeys: String, CodingKey {
+        case success, data
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decode(Bool.self, forKey: .success, default: false)
+        data = try container.decodeIfPresent(RoomUpdateResponse.self, forKey: .data)
+    }
 }
 
 public struct RoomUpdateResponse: Codable {
@@ -25,5 +35,12 @@ public struct RoomUpdateResponse: Codable {
         self.roomId = roomId
         self.roomName = roomName
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        roomId = try container.decode(String.self, forKey: .roomId)
+        roomName = try container.decode(String.self, forKey: .roomName, default: "")
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
     }
 }
