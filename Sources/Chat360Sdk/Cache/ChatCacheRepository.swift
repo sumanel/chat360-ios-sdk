@@ -14,7 +14,7 @@ public struct ConversationSummary: Equatable {
 
 @available(iOS 13.0, *)
 public final class ChatCacheRepository {
-    public static let enabled = false
+    public static let enabled = true
 
     private let dao: ChatCacheDao
     private let encoder = JSONEncoder()
@@ -26,7 +26,6 @@ public final class ChatCacheRepository {
     public func conversations(botId: String) -> AsyncStream<[CachedConversationEntity]> {
         guard Self.enabled else {
             return AsyncStream { continuation in
-                continuation.yield([])
                 continuation.finish()
             }
         }

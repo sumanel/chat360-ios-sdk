@@ -57,18 +57,21 @@ public struct ChatDrawer: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            Button(action: onDismiss) {
-                HStack(spacing: 12) {
-                    Chat360Icon.chevronLeft.image.foregroundColor(colors.accent)
-                    Text("Menu")
-                        .font(typography.textFamily.font(size: 17, weight: .semibold))
-                        .foregroundColor(colors.accent)
-                    Spacer()
+            HStack(spacing: 12) {
+                Text("Menu")
+                    .font(typography.textFamily.font(size: 17, weight: .semibold))
+                    .foregroundColor(colors.textPrimary)
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(colors.textSecondary)
+                        .frame(width: 24, height: 24)
                 }
-                .padding(.horizontal, 24)
-                .frame(height: 74)
             }
-            .overlay(Rectangle().stroke(colors.line, lineWidth: 1))
+            .padding(.horizontal, 20)
+            .frame(height: 60)
+            .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .bottom)
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("AI Chatbot - History")
@@ -146,7 +149,7 @@ public struct ChatDrawer: View {
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
-            .overlay(Rectangle().stroke(colors.line, lineWidth: 1))
+            .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
         }
         .frame(maxHeight: .infinity)
         .background(colors.backgroundElevated)
@@ -241,16 +244,22 @@ private struct ConversationItem: View {
     var body: some View {
         let itemColor = isActive ? colors.accent : colors.textPrimary
         HStack(alignment: .top, spacing: 14) {
-            Chat360Icon.history.image.foregroundColor(isActive ? colors.accent : colors.textSecondary)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(displayTitle)
-                    .font(typography.textFamily.font(size: 16, weight: .semibold))
-                    .foregroundColor(itemColor)
-                    .lineLimit(1)
-                Text(historyDateFormatter().string(from: Date(timeIntervalSince1970: Double(conversation.updatedAt) / 1000)))
-                    .font(typography.textFamily.font(size: 13))
-                    .foregroundColor(colors.textSecondary)
+            Button(action: onSelected) {
+                HStack(alignment: .top, spacing: 14) {
+                    Chat360Icon.history.image.foregroundColor(isActive ? colors.accent : colors.textSecondary)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(displayTitle)
+                            .font(typography.textFamily.font(size: 16, weight: .semibold))
+                            .foregroundColor(itemColor)
+                            .lineLimit(1)
+                        Text(historyDateFormatter().string(from: Date(timeIntervalSince1970: Double(conversation.createdAt) / 1000)))
+                            .font(typography.textFamily.font(size: 13))
+                            .foregroundColor(colors.textSecondary)
+                    }
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             Spacer()
             Menu {
                 Button("Rename") { title = displayTitle; showRenameDialog = true }
@@ -258,13 +267,12 @@ private struct ConversationItem: View {
             } label: {
                 Chat360Icon.more.image.foregroundColor(colors.textSecondary)
             }
+            .contentShape(Rectangle())
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 12)
         .background(isActive ? colors.backgroundSunken : colors.backgroundElevated)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelected)
         .padding(.bottom, 10)
         .alert("Rename conversation", isPresented: $showRenameDialog) {
             TextField("Conversation name", text: $title)

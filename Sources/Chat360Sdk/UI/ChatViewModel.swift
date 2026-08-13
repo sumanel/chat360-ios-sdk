@@ -59,35 +59,53 @@ public final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             await self.repository.connect(
-                onEvent: { [weak self] event in self?.handleEvent(event) },
-                onConnected: { [weak self] in self?.update { $0.isConnected = true; $0.error = nil } },
+                onEvent: { [weak self] event in
+                    Task { @MainActor [weak self] in self?.handleEvent(event) }
+                },
+                onConnected: { [weak self] in
+                    Task { @MainActor [weak self] in self?.update { $0.isConnected = true; $0.error = nil } }
+                },
                 onError: { [weak self] error in
                     NSLog("[Chat360] Chat connection failed: %@", error.localizedDescription)
-                    self?.update { $0.isConnected = false; $0.isAgentTyping = false }
+                    Task { @MainActor [weak self] in self?.update { $0.isConnected = false; $0.isAgentTyping = false } }
                 },
-                onSlowConnectionChanged: { [weak self] slow in self?.update { $0.isSlowConnection = slow } },
-                onMessageTimedOut: { [weak self] chatMsgId in self?.handleMessageTimedOut(chatMsgId) },
+                onSlowConnectionChanged: { [weak self] slow in
+                    Task { @MainActor [weak self] in self?.update { $0.isSlowConnection = slow } }
+                },
+                onMessageTimedOut: { [weak self] chatMsgId in
+                    Task { @MainActor [weak self] in self?.handleMessageTimedOut(chatMsgId) }
+                },
                 onAppearanceLoaded: { [weak self] details, chatboxName in
-                    self?.update {
-                        $0.colorOverrides = details?.toColorOverrides()
-                        $0.logoOverride = details?.toLogoOverride()
-                        $0.botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
-                        $0.feedbackConfig = details?.feedback_config ?? $0.feedbackConfig
+                    Task { @MainActor [weak self] in
+                        self?.update {
+                            $0.colorOverrides = details?.toColorOverrides()
+                            $0.logoOverride = details?.toLogoOverride()
+                            $0.botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
+                            $0.feedbackConfig = details?.feedback_config ?? $0.feedbackConfig
+                        }
                     }
                 },
                 onConversationStarted: { [weak self] roomId in
                     guard let self else { return false }
                     return await self.activateConversation(roomId: roomId)
                 },
-                onRawIncoming: { [weak self] raw in self?.cacheIncomingEnvelope(raw) },
-                onOpenUrl: { [weak self] url in self?.update { $0.pendingUrlToOpen = url } },
-                onSessionResumed: { [weak self] takeover, agent in
-                    self?.update { $0.isLiveChat = takeover; $0.assignedAgent = agent ?? $0.assignedAgent }
+                onRawIncoming: { [weak self] raw in
+                    Task { @MainActor [weak self] in self?.cacheIncomingEnvelope(raw) }
                 },
-                onFeedbackRequested: { [weak self] in self?.update { $0.showFeedbackPrompt = true } },
+                onOpenUrl: { [weak self] url in
+                    Task { @MainActor [weak self] in self?.update { $0.pendingUrlToOpen = url } }
+                },
+                onSessionResumed: { [weak self] takeover, agent in
+                    Task { @MainActor [weak self] in self?.update { $0.isLiveChat = takeover; $0.assignedAgent = agent ?? $0.assignedAgent } }
+                },
+                onFeedbackRequested: { [weak self] in
+                    Task { @MainActor [weak self] in self?.update { $0.showFeedbackPrompt = true } }
+                },
                 onBotSettingsLoaded: { [weak self] shortcuts, languages in
-                    self?.shortcuts = shortcuts
-                    self?.languages = languages
+                    Task { @MainActor [weak self] in
+                        self?.shortcuts = shortcuts
+                        self?.languages = languages
+                    }
                 }
             )
         }
@@ -210,16 +228,17 @@ public final class ChatViewModel: ObservableObject {
             state.messages.append(message)
         }
         if cacheUserMessage, let conversationId = connectedConversationId {
+            let roomId = connectedRoomId
             Task { [weak self] in
                 guard let self else { return }
-                await self.ensureConversationPersisted()
+                await self.ensureConversationPersisted(conversationId: conversationId, roomId: roomId)
                 await self.cache.cacheUserMessage(conversationId: conversationId, text: message.text, chatMsgId: message.chatMsgId, botId: self.botId)
-                self.upsertLiveConversationEntry(conversationId: conversationId, title: message.text)
+                self.upsertLiveConversationEntry(conversationId: conversationId, roomId: roomId, title: message.text)
             }
         }
     }
 
-    private func upsertLiveConversationEntry(conversationId: String, title: String) {
+    private func upsertLiveConversationEntry(conversationId: String, roomId: String?, title: String) {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         var normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
@@ -229,7 +248,7 @@ public final class ChatViewModel: ObservableObject {
         let entry = CachedConversationEntity(
             id: conversationId,
             botId: botId,
-            roomId: connectedRoomId,
+            roomId: roomId ?? existing?.roomId,
             title: (existing == nil || existing?.title == "New conversation") ? normalizedTitle : existing!.title,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now
@@ -731,16 +750,20 @@ public final class ChatViewModel: ObservableObject {
             pendingRawEnvelopes.append(raw)
             return
         }
-        Task { [weak self] in
-            guard let self else { return }
-            await self.cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: self.botId)
+        // Captured strongly (not [weak self]): this write must survive a fast
+        // ViewModel/view teardown racing the incoming envelope, otherwise a
+        // conversation can end up with only the locally authored user messages
+        // and silently miss the bot's reply.
+        let cache = self.cache
+        let botId = self.botId
+        Task {
+            await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
         }
     }
 
-    private func ensureConversationPersisted() async {
+    private func ensureConversationPersisted(conversationId: String, roomId: String?) async {
         if conversationPersisted { return }
-        guard let conversationId = connectedConversationId else { return }
-        await cache.ensureConversationPersisted(botId: botId, conversationId: conversationId, roomId: connectedRoomId)
+        await cache.ensureConversationPersisted(botId: botId, conversationId: conversationId, roomId: roomId)
         conversationPersisted = true
         for raw in pendingRawEnvelopes {
             await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)

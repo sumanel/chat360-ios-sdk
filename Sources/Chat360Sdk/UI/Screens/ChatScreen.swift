@@ -53,7 +53,7 @@ public struct ChatScreen: View {
             VStack(spacing: 0) {
                 if let header = sdkConfig.ui.header {
                     header()
-                } else if features.showMenu || features.showNewChat {
+                } else {
                     HeaderBar(
                         connected: viewModel.uiState.isConnected,
                         assignedAgent: viewModel.uiState.assignedAgent,
@@ -70,7 +70,8 @@ public struct ChatScreen: View {
                         },
                         shortcuts: viewModel.shortcuts,
                         onShortcutSelected: { targetId, label in viewModel.selectShortcut(targetId: targetId, label: label) },
-                        onRefreshClick: { viewModel.refreshConnection() }
+                        onRefreshClick: { viewModel.refreshConnection() },
+                        onCloseClick: { Chat360Bot.shared.closeChatBot() }
                     )
                 }
 
@@ -189,37 +190,42 @@ public struct ChatScreen: View {
             .background(baseColors.background)
 
             if showHistorySidebar && features.showHistorySidebar {
-                HStack(spacing: 0) {
-                    ChatDrawer(
-                        onDismiss: { showHistorySidebar = false },
-                        onNewChat: {
-                            viewModel.startNewChat()
-                            showHistorySidebar = false
-                        },
-                        isTrainingMode: isTrainingMode,
-                        onAssistantModeChanged: { isTrainingMode = $0 },
-                        isDarkTheme: themeController?.isDarkTheme ?? false,
-                        onThemeChanged: { themeController?.selectDarkTheme($0) },
-                        showAssistantMode: features.showAssistantMode,
-                        showAppearanceSwitcher: features.showAppearanceSwitcher && sdkConfig.theme.allowThemeSwitch,
-                        conversations: viewModel.conversations,
-                        activeConversationId: viewModel.uiState.activeConversationId,
-                        onConversationSelected: {
-                            viewModel.openConversation($0)
-                            showHistorySidebar = false
-                        },
-                        onConversationRenamed: { id, title in viewModel.renameConversation(conversationId: id, title: title) },
-                        onConversationDeleted: { viewModel.deleteConversation($0) },
-                        languages: viewModel.languages,
-                        onLanguageSelected: { key in
-                            viewModel.switchLanguage(targetId: key)
-                            showHistorySidebar = false
-                        }
-                    )
-                    Spacer()
+                GeometryReader { geo in
+                    HStack(spacing: 0) {
+                        ChatDrawer(
+                            onDismiss: { showHistorySidebar = false },
+                            onNewChat: {
+                                viewModel.startNewChat()
+                                showHistorySidebar = false
+                            },
+                            isTrainingMode: isTrainingMode,
+                            onAssistantModeChanged: { isTrainingMode = $0 },
+                            isDarkTheme: themeController?.isDarkTheme ?? false,
+                            onThemeChanged: { themeController?.selectDarkTheme($0) },
+                            showAssistantMode: features.showAssistantMode,
+                            showAppearanceSwitcher: features.showAppearanceSwitcher && sdkConfig.theme.allowThemeSwitch,
+                            conversations: viewModel.conversations,
+                            activeConversationId: viewModel.uiState.activeConversationId,
+                            onConversationSelected: {
+                                viewModel.openConversation($0)
+                                showHistorySidebar = false
+                            },
+                            onConversationRenamed: { id, title in viewModel.renameConversation(conversationId: id, title: title) },
+                            onConversationDeleted: { viewModel.deleteConversation($0) },
+                            languages: viewModel.languages,
+                            onLanguageSelected: { key in
+                                viewModel.switchLanguage(targetId: key)
+                                showHistorySidebar = false
+                            }
+                        )
+                        .frame(width: min(320, geo.size.width * 0.84))
+                        Spacer(minLength: 0)
+                    }
                 }
                 .background(Color.black.opacity(0.55))
                 .onTapGesture { showHistorySidebar = false }
+                .transition(.move(edge: .leading))
+                .animation(.easeOut(duration: 0.22), value: showHistorySidebar)
             }
 
             if viewModel.uiState.showFeedbackPrompt, let feedbackConfig = viewModel.uiState.feedbackConfig {
@@ -230,6 +236,9 @@ public struct ChatScreen: View {
                     onDismiss: { viewModel.dismissFeedbackPrompt() }
                 )
             }
+        }
+        .onDisappear {
+            viewModel.onCleared()
         }
         .onChange(of: speechToText.transcript) { transcript in
             if speechToText.isListening { viewModel.onInputChange(transcript) }

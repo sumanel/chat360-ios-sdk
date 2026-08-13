@@ -14,6 +14,7 @@ public struct HeaderBar: View {
     private let shortcuts: [String: String]
     private let onShortcutSelected: (String, String) -> Void
     private let onRefreshClick: () -> Void
+    private let onCloseClick: (() -> Void)?
 
     public init(
         connected: Bool,
@@ -25,7 +26,8 @@ public struct HeaderBar: View {
         onNewChatClick: @escaping () -> Void = {},
         shortcuts: [String: String] = [:],
         onShortcutSelected: @escaping (String, String) -> Void = { _, _ in },
-        onRefreshClick: @escaping () -> Void = {}
+        onRefreshClick: @escaping () -> Void = {},
+        onCloseClick: (() -> Void)? = nil
     ) {
         self.connected = connected
         self.assignedAgent = assignedAgent
@@ -37,6 +39,7 @@ public struct HeaderBar: View {
         self.shortcuts = shortcuts
         self.onShortcutSelected = onShortcutSelected
         self.onRefreshClick = onRefreshClick
+        self.onCloseClick = onCloseClick
     }
 
     public var body: some View {
@@ -69,9 +72,20 @@ public struct HeaderBar: View {
                 }
                 .disabled(!newChatEnabled)
             }
+            if let onCloseClick {
+                if showNewChat {
+                    Spacer().frame(width: 18)
+                }
+                Button(action: onCloseClick) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(colors.textPrimary)
+                        .frame(width: 24, height: 24)
+                }
+            }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .background(colors.background)
     }
 }

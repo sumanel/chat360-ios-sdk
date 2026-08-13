@@ -42,13 +42,12 @@ public struct ChatInputBar: View {
     }
 
     public var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .center, spacing: 10) {
             if showAttachment {
                 Button(action: onAttachmentClick) {
                     Chat360Icon.attachFile.image
                         .foregroundColor(enabled ? colors.textSecondary : colors.textDisabled)
-                        .padding(8)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 22, height: 22)
                 }
                 .disabled(!enabled)
             }
@@ -56,12 +55,11 @@ public struct ChatInputBar: View {
                 Button(action: onDictateClick) {
                     Chat360Icon.dictate.image
                         .foregroundColor(enabled ? colors.textSecondary : colors.textDisabled)
-                        .padding(8)
                         .frame(width: 22, height: 22)
                 }
                 .disabled(!enabled)
             }
-            HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: 8) {
                 ZStack(alignment: .leading) {
                     if value.isEmpty {
                         Text(branding.inputPlaceholder)
@@ -74,44 +72,40 @@ public struct ChatInputBar: View {
                         .disabled(!enabled)
                         .accentColor(colors.accent)
                 }
-                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
 
                 if showEmoji {
                     Text("🙂")
                         .font(.system(size: 18))
-                        .padding(6)
                         .onTapGesture { if enabled { onEmojiClick() } }
                 }
                 if showVoiceInput {
                     Button(action: onMicClick) {
                         Chat360Icon.mic.image
                             .foregroundColor(enabled ? colors.textSecondary : colors.textDisabled)
-                            .padding(8)
                             .frame(width: 20, height: 20)
                     }
                     .disabled(!enabled)
                 }
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 4)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 16)
+            .frame(height: 46)
             .background(colors.inputBackground)
             .overlay(Rectangle().stroke(colors.inputBorder, lineWidth: 1))
 
             if showSend {
-                Spacer().frame(width: 12)
                 Button(action: onSend) {
                     Chat360Icon.arrowUp.image
                         .foregroundColor(colors.accentContrast)
                 }
-                .frame(width: 55, height: 55)
+                .frame(width: 46, height: 46)
                 .background((!enabled || !sendEnabled || value.isBlank) ? colors.textDisabled : colors.accent)
                 .disabled(!enabled || !sendEnabled)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .overlay(Rectangle().stroke(colors.line, lineWidth: 1))
+        .background(colors.background)
+        .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
     }
 }

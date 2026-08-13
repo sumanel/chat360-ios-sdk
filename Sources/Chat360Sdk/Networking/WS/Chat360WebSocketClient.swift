@@ -2,15 +2,29 @@ import Foundation
 
 @available(iOS 13.0, *)
 public final class Chat360WebSocketClient: NSObject {
-    private let session: URLSession
+    private struct Callbacks {
+        let onOpen: () -> Void
+        let onMessage: (String) -> Void
+        let onClosed: (Int, String) -> Void
+        let onFailure: (Error) -> Void
+    }
+
+    private let configuration: URLSessionConfiguration
+    private lazy var session: URLSession = URLSession(
+        configuration: configuration,
+        delegate: self,
+        delegateQueue: nil
+    )
     private var task: URLSessionWebSocketTask?
-    private var onOpen: (() -> Void)?
-    private var onMessage: ((String) -> Void)?
-    private var onClosed: ((Int, String) -> Void)?
-    private var onFailure: ((Error) -> Void)?
+    private var callbacks: Callbacks?
+
+    /// Bumped on every connect()/close() so callbacks from a superseded
+    /// connection (in-flight receive/send completions from an old task)
+    /// are dropped instead of firing into the current connection's state.
+    private var generation: Int = 0
 
     public init(session: URLSession = URLSession(configuration: .default)) {
-        self.session = session
+        self.configuration = session.configuration
         super.init()
     }
 
@@ -22,10 +36,9 @@ public final class Chat360WebSocketClient: NSObject {
         onFailure: @escaping (Error) -> Void
     ) {
         NSLog("[Chat360WS] Connecting -> %@", wsUrl)
-        self.onOpen = onOpen
-        self.onMessage = onMessage
-        self.onClosed = onClosed
-        self.onFailure = onFailure
+        generation += 1
+        let myGeneration = generation
+        callbacks = Callbacks(onOpen: onOpen, onMessage: onMessage, onClosed: onClosed, onFailure: onFailure)
 
         guard let url = URL(string: wsUrl) else {
             onFailure(URLError(.badURL))
@@ -35,31 +48,54 @@ public final class Chat360WebSocketClient: NSObject {
         let newTask = session.webSocketTask(with: request)
         task = newTask
         newTask.resume()
-        onOpen()
-        NSLog("[Chat360WS] Socket OPEN -> %@", wsUrl)
-        listen()
+        listen(generation: myGeneration)
     }
 
-    private func listen() {
+    public func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didOpenWithProtocol protocol: String?
+    ) {
+        guard task === webSocketTask, let callbacks else { return }
+        NSLog("[Chat360WS] Socket OPEN")
+        callbacks.onOpen()
+    }
+
+    public func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+        reason: Data?
+    ) {
+        guard task === webSocketTask, let callbacks else { return }
+        let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        NSLog("[Chat360WS] Socket CLOSED by server: %d %@", closeCode.rawValue, reasonText)
+        callbacks.onClosed(closeCode.rawValue, reasonText)
+    }
+
+    private func listen(generation myGeneration: Int) {
         task?.receive { [weak self] result in
             guard let self else { return }
+            // A newer connect()/close() has superseded this one; let this
+            // receive chain die instead of touching the current connection.
+            guard myGeneration == self.generation, let callbacks = self.callbacks else { return }
             switch result {
             case .success(let message):
                 switch message {
                 case .string(let text):
                     NSLog("[Chat360WS] << RECEIVED: %@", text)
-                    self.onMessage?(text)
+                    callbacks.onMessage(text)
                 case .data(let data):
                     let text = String(data: data, encoding: .utf8) ?? ""
                     NSLog("[Chat360WS] << RECEIVED (data): %@", text)
-                    self.onMessage?(text)
+                    callbacks.onMessage(text)
                 @unknown default:
                     break
                 }
-                self.listen()
+                self.listen(generation: myGeneration)
             case .failure(let error):
                 NSLog("[Chat360WS] Socket FAILURE: %@", error.localizedDescription)
-                self.onFailure?(error)
+                callbacks.onFailure(error)
             }
         }
     }
@@ -70,11 +106,12 @@ public final class Chat360WebSocketClient: NSObject {
             NSLog("[Chat360WS] >> SEND FAILED (socket not open): %@", text)
             return false
         }
+        let myGeneration = generation
         task.send(.string(text)) { [weak self] error in
-            if let error {
-                NSLog("[Chat360WS] >> SEND FAILED: %@", error.localizedDescription)
-                self?.onFailure?(error)
-            }
+            guard let self, let error else { return }
+            guard myGeneration == self.generation else { return }
+            NSLog("[Chat360WS] >> SEND FAILED: %@", error.localizedDescription)
+            self.callbacks?.onFailure(error)
         }
         NSLog("[Chat360WS] >> SENT: %@", text)
         return true
@@ -82,9 +119,14 @@ public final class Chat360WebSocketClient: NSObject {
 
     public func close() {
         NSLog("[Chat360WS] Closing socket (client requested)")
+        generation += 1
+        let closedCallbacks = callbacks
         task?.cancel(with: .normalClosure, reason: "client closed".data(using: .utf8))
-        let code = 1000
-        onClosed?(code, "client closed")
         task = nil
+        callbacks = nil
+        closedCallbacks?.onClosed(1000, "client closed")
     }
 }
+
+@available(iOS 13.0, *)
+extension Chat360WebSocketClient: URLSessionWebSocketDelegate {}
