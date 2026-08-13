@@ -750,12 +750,12 @@ public final class ChatViewModel: ObservableObject {
 
     public func openConversation(_ conversationId: String) {
         guard conversationId != activeConversationId else { return }
+        setActiveConversationId(conversationId)
+        previousHistoryCursor = nil
+        update { $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil; $0.isAgentTyping = false }
+        let roomId = conversations.first { $0.id == conversationId }?.roomId
         Task { [weak self] in
             guard let self else { return }
-            self.setActiveConversationId(conversationId)
-            self.previousHistoryCursor = nil
-            self.update { $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil; $0.isAgentTyping = false }
-            let roomId = self.conversations.first { $0.id == conversationId }?.roomId
             await self.restoreConversation(conversationId: conversationId, roomId: roomId)
         }
     }
