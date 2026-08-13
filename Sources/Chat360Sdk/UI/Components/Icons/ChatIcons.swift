@@ -21,6 +21,9 @@ public enum Chat360Icon: String {
     case darkMode = "moon.fill"
     case refresh = "arrow.clockwise"
     case shortcut = "bolt.fill"
+    case attachFile = "paperclip"
+    case mic = "mic.fill"
+    case close = "xmark"
 
     public var image: Image {
         Image(systemName: rawValue)
