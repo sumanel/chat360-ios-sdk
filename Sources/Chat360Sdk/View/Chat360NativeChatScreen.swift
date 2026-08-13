@@ -48,7 +48,31 @@ public struct Chat360NativeChatScreen: View {
             customBranding: botConfig.customBranding,
             config: botConfig.uiConfig ?? Chat360UIConfig()
         ) {
-            ChatScreen(viewModel: viewModel)
+            let features = botConfig.uiConfig?.features ?? Chat360FeatureConfig()
+            let hasHeaderBar = features.showMenu || features.showNewChat
+            ZStack(alignment: .topTrailing) {
+                ChatScreen(viewModel: viewModel)
+                CloseChatButton()
+                    .padding(.top, hasHeaderBar ? 66 : 8)
+            }
         }
+    }
+}
+
+@available(iOS 16.0, *)
+private struct CloseChatButton: View {
+    @Environment(\.chat360Colors) private var colors
+
+    var body: some View {
+        Button(action: { Chat360Bot.shared.closeChatBot() }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(colors.textPrimary)
+                .frame(width: 32, height: 32)
+                .background(colors.backgroundElevated)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(colors.line, lineWidth: 1))
+        }
+        .padding(.trailing, 16)
     }
 }
