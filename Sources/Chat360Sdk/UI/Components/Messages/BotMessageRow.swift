@@ -1,0 +1,76 @@
+import SwiftUI
+
+@available(iOS 16.0, *)
+public struct BotMessageRow: View {
+    @Environment(\.chat360Colors) private var colors
+    @Environment(\.chat360Typography) private var typography
+    @Environment(\.chat360UIConfig) private var config
+
+    private let message: ChatMessage
+    private let actions: BotContentActions
+    private let isLiveChat: Bool
+    private let assignedAgent: AssignedAgent?
+
+    @State private var feedback: Bool?
+
+    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil) {
+        self.message = message
+        self.actions = actions
+        self.isLiveChat = isLiveChat
+        self.assignedAgent = assignedAgent
+    }
+
+    private var agent: AssignedAgent? {
+        message.author == .agent ? assignedAgent : nil
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if config.features.showBotAvatar {
+                LogoBadge(size: 28, overrideName: agent?.name, overrideAvatarUrl: agent?.avatarUrl)
+                Spacer().frame(height: 6)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                BotContentBody(message: message, actions: actions, isLiveChat: isLiveChat)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(colors.bubbleAiBackground)
+            .overlay(Rectangle().stroke(colors.cardBorder, lineWidth: 1))
+
+            Spacer().frame(height: 4)
+            HStack(spacing: 18) {
+                Text(message.timeText)
+                    .font(typography.textFamily.font(size: 11, weight: .semibold))
+                    .foregroundColor(colors.textDisabled)
+                if config.features.showCopyMessage {
+                    Chat360Icon.copy.image
+                        .foregroundColor(colors.textSecondary)
+                        .frame(width: 18, height: 18)
+                        .onTapGesture {
+                            UIPasteboard.general.string = message.copyText()
+                        }
+                }
+                if config.features.showRegenerate {
+                    Chat360Icon.refresh.image
+                        .foregroundColor(colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .onTapGesture { config.callbacks.onRegenerateClicked(message.id) }
+                }
+                if config.features.showFeedback && config.features.showLike {
+                    Chat360Icon.thumbUp.image
+                        .foregroundColor(feedback == true ? colors.accent : colors.textSecondary)
+                        .frame(width: 18, height: 18)
+                        .onTapGesture { feedback = (feedback == true) ? nil : true }
+                }
+                if config.features.showFeedback && config.features.showDislike {
+                    Chat360Icon.thumbDown.image
+                        .foregroundColor(feedback == false ? colors.accent : colors.textSecondary)
+                        .frame(width: 18, height: 18)
+                        .onTapGesture { feedback = (feedback == false) ? nil : false }
+                }
+            }
+        }
+    }
+}
