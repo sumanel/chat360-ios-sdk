@@ -24,6 +24,7 @@ public enum Chat360Icon: String {
     case attachFile = "paperclip"
     case mic = "mic.fill"
     case close = "xmark"
+    case camera = "camera.fill"
 
     public var image: Image {
         Image(systemName: rawValue)
