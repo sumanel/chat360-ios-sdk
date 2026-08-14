@@ -174,6 +174,16 @@ public final class ChatRepository {
             let hadHistory = await onConversationStarted(session.room_id)
             if hadHistory {
                 pendingInitJumpTargetId = nil
+                // The replay above only updates the ViewModel's local cache/UI, never this
+                // class's own currentTargetId/lastBotNode (those stay whatever teardownForResession
+                // just reset them to) - and session.targetId can't be trusted to fill that gap on
+                // a resumed room. Without this, a room whose current position is e.g. a
+                // validation_error re-prompt (which itself carries no usable targetId) reconnects
+                // with no known targetId at all, so the very next free-text reply goes out empty
+                // and the flow can't route it. Folding through the room's recent history the same
+                // way a live bot message would (see handleIncoming) recovers the last real
+                // targetId before the user can send anything.
+                await seedTargetContextFromHistory(roomId: session.room_id)
             } else if await loadConversationStarter() {
                 pendingInitJumpTargetId = nil
             }
@@ -201,7 +211,7 @@ public final class ChatRepository {
                     onRawIncoming(text)
                 }
                 let event = item.toIncomingEvent()
-                if case .botMessage(let node) = event {
+                if case .botMessage(let node) = event, !isErrorNode(node) {
                     lastBotNode = node
                     currentTargetId = node.targetId ?? currentTargetId
                 }
@@ -210,6 +220,22 @@ public final class ChatRepository {
             return !items.isEmpty
         } catch {
             return false
+        }
+    }
+
+    /// Recovers `currentTargetId`/`lastBotNode` for a resumed room by folding through its most
+    /// recent history the same way a live bot message would (see `handleIncoming`) - last node
+    /// wins, and error nodes (see `isErrorNode`) never overwrite a real targetId already found.
+    /// Best-effort like `loadConversationStarter`/`fetchAppearance`: a failed fetch just leaves
+    /// whatever session-init already provided, never blocks connecting.
+    private func seedTargetContextFromHistory(roomId: String) async {
+        guard historyEnabled else { return }
+        guard let response = try? await apiService.getHistory(roomId: roomId) else { return }
+        for item in response.history {
+            if case .botMessage(let node) = item.toIncomingEvent(), !isErrorNode(node) {
+                lastBotNode = node
+                currentTargetId = node.targetId ?? currentTargetId
+            }
         }
     }
 
@@ -314,8 +340,10 @@ public final class ChatRepository {
             NSLog("[Chat360WS] Bot reply received: nodeId=%@ nodeType=%@ text=%@", node.nodeId ?? "nil", node.nodeType ?? "nil", node.text ?? "nil")
             lastDispatchedNode = node
             lastDispatchedAt = now
-            lastBotNode = node
-            currentTargetId = node.targetId ?? currentTargetId
+            if !isErrorNode(node) {
+                lastBotNode = node
+                currentTargetId = node.targetId ?? currentTargetId
+            }
             handleWindowEventNode(node.content)
             if let endUrlMessage = node.endUrlMessage { onOpenUrl(endUrlMessage) }
             if node.endSessionRequested { disconnect() }
@@ -331,6 +359,10 @@ public final class ChatRepository {
             break
         }
         onEvent(event)
+    }
+
+    private func isErrorNode(_ node: BotNode) -> Bool {
+        node.nodeType == "validation_error"
     }
 
     private func handleWindowEventNode(_ content: BotContent) {

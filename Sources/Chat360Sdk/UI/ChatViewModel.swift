@@ -124,6 +124,7 @@ public final class ChatViewModel: ObservableObject {
         if !restoringFromCache && activeConversationId != connectedConversationId { return }
         switch event {
         case .botMessage(let node):
+            update { $0.isAgentTyping = false }
             if suppressInitialBotMessages && !hasStartedConversation && !restoringFromCache { return }
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
