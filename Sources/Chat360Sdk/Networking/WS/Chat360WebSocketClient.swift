@@ -36,14 +36,14 @@ public final class Chat360WebSocketClient: NSObject {
         onFailure: @escaping (Error) -> Void
     ) {
         NSLog("[Chat360WS] Connecting -> %@", wsUrl)
-        generation += 1
-        let myGeneration = generation
-        callbacks = Callbacks(onOpen: onOpen, onMessage: onMessage, onClosed: onClosed, onFailure: onFailure)
-
         guard let url = URL(string: wsUrl) else {
             onFailure(URLError(.badURL))
             return
         }
+        generation += 1
+        let myGeneration = generation
+        callbacks = Callbacks(onOpen: onOpen, onMessage: onMessage, onClosed: onClosed, onFailure: onFailure)
+
         let request = URLRequest(url: url)
         let newTask = session.webSocketTask(with: request)
         task = newTask
@@ -67,7 +67,11 @@ public final class Chat360WebSocketClient: NSObject {
         didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
         reason: Data?
     ) {
+        // Consume (clear) callbacks so the outstanding receive() in listen(),
+        // which also completes with an error once the socket closes, can't
+        // additionally fire onFailure for this same close event.
         guard task === webSocketTask, let callbacks else { return }
+        self.callbacks = nil
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         NSLog("[Chat360WS] Socket CLOSED by server: %d %@", closeCode.rawValue, reasonText)
         callbacks.onClosed(closeCode.rawValue, reasonText)
@@ -94,6 +98,10 @@ public final class Chat360WebSocketClient: NSObject {
                 }
                 self.listen(generation: myGeneration)
             case .failure(let error):
+                // Consumed here first if didCloseWith hasn't fired yet for this
+                // close/failure; clearing prevents a subsequent didCloseWith
+                // (or another in-flight receive) from double-notifying.
+                self.callbacks = nil
                 NSLog("[Chat360WS] Socket FAILURE: %@", error.localizedDescription)
                 callbacks.onFailure(error)
             }

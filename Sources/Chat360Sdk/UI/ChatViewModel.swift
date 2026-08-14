@@ -810,6 +810,16 @@ public final class ChatViewModel: ObservableObject {
         update { $0.isConnected = false }
         let switched = await repository.switchToRoom(targetRoomId: targetRoomId) { [weak self] resumedRoomId in
             guard let self else { return false }
+            guard resumedRoomId == targetRoomId else {
+                // The backend didn't actually resume the requested room (e.g. its persisted
+                // session token had expired) and allocated a different one instead. Reconcile
+                // through the same cache-backed room->conversation mapping the initial connect
+                // uses, instead of blindly attributing the new room to the conversation the
+                // user was browsing - otherwise outgoing messages would be stamped into
+                // resumedRoomId while the UI still appended them to active's thread, silently
+                // splitting the conversation.
+                return await self.activateConversation(roomId: resumedRoomId)
+            }
             self.connectedConversationId = active
             self.connectedRoomId = resumedRoomId
             self.conversationPersisted = true

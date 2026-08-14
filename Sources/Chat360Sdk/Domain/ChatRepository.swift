@@ -96,7 +96,10 @@ public final class ChatRepository {
         self.onSessionResumed = onSessionResumed
         self.onBotSettingsLoaded = onBotSettingsLoaded
 
-        await establishSession(onConversationStarted: onConversationStarted, persisted: sessionStore?.load(botId: botId))
+        // Every open of the bot starts a fresh conversation rather than silently resuming
+        // whatever room was last active - the previous conversation is still reachable from
+        // the history drawer, this just controls what greets the user on open.
+        await establishSession(onConversationStarted: onConversationStarted, persisted: nil)
     }
 
     public func startNewSession(onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async {
