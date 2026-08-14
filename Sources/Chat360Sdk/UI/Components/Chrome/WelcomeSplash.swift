@@ -28,6 +28,7 @@ public struct WelcomeSplash: View {
                         .font(typography.textFamily.font(size: 13))
                         .foregroundColor(colors.textSecondary)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 8)
                 }
                 .frame(maxWidth: .infinity)

@@ -3,13 +3,13 @@ import SwiftUI
 @available(iOS 15.0, *)
 public struct BrandLogo: View {
     @Environment(\.chat360Branding) private var branding
-    @Environment(\.chat360ThemeController) private var themeController
+    @Environment(\.chat360IsDarkTheme) private var isDarkTheme
     @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
     private var isDark: Bool {
-        themeController?.isDarkTheme ?? (colorScheme == .dark)
+        isDarkTheme ?? (colorScheme == .dark)
     }
 
     public var body: some View {
@@ -18,6 +18,7 @@ public struct BrandLogo: View {
             Image(isDark ? dark : light)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .id(isDark)
         case .remote(let url):
             AsyncImage(url: URL(string: url)) { image in
                 image.resizable().aspectRatio(contentMode: .fit)
@@ -35,7 +36,7 @@ public struct LogoBadge: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
     @Environment(\.chat360Branding) private var branding
-    @Environment(\.chat360ThemeController) private var themeController
+    @Environment(\.chat360IsDarkTheme) private var isDarkTheme
     @Environment(\.colorScheme) private var colorScheme
 
     private let size: CGFloat
@@ -51,7 +52,7 @@ public struct LogoBadge: View {
     }
 
     private var isDark: Bool {
-        themeController?.isDarkTheme ?? (colorScheme == .dark)
+        isDarkTheme ?? (colorScheme == .dark)
     }
 
     private func initial(_ text: String) -> String {
@@ -78,6 +79,7 @@ public struct LogoBadge: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .padding(size / 6)
+                        .id(isDark)
                 case .remote(let url):
                     AsyncImage(url: URL(string: url)) { image in
                         image.resizable().aspectRatio(contentMode: .fit)

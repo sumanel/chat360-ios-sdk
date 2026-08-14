@@ -31,6 +31,26 @@ extension EnvironmentValues {
     }
 }
 
+// Reading `chat360ThemeController.isDarkTheme` via plain `@Environment` doesn't reliably
+// re-render consumers: SwiftUI's environment propagation is keyed on the object *reference*
+// (which never changes, since it's a @StateObject), not on its internal @Published value, and
+// plain `@Environment` isn't a subscription to that object's `objectWillChange` the way
+// `@ObservedObject`/`@EnvironmentObject` are. Chat360Theme.body recomputes this plain Bool fresh
+// on every one of its own (reliably-triggered, via @StateObject) re-renders and injects it
+// directly, so descendants reading *this* key get proper, reliable invalidation.
+@available(iOS 14.0, *)
+public struct Chat360IsDarkThemeKey: EnvironmentKey {
+    public static let defaultValue: Bool? = nil
+}
+
+@available(iOS 14.0, *)
+extension EnvironmentValues {
+    public var chat360IsDarkTheme: Bool? {
+        get { self[Chat360IsDarkThemeKey.self] }
+        set { self[Chat360IsDarkThemeKey.self] = newValue }
+    }
+}
+
 @available(iOS 14.0, *)
 private struct Chat360ThemeBundle {
     let light: Chat360Colors
@@ -117,6 +137,7 @@ public struct Chat360Theme<Content: View>: View {
             .environment(\.chat360Typography, resolvedTypography)
             .environment(\.chat360Branding, resolvedBranding)
             .environment(\.chat360ThemeController, themeController)
+            .environment(\.chat360IsDarkTheme, themeController.isDarkTheme)
             .environment(\.chat360UIConfig, config)
             .onAppear {
                 if config.theme.defaultTheme == .system {
