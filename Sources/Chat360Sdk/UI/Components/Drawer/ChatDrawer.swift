@@ -58,16 +58,16 @@ public struct ChatDrawer: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text("Menu")
-                    .font(typography.textFamily.font(size: 17, weight: .semibold))
-                    .foregroundColor(colors.textPrimary)
-                Spacer()
                 Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(colors.textSecondary)
-                        .frame(width: 24, height: 24)
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Menu")
+                            .font(typography.textFamily.font(size: 17, weight: .bold))
+                    }
+                    .foregroundColor(colors.accent)
                 }
+                Spacer()
             }
             .padding(.horizontal, 20)
             .frame(height: 60)
@@ -75,14 +75,14 @@ public struct ChatDrawer: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("AI Chatbot - History")
-                    .font(typography.textFamily.font(size: 20, weight: .semibold))
+                    .font(typography.textFamily.font(size: 20, weight: .bold))
                     .foregroundColor(colors.textPrimary)
                 Spacer().frame(height: 16)
                 Button(action: onNewChat) {
                     HStack(spacing: 12) {
                         Chat360Icon.add.image.foregroundColor(colors.accentContrast)
                         Text("New chat")
-                            .font(typography.textFamily.font(size: 17, weight: .semibold))
+                            .font(typography.textFamily.font(size: 17, weight: .bold))
                             .foregroundColor(colors.accentContrast)
                     }
                     .frame(maxWidth: .infinity)
@@ -117,8 +117,8 @@ public struct ChatDrawer: View {
                         .foregroundColor(colors.textSecondary)
                     Spacer().frame(height: 12)
                     HStack {
-                        ModeOption(text: "Training", icon: .training, selected: isTrainingMode) { onAssistantModeChanged(true) }
-                        ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode) { onAssistantModeChanged(false) }
+                        ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
+                        ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
                     }
                     Spacer().frame(height: 18)
                 }
@@ -295,7 +295,16 @@ private struct ModeOption: View {
     let text: String
     let icon: Chat360Icon
     let selected: Bool
+    let disabled: Bool
     let onClick: () -> Void
+
+    init(text: String, icon: Chat360Icon, selected: Bool, disabled: Bool = false, onClick: @escaping () -> Void) {
+        self.text = text
+        self.icon = icon
+        self.selected = selected
+        self.disabled = disabled
+        self.onClick = onClick
+    }
 
     var body: some View {
         let contentColor = selected ? colors.accent : colors.textPrimary
@@ -311,5 +320,7 @@ private struct ModeOption: View {
             .background(selected ? colors.backgroundElevated : colors.backgroundSunken)
             .overlay(selected ? AnyView(Rectangle().stroke(colors.line, lineWidth: 1)) : AnyView(EmptyView()))
         }
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
     }
 }

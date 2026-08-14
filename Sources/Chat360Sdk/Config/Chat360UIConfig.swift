@@ -67,7 +67,7 @@ public struct Chat360FeatureConfig {
     public var showSpeechToText: Bool
     public var showCamera: Bool = true
     public var showSend: Bool = true
-    public var showAssistantMode: Bool = false
+    public var showAssistantMode: Bool = true
     public var showAppearanceSwitcher: Bool = false
     public var showTypingIndicator: Bool = true
     public var enableVoicePreview: Bool = false
@@ -77,7 +77,7 @@ public struct Chat360FeatureConfig {
         showMenu: Bool = false, showHistorySidebar: Bool = true, showNewChat: Bool = false, showFeedback: Bool = true,
         showCopyMessage: Bool = true, showRegenerate: Bool = true, showLike: Bool = true, showDislike: Bool = true,
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
-        showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = false, showAppearanceSwitcher: Bool = false,
+        showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
         showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true
     ) {
         self.showMenu = showMenu
