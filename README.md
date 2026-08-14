@@ -13,6 +13,12 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - Back button / close handling with custom callbacks.
 - A legacy WebView-based mode is still available (`useNewUI: false`) for existing integrations.
 
+## Requirements
+
+- iOS 12.0+ deployment target (legacy WebView mode).
+- **iOS 16.0+ is required for the native chat screen.** If `useNewUI: true` is set but the device is running an older iOS version, the SDK automatically and silently falls back to the legacy WebView screen instead. If you require the native UI, set your app's own minimum deployment target to iOS 16.0 as well — otherwise users on iOS 15 and below will transparently get the older WebView experience.
+- Swift 5.
+
 ## Installation
 
 ### Using Swift Package Manager
