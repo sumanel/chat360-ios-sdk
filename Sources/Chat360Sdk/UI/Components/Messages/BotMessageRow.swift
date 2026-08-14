@@ -12,6 +12,7 @@ public struct BotMessageRow: View {
     private let assignedAgent: AssignedAgent?
 
     @State private var feedback: Bool?
+    @State private var justCopied = false
 
     public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil) {
         self.message = message
@@ -45,11 +46,16 @@ public struct BotMessageRow: View {
                     .font(typography.textFamily.font(size: 11, weight: .semibold))
                     .foregroundColor(colors.textDisabled)
                 if config.features.showCopyMessage {
-                    Chat360Icon.copy.image
-                        .foregroundColor(colors.textSecondary)
+                    (justCopied ? Chat360Icon.check.image : Chat360Icon.copy.image)
+                        .foregroundColor(justCopied ? colors.accent : colors.textSecondary)
                         .frame(width: 18, height: 18)
                         .onTapGesture {
                             UIPasteboard.general.string = message.copyText()
+                            justCopied = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                justCopied = false
+                            }
                         }
                 }
                 if config.features.showRegenerate {
@@ -60,14 +66,20 @@ public struct BotMessageRow: View {
                 }
                 if config.features.showFeedback && config.features.showLike {
                     Chat360Icon.thumbUp.image
-                        .foregroundColor(feedback == true ? colors.accent : colors.textSecondary)
+                        .foregroundColor(feedback == true ? colors.accentContrast : colors.textSecondary)
                         .frame(width: 18, height: 18)
+                        .padding(6)
+                        .background(feedback == true ? colors.accent : Color.clear)
+                        .clipShape(Circle())
                         .onTapGesture { feedback = (feedback == true) ? nil : true }
                 }
                 if config.features.showFeedback && config.features.showDislike {
                     Chat360Icon.thumbDown.image
-                        .foregroundColor(feedback == false ? colors.accent : colors.textSecondary)
+                        .foregroundColor(feedback == false ? colors.accentContrast : colors.textSecondary)
                         .frame(width: 18, height: 18)
+                        .padding(6)
+                        .background(feedback == false ? colors.accent : Color.clear)
+                        .clipShape(Circle())
                         .onTapGesture { feedback = (feedback == false) ? nil : false }
                 }
             }
