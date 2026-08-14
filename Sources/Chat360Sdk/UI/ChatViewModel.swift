@@ -267,6 +267,7 @@ public final class ChatViewModel: ObservableObject {
         }
         let chatMsgId = repository.sendQuickReply(option)
         appendMessage(ChatMessage(chatMsgId: chatMsgId, text: option.text, fromUser: true))
+        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
     }
 
     public func selectRating(messageId: String, value: Int) {
@@ -279,6 +280,7 @@ public final class ChatViewModel: ObservableObject {
         }
         let chatMsgId = repository.sendRating(value)
         appendMessage(ChatMessage(chatMsgId: chatMsgId, text: String(value), fromUser: true))
+        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
     }
 
     public func selectAutoSuggestion(messageId: String, index: Int, text: String) {

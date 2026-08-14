@@ -6,6 +6,7 @@ public struct ChatScreen: View {
     @Environment(\.chat360Colors) private var baseColors
     @Environment(\.chat360Branding) private var baseBranding
     @Environment(\.chat360ThemeController) private var themeController
+    @Environment(\.chat360IsDarkTheme) private var isDarkTheme
     @Environment(\.chat360UIConfig) private var sdkConfig
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -19,6 +20,7 @@ public struct ChatScreen: View {
     @State private var isTrainingMode = false
     @State private var showAttachmentPicker = false
     @State private var showCameraCapture = false
+    @FocusState private var isInputFocused: Bool
 
     public init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -62,6 +64,7 @@ public struct ChatScreen: View {
                         newChatEnabled: !viewModel.uiState.isAgentTyping,
                         onMenuClick: {
                             sdkConfig.callbacks.onMenuClicked()
+                            isInputFocused = false
                             showHistorySidebar = true
                         },
                         onNewChatClick: {
@@ -170,7 +173,11 @@ public struct ChatScreen: View {
                     } else {
                         ChatInputBar(
                             value: Binding(get: { viewModel.uiState.inputText }, set: { viewModel.onInputChange($0) }),
-                            onSend: { viewModel.sendMessage() },
+                            isFocused: $isInputFocused,
+                            onSend: {
+                                viewModel.sendMessage()
+                                isInputFocused = false
+                            },
                             onAttachmentClick: { showAttachmentPicker = true },
                             onMicClick: { voiceRecorder.requestStart() },
                             showDictationIcon: features.showSpeechToText && speechToText.isSupported(),
@@ -200,7 +207,7 @@ public struct ChatScreen: View {
                             },
                             isTrainingMode: isTrainingMode,
                             onAssistantModeChanged: { isTrainingMode = $0 },
-                            isDarkTheme: themeController?.isDarkTheme ?? false,
+                            isDarkTheme: isDarkTheme ?? false,
                             onThemeChanged: { themeController?.selectDarkTheme($0) },
                             showAssistantMode: features.showAssistantMode,
                             showAppearanceSwitcher: features.showAppearanceSwitcher && sdkConfig.theme.allowThemeSwitch,

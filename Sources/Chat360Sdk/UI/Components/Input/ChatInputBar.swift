@@ -1,12 +1,13 @@
 import SwiftUI
 
-@available(iOS 14.0, *)
+@available(iOS 15.0, *)
 public struct ChatInputBar: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
     @Environment(\.chat360Branding) private var branding
 
     @Binding private var value: String
+    private var isFocused: FocusState<Bool>.Binding
     private let onSend: () -> Void
     private let onAttachmentClick: () -> Void
     private let onMicClick: () -> Void
@@ -21,12 +22,13 @@ public struct ChatInputBar: View {
     private let enabled: Bool
 
     public init(
-        value: Binding<String>, onSend: @escaping () -> Void, onAttachmentClick: @escaping () -> Void,
+        value: Binding<String>, isFocused: FocusState<Bool>.Binding, onSend: @escaping () -> Void, onAttachmentClick: @escaping () -> Void,
         onMicClick: @escaping () -> Void, showDictationIcon: Bool = false, onDictateClick: @escaping () -> Void = {},
         onEmojiClick: @escaping () -> Void = {}, showAttachment: Bool = true, showEmoji: Bool = true,
         showVoiceInput: Bool = true, showSend: Bool = true, sendEnabled: Bool = true, enabled: Bool = true
     ) {
         self._value = value
+        self.isFocused = isFocused
         self.onSend = onSend
         self.onAttachmentClick = onAttachmentClick
         self.onMicClick = onMicClick
@@ -71,6 +73,7 @@ public struct ChatInputBar: View {
                         .foregroundColor(colors.textPrimary)
                         .disabled(!enabled)
                         .accentColor(colors.accent)
+                        .focused(isFocused)
                 }
                 .frame(maxWidth: .infinity)
 
