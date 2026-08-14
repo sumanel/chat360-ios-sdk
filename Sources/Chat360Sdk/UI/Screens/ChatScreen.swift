@@ -65,7 +65,7 @@ public struct ChatScreen: View {
                         onMenuClick: {
                             sdkConfig.callbacks.onMenuClicked()
                             isInputFocused = false
-                            showHistorySidebar = true
+                            withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = true }
                         },
                         onNewChatClick: {
                             sdkConfig.callbacks.onNewChatClicked()
@@ -74,7 +74,7 @@ public struct ChatScreen: View {
                         shortcuts: viewModel.shortcuts,
                         onShortcutSelected: { targetId, label in viewModel.selectShortcut(targetId: targetId, label: label) },
                         onRefreshClick: { viewModel.refreshConnection() },
-                        onCloseClick: { Chat360Bot.shared.closeChatBot() }
+                        onCloseClick: features.showClose ? { Chat360Bot.shared.closeChatBot() } : nil
                     )
                 }
 
@@ -200,10 +200,10 @@ public struct ChatScreen: View {
                 GeometryReader { geo in
                     HStack(spacing: 0) {
                         ChatDrawer(
-                            onDismiss: { showHistorySidebar = false },
+                            onDismiss: { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } },
                             onNewChat: {
                                 viewModel.startNewChat()
-                                showHistorySidebar = false
+                                withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
                             },
                             isTrainingMode: isTrainingMode,
                             onAssistantModeChanged: { isTrainingMode = $0 },
@@ -215,14 +215,14 @@ public struct ChatScreen: View {
                             activeConversationId: viewModel.uiState.activeConversationId,
                             onConversationSelected: {
                                 viewModel.openConversation($0)
-                                showHistorySidebar = false
+                                withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
                             },
                             onConversationRenamed: { id, title in viewModel.renameConversation(conversationId: id, title: title) },
                             onConversationDeleted: { viewModel.deleteConversation($0) },
                             languages: viewModel.languages,
                             onLanguageSelected: { key in
                                 viewModel.switchLanguage(targetId: key)
-                                showHistorySidebar = false
+                                withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
                             }
                         )
                         .frame(width: min(320, geo.size.width * 0.84))
@@ -230,9 +230,8 @@ public struct ChatScreen: View {
                     }
                 }
                 .background(Color.black.opacity(0.55))
-                .onTapGesture { showHistorySidebar = false }
+                .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } }
                 .transition(.move(edge: .leading))
-                .animation(.easeOut(duration: 0.22), value: showHistorySidebar)
             }
 
             if viewModel.uiState.showFeedbackPrompt, let feedbackConfig = viewModel.uiState.feedbackConfig {

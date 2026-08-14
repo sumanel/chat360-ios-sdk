@@ -72,13 +72,16 @@ public struct Chat360FeatureConfig {
     public var showTypingIndicator: Bool = true
     public var enableVoicePreview: Bool = false
     public var showBotAvatar: Bool = true
+    // Defaults true: ChatController presents fullScreen, which doesn't support swipe-to-dismiss,
+    // so a host that turns this off must provide its own way to close the chat screen.
+    public var showClose: Bool = true
 
     public init(
         showMenu: Bool = false, showHistorySidebar: Bool = true, showNewChat: Bool = false, showFeedback: Bool = true,
         showCopyMessage: Bool = true, showRegenerate: Bool = true, showLike: Bool = true, showDislike: Bool = true,
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
-        showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true
+        showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true
     ) {
         self.showMenu = showMenu
         self.showHistorySidebar = showHistorySidebar
@@ -99,6 +102,7 @@ public struct Chat360FeatureConfig {
         self.showTypingIndicator = showTypingIndicator
         self.enableVoicePreview = enableVoicePreview
         self.showBotAvatar = showBotAvatar
+        self.showClose = showClose
     }
 }
 
