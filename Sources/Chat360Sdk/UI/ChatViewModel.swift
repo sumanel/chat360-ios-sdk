@@ -679,7 +679,7 @@ public final class ChatViewModel: ObservableObject {
             hasCachedMessages = true
             switch cached.kind {
             case "USER":
-                appendMessage(ChatMessage(chatMsgId: cached.chatMsgId, text: cached.payload, fromUser: true), cacheUserMessage: false)
+                appendMessage(ChatMessage(chatMsgId: cached.chatMsgId, text: cached.payload, fromUser: true, timeText: formatMessageTime(cached.createdAt)), cacheUserMessage: false)
             case "RAW":
                 if let data = cached.payload.data(using: .utf8),
                    let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) {
