@@ -318,10 +318,13 @@ public final class ChatCacheDao {
         }
     }
 
-    public func updateTitle(conversationId: String, title: String, updatedAt: Int64, botId: String) async {
+    // Renaming is a metadata edit, not new activity - it must not bump updatedAt, or the
+    // conversation would jump to the top of the (updatedAt-sorted) history list just from
+    // being renamed, ahead of conversations the user actually did something in more recently.
+    public func updateTitle(conversationId: String, title: String, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
-                self.exec("UPDATE chat_conversations SET title = ?, updatedAt = ? WHERE id = ?", params: [title, updatedAt, conversationId])
+                self.exec("UPDATE chat_conversations SET title = ? WHERE id = ?", params: [title, conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

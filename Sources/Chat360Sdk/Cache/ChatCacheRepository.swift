@@ -89,7 +89,7 @@ public final class ChatCacheRepository {
 
     public func renameConversation(conversationId: String, title: String, botId: String) async {
         guard Self.enabled else { return }
-        await dao.updateTitle(conversationId: conversationId, title: title, updatedAt: nowMs(), botId: botId)
+        await dao.updateTitle(conversationId: conversationId, title: title, botId: botId)
     }
 
     public func deleteConversation(conversationId: String, botId: String) async {
