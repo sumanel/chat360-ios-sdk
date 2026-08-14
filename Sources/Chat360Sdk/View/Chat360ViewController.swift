@@ -19,8 +19,20 @@ public class ChatController: UIViewController {
     
     public override func viewDidLoad() {
         super.viewDidLoad()
-        let botView = Chat360BotScreen(botConfig: botConfig)
-        let hostingController = UIHostingController(rootView: botView)
+        addHostingController(for: makeRootView())
+    }
+
+    @ViewBuilder
+    private func makeRootView() -> some View {
+        if botConfig.useNewUI, #available(iOS 16.0, *) {
+            Chat360NativeChatScreen(botConfig: botConfig)
+        } else {
+            Chat360BotScreen(botConfig: botConfig)
+        }
+    }
+
+    private func addHostingController(for rootView: some View) {
+        let hostingController = UIHostingController(rootView: rootView)
         addChild(hostingController)
         hostingController.view.frame = self.view.bounds
         hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]

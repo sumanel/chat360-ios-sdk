@@ -20,7 +20,8 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
             name: "Chat360SDK",
-            path: "Sources/Chat360SDK"),
+            path: "Sources/Chat360SDK",
+            linkerSettings: [.linkedLibrary("sqlite3")]),
         .testTarget(
             name: "Chat360SdkTests",
             dependencies: ["Chat360SDK"]),

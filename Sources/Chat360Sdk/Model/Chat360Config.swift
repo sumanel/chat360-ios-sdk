@@ -3,17 +3,29 @@ import Foundation
 @objc
 @available(iOS 13.0, *)
 public class Chat360Config : NSObject {
-    @objc var baseUrl: String = "https://app.chat360.io"
+    @objc public var baseUrl: String = "https://app.chat360.io"
     @objc private var stagingUrl = "https://staging.chat360.io"
-    
-    @objc var botId: String? = ""
-    @objc var appId: String? = ""
-    @objc var isDebug: Bool = false
-    @objc var flutter: Bool = false
-    @objc var meta: [String: String]?
-    
-    @objc var useNewUI: Bool = false
-    
+
+    @objc public var botId: String? = ""
+    @objc public var appId: String? = ""
+    @objc public var isDebug: Bool = false
+    @objc public var flutter: Bool = false
+    @objc public var meta: [String: String]?
+
+    @objc public var useNewUI: Bool = false
+
+    public var historyEnabled: Bool = true
+    public var clientId: String?
+    public var apiKey: String?
+    public var endUserId: String?
+
+    public var themePreset: Chat360ThemePreset = .default
+    public var customLightColors: Chat360Colors?
+    public var customDarkColors: Chat360Colors?
+    public var customTypography: Chat360Typography?
+    public var customBranding: Chat360Branding?
+    public var uiConfig: Chat360UIConfig?
+
     @objc public init(botId: String,
                       appId: String,
                       isDebug: Bool = false,
