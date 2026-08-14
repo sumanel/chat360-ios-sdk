@@ -8,7 +8,7 @@ public enum Chat360FontFamily: Equatable {
     public func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         switch self {
         case .system: return .system(size: size, weight: weight)
-        case .custom(let name): return .custom(name, size: size)
+        case .custom(let name): return .custom(name, size: size).weight(weight)
         }
     }
 }
