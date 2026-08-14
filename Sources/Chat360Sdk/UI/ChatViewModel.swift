@@ -807,6 +807,23 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
+    // There's no dedicated "regenerate" wire message the backend understands - the safe option
+    // that needs no backend change is re-sending the user message that led to this bot reply as
+    // an ordinary new message, the same as if the user had retyped it, prompting a fresh response.
+    public func regenerateMessage(messageId: String) {
+        guard let botIndex = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        guard let userMessage = uiState.messages[..<botIndex].last(where: { $0.fromUser }) else { return }
+        let text = userMessage.text
+        hasStartedConversation = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.switchToActiveRoomIfResumable()
+            let chatMsgId = self.repository.sendFreeText(text)
+            self.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            self.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
+    }
+
     private func switchToActiveRoomIfResumable() async {
         guard let active = activeConversationId, active != connectedConversationId else { return }
         guard let targetRoomId = conversations.first(where: { $0.id == active })?.roomId else { return }

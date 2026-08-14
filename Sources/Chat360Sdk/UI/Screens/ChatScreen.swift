@@ -314,6 +314,7 @@ private struct BotMessageItem: View {
         actions.onTextCarouselTap = { text, index, targetId in viewModel.selectTextCarouselReply(messageId: message.id, text: text, clickedIndex: index, targetId: targetId) }
         actions.onWelcomeCardSelected = { card, index in viewModel.selectWelcomeCard(messageId: message.id, card: card, index: index) }
         actions.onIframeAdvance = { targetId in viewModel.advanceFromIframe(targetId: targetId) }
+        actions.onRegenerateClicked = { viewModel.regenerateMessage(messageId: message.id) }
 
         return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent)
     }

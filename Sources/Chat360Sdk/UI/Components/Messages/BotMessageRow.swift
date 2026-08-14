@@ -62,7 +62,10 @@ public struct BotMessageRow: View {
                     Chat360Icon.refresh.image
                         .foregroundColor(colors.textSecondary)
                         .frame(width: 20, height: 20)
-                        .onTapGesture { config.callbacks.onRegenerateClicked(message.id) }
+                        .onTapGesture {
+                            config.callbacks.onRegenerateClicked(message.id)
+                            actions.onRegenerateClicked()
+                        }
                 }
                 if config.features.showFeedback && config.features.showLike {
                     Chat360Icon.thumbUp.image
