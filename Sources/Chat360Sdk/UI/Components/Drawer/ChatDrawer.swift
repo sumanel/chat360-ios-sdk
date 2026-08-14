@@ -1,6 +1,26 @@
 import SwiftUI
 
 @available(iOS 15.0, *)
+private func historyGroupLabel(for updatedAtMs: Int64) -> String {
+    let date = Date(timeIntervalSince1970: Double(updatedAtMs) / 1000)
+    let calendar = Calendar.current
+    if calendar.isDateInToday(date) { return "Today" }
+    if calendar.isDateInYesterday(date) { return "Yesterday" }
+    let daysAgo = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: Date())).day ?? 0
+    return daysAgo <= 7 ? "Last 7 Days" : "Older"
+}
+
+@available(iOS 15.0, *)
+private func groupedConversations(_ conversations: [CachedConversationEntity]) -> [(label: String, items: [CachedConversationEntity])] {
+    let order = ["Today", "Yesterday", "Last 7 Days", "Older"]
+    let grouped = Dictionary(grouping: conversations, by: { historyGroupLabel(for: $0.updatedAt) })
+    return order.compactMap { label in
+        guard let items = grouped[label], !items.isEmpty else { return nil }
+        return (label, items)
+    }
+}
+
+@available(iOS 15.0, *)
 public struct ChatDrawer: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
@@ -96,14 +116,20 @@ public struct ChatDrawer: View {
                         .font(typography.textFamily.font(size: 14))
                         .foregroundColor(colors.textSecondary)
                 } else {
-                    HistoryGroup(
-                        title: "Conversations",
-                        items: conversations,
-                        activeConversationId: activeConversationId,
-                        onConversationSelected: onConversationSelected,
-                        onConversationRenamed: onConversationRenamed,
-                        onConversationDeleted: onConversationDeleted
-                    )
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(groupedConversations(conversations), id: \.label) { group in
+                                HistoryGroup(
+                                    title: group.label,
+                                    items: group.items,
+                                    activeConversationId: activeConversationId,
+                                    onConversationSelected: onConversationSelected,
+                                    onConversationRenamed: onConversationRenamed,
+                                    onConversationDeleted: onConversationDeleted
+                                )
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 18)
@@ -190,23 +216,23 @@ private struct HistoryGroup: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(typography.textFamily.font(size: 13, weight: .semibold))
+            Text(title.uppercased())
+                .font(typography.textFamily.font(size: 11, weight: .semibold))
+                .tracking(0.4)
                 .foregroundColor(colors.textSecondary)
             Spacer().frame(height: 12)
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(items, id: \.id) { conversation in
-                        ConversationItem(
-                            conversation: conversation,
-                            isActive: conversation.id == activeConversationId,
-                            onSelected: { onConversationSelected(conversation.id) },
-                            onRenamed: { onConversationRenamed(conversation.id, $0) },
-                            onDeleted: { onConversationDeleted(conversation.id) }
-                        )
-                    }
+            LazyVStack(spacing: 0) {
+                ForEach(items, id: \.id) { conversation in
+                    ConversationItem(
+                        conversation: conversation,
+                        isActive: conversation.id == activeConversationId,
+                        onSelected: { onConversationSelected(conversation.id) },
+                        onRenamed: { onConversationRenamed(conversation.id, $0) },
+                        onDeleted: { onConversationDeleted(conversation.id) }
+                    )
                 }
             }
+            Spacer().frame(height: 6)
         }
     }
 }
@@ -246,7 +272,7 @@ private struct ConversationItem: View {
         HStack(alignment: .top, spacing: 14) {
             Button(action: onSelected) {
                 HStack(alignment: .top, spacing: 14) {
-                    Chat360Icon.history.image.foregroundColor(isActive ? colors.accent : colors.textSecondary)
+                    Chat360Icon.chat.image.foregroundColor(isActive ? colors.accent : colors.textSecondary)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(displayTitle)
                             .font(typography.textFamily.font(size: 16, weight: .semibold))
@@ -267,6 +293,7 @@ private struct ConversationItem: View {
             } label: {
                 Chat360Icon.more.image.foregroundColor(colors.textSecondary)
             }
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
         }
         .padding(.horizontal, 10)

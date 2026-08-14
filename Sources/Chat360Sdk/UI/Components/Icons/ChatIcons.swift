@@ -14,6 +14,7 @@ public enum Chat360Icon: String {
     case star = "star.fill"
     case chevronRight = "chevron.right"
     case history = "clock.arrow.circlepath"
+    case chat = "bubble.left"
     case more = "ellipsis"
     case person = "person.fill"
     case training = "graduationcap.fill"
