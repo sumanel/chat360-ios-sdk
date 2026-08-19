@@ -17,19 +17,22 @@ public struct Chat360Branding: Equatable {
     public var welcomeHeading: String
     public var disclaimerText: String
     public var inputPlaceholder: String
+    public var welcomeLogoSize: CGFloat?
 
     public init(
         botTitle: String,
         logo: Chat360Logo?,
         welcomeHeading: String? = nil,
         disclaimerText: String? = nil,
-        inputPlaceholder: String = "Type a message…"
+        inputPlaceholder: String = "Type a message…",
+        welcomeLogoSize: CGFloat? = nil
     ) {
         self.botTitle = botTitle
         self.logo = logo
         self.welcomeHeading = welcomeHeading ?? botTitle
         self.disclaimerText = disclaimerText ?? "\(botTitle) can make mistakes. Verify important information."
         self.inputPlaceholder = inputPlaceholder
+        self.welcomeLogoSize = welcomeLogoSize
     }
 }
 

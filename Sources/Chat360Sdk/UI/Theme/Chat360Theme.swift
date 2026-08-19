@@ -129,6 +129,7 @@ public struct Chat360Theme<Content: View>: View {
         resolvedBranding.welcomeHeading = config.branding.welcomeTitle ?? bundle.branding.welcomeHeading
         resolvedBranding.disclaimerText = config.branding.welcomeSubtitle ?? bundle.branding.disclaimerText
         resolvedBranding.inputPlaceholder = config.branding.inputPlaceholder ?? bundle.branding.inputPlaceholder
+        resolvedBranding.welcomeLogoSize = config.branding.welcomeLogoSize ?? bundle.branding.welcomeLogoSize
 
         let resolvedTypography = config.branding.fontFamily.map { Chat360Typography(headFamily: $0, textFamily: $0) } ?? bundle.typography
 

@@ -15,9 +15,9 @@ public struct WelcomeSplash: View {
                 VStack(spacing: 0) {
                     if branding.logo != nil {
                         BrandLogo()
-                            .frame(width: proxy.size.width * 0.5)
+                            .frame(width: branding.welcomeLogoSize ?? proxy.size.width * 0.5)
                     } else {
-                        LogoBadge(size: 84, cornerRadius: 20)
+                        LogoBadge(size: branding.welcomeLogoSize ?? 84, cornerRadius: 20)
                     }
                     Spacer().frame(height: 24)
                     Text(branding.welcomeHeading)

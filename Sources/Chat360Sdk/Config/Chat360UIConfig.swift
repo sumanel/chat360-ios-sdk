@@ -31,11 +31,12 @@ public struct Chat360BrandingConfig {
     public var inputPlaceholder: String?
     public var headerTitle: String?
     public var companyName: String?
+    public var welcomeLogoSize: CGFloat?
 
     public init(
         logo: Chat360Logo? = nil, botName: String? = nil, welcomeTitle: String? = nil, welcomeSubtitle: String? = nil,
         primaryColor: Color? = nil, secondaryColor: Color? = nil, avatar: Chat360Logo? = nil, fontFamily: Chat360FontFamily? = nil,
-        inputPlaceholder: String? = nil, headerTitle: String? = nil, companyName: String? = nil
+        inputPlaceholder: String? = nil, headerTitle: String? = nil, companyName: String? = nil, welcomeLogoSize: CGFloat? = nil
     ) {
         self.logo = logo
         self.botName = botName
@@ -48,6 +49,7 @@ public struct Chat360BrandingConfig {
         self.inputPlaceholder = inputPlaceholder
         self.headerTitle = headerTitle
         self.companyName = companyName
+        self.welcomeLogoSize = welcomeLogoSize
     }
 }
 
