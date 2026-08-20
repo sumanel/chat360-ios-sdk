@@ -10,28 +10,13 @@ struct Chat360BotScreen: View {
 
     var body: some View {
         NavigationView {
-            VStack {
-                if #available(iOS 16.0, *) {
-                    ScrollView {
-                        Chat360BotView(botConfig: botConfig)
-                            .frame(height: UIScreen.main.bounds.size.height - 100)
-                    }
-                    .scrollDisabled(true)
-                } else {
-                    // Fallback on earlier versions
-                    ScrollView {
-                        Chat360BotView(botConfig: botConfig)
-                            .frame(height: UIScreen.main.bounds.size.height - 100)
-                    }
-                    .disabled(true)
-                }
-            }
-            .navigationBarItems(leading: Button(action: {
-                try? Chat360Bot.shared.closeChatBot();
-            }) {
-                Image(systemName: "arrow.left")
-                    .foregroundColor(.black) 
-            })
+            Chat360BotView(botConfig: botConfig)
+                .navigationBarItems(leading: Button(action: {
+                    try? Chat360Bot.shared.closeChatBot();
+                }) {
+                    Image(systemName: "arrow.left")
+                        .foregroundColor(.black)
+                })
         }
     }
 
