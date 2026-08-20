@@ -14,7 +14,6 @@ public final class ChatViewModel: ObservableObject {
     @Published public private(set) var shortcuts: [String: String] = [:]
     @Published public private(set) var languages: [SessionLanguage] = []
 
-    private var hasStartedConversation = false
     private var activeConversationId: String?
     private var connectedConversationId: String?
     private var connectedRoomId: String?
@@ -125,7 +124,11 @@ public final class ChatViewModel: ObservableObject {
         switch event {
         case .botMessage(let node):
             update { $0.isAgentTyping = false }
-            if suppressInitialBotMessages && !hasStartedConversation && !restoringFromCache { return }
+            // Hides the bot's opening/greeting node permanently, not just before the first live
+            // send - it's always present in the underlying flow (and gets replayed from cache
+            // when reopening a past conversation), so the only reliable signal that it's the
+            // suppressible opener rather than a real reply is that no user message exists yet.
+            if suppressInitialBotMessages && !uiState.messages.contains(where: { $0.fromUser }) { return }
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
             update {
@@ -427,7 +430,6 @@ public final class ChatViewModel: ObservableObject {
         }
         if !uiState.isConnected { repository.reconnectNow() }
         streamRawText.removeAll()
-        hasStartedConversation = false
         update {
             $0.messages = []
             $0.isAgentTyping = false
@@ -598,7 +600,6 @@ public final class ChatViewModel: ObservableObject {
         pendingRawEnvelopes.removeAll()
         setActiveConversationId(conversationId)
         streamRawText.removeAll()
-        hasStartedConversation = false
         update {
             $0.messages = []
             $0.inputText = ""
@@ -796,7 +797,6 @@ public final class ChatViewModel: ObservableObject {
     public func sendMessage() {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty && !uiState.isLiveChat { return }
-        hasStartedConversation = true
         update { $0.inputText = "" }
         Task { [weak self] in
             guard let self else { return }
@@ -814,7 +814,6 @@ public final class ChatViewModel: ObservableObject {
         guard let botIndex = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
         guard let userMessage = uiState.messages[..<botIndex].last(where: { $0.fromUser }) else { return }
         let text = userMessage.text
-        hasStartedConversation = true
         Task { [weak self] in
             guard let self else { return }
             await self.switchToActiveRoomIfResumable()
