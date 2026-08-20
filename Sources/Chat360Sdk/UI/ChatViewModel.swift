@@ -142,14 +142,6 @@ public final class ChatViewModel: ObservableObject {
                 appendOrMergeStreamChunk(node)
                 return
             }
-            // Guards against the bot's opening node being re-delivered when a room reconnects
-            // (e.g. reopening a conversation that already ends with this exact message in its
-            // cached history) - the socket/backend can resend it as if starting fresh, and
-            // without this it renders as a visible duplicate with no dedup elsewhere in the path.
-            if let lastMessage = uiState.messages.last, !lastMessage.fromUser, lastMessage.streamId == nil,
-               lastMessage.text == (node.text ?? ""), lastMessage.content == node.content {
-                return
-            }
             var formState: FormState? = nil
             if case .form = node.content { formState = FormState() }
             var promptState: PromptState? = nil
