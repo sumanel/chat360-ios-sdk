@@ -71,7 +71,6 @@ public struct ChatInputBar: View {
                     TextField("", text: $value)
                         .font(typography.textFamily.font(size: 15))
                         .foregroundColor(colors.textPrimary)
-                        .disabled(!enabled)
                         .accentColor(colors.accent)
                         .focused(isFocused)
                 }
@@ -98,8 +97,13 @@ public struct ChatInputBar: View {
 
             if showSend {
                 Button(action: onSend) {
-                    Chat360Icon.arrowUp.image
-                        .foregroundColor(colors.accentContrast)
+                    if !enabled {
+                        ProgressView()
+                            .tint(colors.accentContrast)
+                    } else {
+                        Chat360Icon.arrowUp.image
+                            .foregroundColor(colors.accentContrast)
+                    }
                 }
                 .frame(width: 46, height: 46)
                 .background((!enabled || !sendEnabled || value.isBlank) ? colors.textDisabled : colors.accent)
