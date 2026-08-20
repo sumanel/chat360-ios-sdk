@@ -49,8 +49,13 @@ public final class ChatViewModel: ObservableObject {
         if let chatHistoryRepository {
             Task { [weak self] in
                 guard let self else { return }
+                // Don't assign the fetched list to `conversations` directly - `refreshRooms()`
+                // already reconciles it into the local cache (see `syncAgentRooms`), which
+                // `conversationsObservationTask` picks up via its live subscription. Writing it
+                // here too raced that subscription: this one-shot assignment could land after
+                // the stream's already-correct snapshot and stomp it with a narrower one, then
+                // never get corrected until some unrelated local write re-fired the stream.
                 let refreshed = await chatHistoryRepository.refreshRooms()
-                if let refreshed { self.conversations = refreshed }
                 self.update { $0.isHistoryUnavailable = refreshed == nil }
             }
         }
