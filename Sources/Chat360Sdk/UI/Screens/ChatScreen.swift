@@ -20,6 +20,7 @@ public struct ChatScreen: View {
     @State private var isTrainingMode = false
     @State private var showAttachmentPicker = false
     @State private var showCameraCapture = false
+    @State private var hasNotifiedChatReady = false
     @FocusState private var isInputFocused: Bool
 
     public init(viewModel: ChatViewModel) {
@@ -256,6 +257,11 @@ public struct ChatScreen: View {
         }
         .onDisappear {
             viewModel.onCleared()
+        }
+        .onChange(of: viewModel.uiState.isConnected) { connected in
+            guard connected, !hasNotifiedChatReady else { return }
+            hasNotifiedChatReady = true
+            Chat360Bot.shared.onChatReady?()
         }
         .onChange(of: speechToText.transcript) { transcript in
             if speechToText.isListening { viewModel.onInputChange(transcript) }

@@ -11,6 +11,12 @@ public class Chat360Bot: NSObject {
     @objc public var botController: ChatController?
     @objc var onBackClick: (() -> Void)?
 
+    // Fires once the chat session's socket is actually connected (native screen only, since the
+    // legacy WebView screen has no equivalent connection state) - not on presentation, so a host
+    // app can show its own loader over `ChatController` until the chat is genuinely usable rather
+    // than just visible. Never fires twice for a given screen instance, even across reconnects.
+    @objc public var onChatReady: (() -> Void)?
+
     @objc public var handleWindowEvents: (([String: String]) -> [String: String])?
     @objc public var onLocationNeeded: ((String, @escaping (String, String) -> Void) -> Void)? {
         didSet {
