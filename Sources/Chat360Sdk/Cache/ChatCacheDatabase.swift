@@ -82,6 +82,14 @@ public final class ChatCacheDao {
             )
             """)
             exec("CREATE INDEX IF NOT EXISTS index_chat_pending_feedback_conversationId ON chat_pending_feedback(conversationId)")
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_message_reactions (
+                conversationId TEXT NOT NULL,
+                timestampMs INTEGER NOT NULL,
+                liked INTEGER NOT NULL,
+                PRIMARY KEY (conversationId, timestampMs)
+            )
+            """)
         }
     }
 
@@ -350,6 +358,32 @@ public final class ChatCacheDao {
         }
     }
 
+    public func setMessageReaction(conversationId: String, timestampMs: Int64, liked: Bool) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR REPLACE INTO chat_message_reactions (conversationId, timestampMs, liked) VALUES (?, ?, ?)",
+                    params: [conversationId, timestampMs, liked ? 1 : 0]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func messageReactions(conversationId: String) async -> [Int64: Bool] {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query("SELECT timestampMs, liked FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
+                var result: [Int64: Bool] = [:]
+                for row in rows {
+                    guard let timestampMs = row["timestampMs"] as? Int64, let liked = row["liked"] as? Int64 else { continue }
+                    result[timestampMs] = liked != 0
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -392,6 +426,7 @@ public final class ChatCacheDao {
                 self.exec("DELETE FROM chat_conversations WHERE id = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_messages WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_pending_feedback WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

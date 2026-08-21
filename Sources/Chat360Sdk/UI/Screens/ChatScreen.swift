@@ -325,8 +325,10 @@ private struct BotMessageItem: View {
         actions.onWelcomeCardSelected = { card, index in viewModel.selectWelcomeCard(messageId: message.id, card: card, index: index) }
         actions.onIframeAdvance = { targetId in viewModel.advanceFromIframe(targetId: targetId) }
         actions.onRegenerateClicked = { viewModel.regenerateMessage(messageId: message.id) }
-        actions.onDislikeClicked = { viewModel.dislikeMessage(messageId: message.id) }
+        actions.onLikeClicked = { viewModel.likeMessage(timestampMs: message.timestampMs) }
+        actions.onDislikeClicked = { viewModel.dislikeMessage(messageId: message.id, timestampMs: message.timestampMs) }
 
-        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent)
+        let initialReaction = message.timestampMs.flatMap { viewModel.uiState.messageReactions[$0] }
+        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent, initialReaction: initialReaction)
     }
 }

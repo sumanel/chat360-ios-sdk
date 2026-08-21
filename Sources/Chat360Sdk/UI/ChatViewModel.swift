@@ -122,7 +122,10 @@ public final class ChatViewModel: ObservableObject {
     private func setActiveConversationId(_ id: String?) {
         activeConversationId = id
         update { $0.activeConversationId = id }
-        Task { [weak self] in await self?.refreshPendingFeedback(conversationId: id) }
+        Task { [weak self] in
+            await self?.refreshPendingFeedback(conversationId: id)
+            await self?.refreshMessageReactions(conversationId: id)
+        }
     }
 
     // Dislike must durably block the chat with a mandatory feedback prompt - including across
@@ -140,8 +143,36 @@ public final class ChatViewModel: ObservableObject {
         update { $0.pendingFeedbackMessageId = pending.first }
     }
 
-    public func dislikeMessage(messageId: String) {
+    // Keyed on `timestampMs`, not `ChatMessage.id` - the id is a fresh random UUID minted every
+    // time a message is constructed, including on replay, so it can't identify "the same
+    // message" across an app restart. The server timestamp is the only thing that round-trips
+    // identically through both live delivery and replay.
+    private func refreshMessageReactions(conversationId: String?) async {
+        guard let conversationId else {
+            update { $0.messageReactions = [:] }
+            return
+        }
+        let reactions = await cache.messageReactions(conversationId: conversationId)
+        guard activeConversationId == conversationId else { return }
+        update { $0.messageReactions = reactions }
+    }
+
+    private func setReaction(timestampMs: Int64?, liked: Bool) {
+        guard let timestampMs, let conversationId = activeConversationId else { return }
+        update { $0.messageReactions[timestampMs] = liked }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.setMessageReaction(conversationId: conversationId, timestampMs: timestampMs, liked: liked)
+        }
+    }
+
+    public func likeMessage(timestampMs: Int64?) {
+        setReaction(timestampMs: timestampMs, liked: true)
+    }
+
+    public func dislikeMessage(messageId: String, timestampMs: Int64?) {
         guard let conversationId = activeConversationId else { return }
+        setReaction(timestampMs: timestampMs, liked: false)
         Task { [weak self] in
             guard let self else { return }
             await self.cache.markFeedbackPending(messageId: messageId, conversationId: conversationId)
@@ -198,7 +229,8 @@ public final class ChatViewModel: ObservableObject {
                 content: node.content,
                 formState: formState,
                 promptState: promptState,
-                author: node.author
+                author: node.author,
+                timestampMs: node.timestampMs
             ), cacheUserMessage: false)
         case .typingStatus(let isTyping):
             update { $0.isAgentTyping = isTyping }
@@ -235,7 +267,7 @@ public final class ChatViewModel: ObservableObject {
                     updated.repliesEnabled = false
                     return updated
                 }
-                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId))
+                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId, timestampMs: node.timestampMs))
             }
         }
     }

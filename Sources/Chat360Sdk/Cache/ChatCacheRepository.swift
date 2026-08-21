@@ -137,6 +137,16 @@ public final class ChatCacheRepository {
         await dao.deletePendingFeedback(messageId: messageId)
     }
 
+    public func setMessageReaction(conversationId: String, timestampMs: Int64, liked: Bool) async {
+        guard Self.enabled else { return }
+        await dao.setMessageReaction(conversationId: conversationId, timestampMs: timestampMs, liked: liked)
+    }
+
+    public func messageReactions(conversationId: String) async -> [Int64: Bool] {
+        guard Self.enabled else { return [:] }
+        return await dao.messageReactions(conversationId: conversationId)
+    }
+
     private func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }

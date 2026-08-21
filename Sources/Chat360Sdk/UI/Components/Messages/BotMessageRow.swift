@@ -14,11 +14,12 @@ public struct BotMessageRow: View {
     @State private var feedback: Bool?
     @State private var justCopied = false
 
-    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil) {
+    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil, initialReaction: Bool? = nil) {
         self.message = message
         self.actions = actions
         self.isLiveChat = isLiveChat
         self.assignedAgent = assignedAgent
+        self._feedback = State(initialValue: initialReaction)
     }
 
     private var agent: AssignedAgent? {
@@ -74,7 +75,11 @@ public struct BotMessageRow: View {
                         .padding(6)
                         .background(feedback == true ? colors.accent : Color.clear)
                         .clipShape(Circle())
-                        .onTapGesture { feedback = (feedback == true) ? nil : true }
+                        .onTapGesture {
+                            guard feedback != true else { return }
+                            feedback = true
+                            actions.onLikeClicked()
+                        }
                 }
                 if config.features.showFeedback && config.features.showDislike {
                     Chat360Icon.thumbDown.image
