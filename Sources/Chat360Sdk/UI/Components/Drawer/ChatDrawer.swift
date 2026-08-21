@@ -291,10 +291,11 @@ private struct ConversationItem: View {
                 Button("Rename") { title = displayTitle; showRenameDialog = true }
                 Button("Delete", role: .destructive) { showDeleteDialog = true }
             } label: {
-                Chat360Icon.more.image.foregroundColor(colors.textSecondary)
+                Chat360Icon.more.image
+                    .foregroundColor(colors.textSecondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
