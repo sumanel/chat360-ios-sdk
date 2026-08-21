@@ -8,6 +8,12 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - Fully themeable: colors (light/dark), typography, and branding (logo, copy) via `Chat360Config`.
 - Feature flags to show/hide individual pieces of chrome (menu, history drawer, new chat, feedback, regenerate, voice input, close button, etc.) via `Chat360UIConfig`.
 - Conversation history with local caching, resume-on-relaunch, and room switching.
+- Like/dislike on bot messages, persisted locally across app restarts. Disliking opens a
+  mandatory feedback box (min 20 characters) that blocks the chat until submitted or
+  cancelled — cancelling undoes the dislike rather than letting feedback be skipped. Once a
+  reaction is set on a message it's permanent.
+- `onChatSessionReady` callback so the host app can show its own loading state between
+  presenting the chat screen and the connection actually being live.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
 - Supports sending metadata to enhance chatbot functionality.
 - Back button / close handling with custom callbacks.
@@ -129,7 +135,8 @@ config.customBranding = Chat360Branding(
     logo: .resource(light: "MyLogoLight", dark: "MyLogoDark"), // asset-catalog names, or .remote(url:)
     welcomeHeading: "Hi, how can I help?",
     disclaimerText: "My Assistant can make mistakes. Verify important information.",
-    inputPlaceholder: "Ask me anything…"
+    inputPlaceholder: "Ask me anything…",
+    welcomeLogoSize: 120 // optional — point size of the logo on the pre-chat welcome splash
 )
 ```
 
@@ -146,7 +153,7 @@ config.uiConfig = Chat360UIConfig(
         showMenu: true,              // hamburger menu / drawer entry point
         showHistorySidebar: true,    // conversation history drawer
         showNewChat: true,           // "+" new chat button
-        showFeedback: true,          // like/dislike on bot messages
+        showFeedback: true,          // like/dislike on bot messages — dislike opens a mandatory feedback box, see Feedback section below
         showCopyMessage: true,       // copy icon on bot messages
         showRegenerate: true,        // regenerate icon on bot messages
         showVoiceInput: true,        // mic / voice note button
@@ -160,6 +167,25 @@ config.uiConfig = Chat360UIConfig(
 `showClose` defaults to `true`. The native chat screen presents full-screen with no swipe-to-dismiss gesture, so if you turn this off, make sure your host app provides another way to close the screen (e.g. from your own navigation chrome) — otherwise users have no way out.
 
 `Chat360UIConfig` also exposes `ui` (slots for injecting your own header/footer/message-toolbar/welcome-screen views) and `callbacks` (hooks like `onMenuClicked`, `onNewChatClicked`, `onRegenerateClicked`, `onFeedback`) if you need deeper customization or analytics.
+
+### Feedback (like/dislike)
+
+Tapping like or dislike on a bot message is permanent — once either is set for a message, the other button no longer does anything for it. Both persist locally and survive app restarts.
+
+Disliking opens a feedback box requiring at least 20 characters before it can be submitted, and it blocks the rest of the chat until it's resolved — there's no way to close it and move on without either submitting or explicitly cancelling. Cancelling (the X in the top-right) undoes the dislike itself rather than letting the user skip giving feedback, so a dislike can't end up silently unaccounted for.
+
+### Showing your own loading state
+
+`startChatbot` presents the screen immediately, but the chat isn't actually usable until the socket connects. `onChatSessionReady` fires once that happens, so you can show a loader in the gap:
+
+```swift
+Chat360Bot.shared.onChatSessionReady = {
+    // hide your loader
+}
+try? Chat360Bot.shared.startChatbot(animated: true)
+```
+
+Set it before calling `startChatbot`. It only fires for the native screen (`useNewUI: true`) — the legacy WebView screen has no equivalent connection state to key off of.
 
 ### Advanced Features
 
