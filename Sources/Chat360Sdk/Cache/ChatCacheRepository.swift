@@ -61,24 +61,27 @@ public final class ChatCacheRepository {
         await dao.replaceAgentRoomConversations(botId: botId, conversations: conversations)
     }
 
-    public func thirdPartyRoomConversations(botId: String, rooms: [RoomDto]) -> [CachedConversationEntity] {
+    public func thirdPartyRoomConversations(botId: String, rooms: [RoomDto]) async -> [CachedConversationEntity] {
+        guard Self.enabled else { return [] }
         let fetchedAt = nowMs()
-        return rooms.enumerated().compactMap { index, room -> CachedConversationEntity? in
-            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { return nil }
-            // A room the server created but the user never actually sent anything in has no
-            // sessions yet - it has no title either, so it'd otherwise show up as a blank
-            // "Conversation" entry in history despite nothing having happened in it.
-            if room.sessionCount <= 0 { return nil }
+        var result: [CachedConversationEntity] = []
+        for (index, room) in rooms.enumerated() {
+            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { continue }
+            // Don't trust `session_count` here - it can already read 1 from the bot's own
+            // opening message, sent before the user ever replies. Only a real local record of
+            // the user actually sending something should keep a room in history.
+            guard await dao.hasUserMessage(botId: botId, roomId: room.roomId) else { continue }
             let title = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
-            return CachedConversationEntity(
+            result.append(CachedConversationEntity(
                 id: "agent-room:\(room.roomId)",
                 botId: botId,
                 roomId: room.roomId,
                 title: title.isEmpty ? "Conversation" : title,
                 createdAt: fetchedAt - Int64(index),
                 updatedAt: fetchedAt - Int64(index)
-            )
+            ))
         }
+        return result
     }
 
     public func replaceRawHistory(conversationId: String, history: [RawSocketEnvelope]) async {

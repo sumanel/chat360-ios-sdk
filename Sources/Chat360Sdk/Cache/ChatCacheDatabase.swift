@@ -208,6 +208,29 @@ public final class ChatCacheDao {
         }
     }
 
+    // A server room's `session_count` isn't a reliable "the user actually said something"
+    // signal - it can already read 1 from the bot's own opening message, which is sent (and
+    // cached) before any user reply. Local `chat_messages` rows of kind "USER" are only ever
+    // written from a genuine user send (see `cacheUserMessage`), so that's the real signal.
+    // Joined on roomId, not conversationId, since a room reconciled via `activateForRoom` keeps
+    // its original local conversation id rather than the synced "agent-room:<roomId>" one.
+    public func hasUserMessage(botId: String, roomId: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query(
+                    """
+                    SELECT 1 FROM chat_messages m
+                    JOIN chat_conversations c ON m.conversationId = c.id
+                    WHERE c.botId = ? AND c.roomId = ? AND m.kind = 'USER'
+                    LIMIT 1
+                    """,
+                    params: [botId, roomId]
+                )
+                continuation.resume(returning: !rows.isEmpty)
+            }
+        }
+    }
+
     private func agentRoomConversationIds(botId: String) -> [String] {
         query("SELECT id FROM chat_conversations WHERE botId = ? AND id LIKE 'agent-room:%'", params: [botId])
             .compactMap { $0["id"] as? String }
