@@ -5,7 +5,7 @@ public struct DislikeFeedbackDialog: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
 
-    private static let minWordCount = 20
+    private static let minCharCount = 20
 
     private let onSubmit: (String) -> Void
 
@@ -15,11 +15,11 @@ public struct DislikeFeedbackDialog: View {
         self.onSubmit = onSubmit
     }
 
-    private var wordCount: Int {
-        text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+    private var charCount: Int {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).count
     }
 
-    private var canSubmit: Bool { wordCount >= Self.minWordCount }
+    private var canSubmit: Bool { charCount >= Self.minCharCount }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,8 +39,9 @@ public struct DislikeFeedbackDialog: View {
                 .padding(8)
                 .background(colors.inputBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(colors.inputBorder, lineWidth: 1))
             Spacer().frame(height: 6)
-            Text("\(min(wordCount, Self.minWordCount))/\(Self.minWordCount) words minimum")
+            Text("\(min(charCount, Self.minCharCount))/\(Self.minCharCount) characters minimum")
                 .font(typography.textFamily.font(size: 12))
                 .foregroundColor(canSubmit ? colors.textSecondary : activeRed)
             Spacer().frame(height: 16)
