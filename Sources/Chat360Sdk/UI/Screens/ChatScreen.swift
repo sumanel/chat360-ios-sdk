@@ -261,7 +261,7 @@ public struct ChatScreen: View {
         .onChange(of: viewModel.uiState.isConnected) { connected in
             guard connected, !hasNotifiedChatReady else { return }
             hasNotifiedChatReady = true
-            Chat360Bot.shared.onChatReady?()
+            Chat360Bot.shared.onChatSessionReady?()
         }
         .onChange(of: speechToText.transcript) { transcript in
             if speechToText.isListening { viewModel.onInputChange(transcript) }
