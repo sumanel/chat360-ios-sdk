@@ -37,6 +37,16 @@ public struct CachedMessageEntity: Equatable {
     }
 }
 
+public struct PendingFeedbackEntity: Equatable {
+    public var messageId: String
+    public var timestampMs: Int64?
+
+    public init(messageId: String, timestampMs: Int64?) {
+        self.messageId = messageId
+        self.timestampMs = timestampMs
+    }
+}
+
 @available(iOS 13.0, *)
 public final class ChatCacheDao {
     private let db: OpaquePointer
@@ -73,6 +83,27 @@ public final class ChatCacheDao {
             )
             """)
             exec("CREATE INDEX IF NOT EXISTS index_chat_messages_conversationId ON chat_messages(conversationId)")
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_pending_feedback (
+                messageId TEXT PRIMARY KEY NOT NULL,
+                conversationId TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                timestampMs INTEGER,
+                FOREIGN KEY(conversationId) REFERENCES chat_conversations(id) ON DELETE CASCADE
+            )
+            """)
+            // Best-effort migration for installs that created this table before timestampMs
+            // existed - fails harmlessly (ignored return value) if the column is already there.
+            exec("ALTER TABLE chat_pending_feedback ADD COLUMN timestampMs INTEGER")
+            exec("CREATE INDEX IF NOT EXISTS index_chat_pending_feedback_conversationId ON chat_pending_feedback(conversationId)")
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_message_reactions (
+                conversationId TEXT NOT NULL,
+                timestampMs INTEGER NOT NULL,
+                liked INTEGER NOT NULL,
+                PRIMARY KEY (conversationId, timestampMs)
+            )
+            """)
         }
     }
 
@@ -187,6 +218,29 @@ public final class ChatCacheDao {
             queue.async {
                 let rows = self.query("SELECT * FROM chat_messages WHERE conversationId = ? ORDER BY id ASC", params: [conversationId])
                 continuation.resume(returning: rows.map { self.message(from: $0) })
+            }
+        }
+    }
+
+    // A server room's `session_count` isn't a reliable "the user actually said something"
+    // signal - it can already read 1 from the bot's own opening message, which is sent (and
+    // cached) before any user reply. Local `chat_messages` rows of kind "USER" are only ever
+    // written from a genuine user send (see `cacheUserMessage`), so that's the real signal.
+    // Joined on roomId, not conversationId, since a room reconciled via `activateForRoom` keeps
+    // its original local conversation id rather than the synced "agent-room:<roomId>" one.
+    public func hasUserMessage(botId: String, roomId: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query(
+                    """
+                    SELECT 1 FROM chat_messages m
+                    JOIN chat_conversations c ON m.conversationId = c.id
+                    WHERE c.botId = ? AND c.roomId = ? AND m.kind = 'USER'
+                    LIMIT 1
+                    """,
+                    params: [botId, roomId]
+                )
+                continuation.resume(returning: !rows.isEmpty)
             }
         }
     }
@@ -308,6 +362,80 @@ public final class ChatCacheDao {
         }
     }
 
+    public func insertPendingFeedbackIfMissing(messageId: String, conversationId: String, timestampMs: Int64?, createdAt: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR IGNORE INTO chat_pending_feedback (messageId, conversationId, createdAt, timestampMs) VALUES (?, ?, ?, ?)",
+                    params: [messageId, conversationId, createdAt, timestampMs]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func pendingFeedbackEntries(conversationId: String) async -> [PendingFeedbackEntity] {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query(
+                    "SELECT messageId, timestampMs FROM chat_pending_feedback WHERE conversationId = ? ORDER BY createdAt ASC",
+                    params: [conversationId]
+                )
+                continuation.resume(returning: rows.compactMap { row in
+                    guard let messageId = row["messageId"] as? String else { return nil }
+                    return PendingFeedbackEntity(messageId: messageId, timestampMs: row["timestampMs"] as? Int64)
+                })
+            }
+        }
+    }
+
+    public func deletePendingFeedback(messageId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec("DELETE FROM chat_pending_feedback WHERE messageId = ?", params: [messageId])
+                continuation.resume()
+            }
+        }
+    }
+
+    public func setMessageReaction(conversationId: String, timestampMs: Int64, liked: Bool) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR REPLACE INTO chat_message_reactions (conversationId, timestampMs, liked) VALUES (?, ?, ?)",
+                    params: [conversationId, timestampMs, liked ? 1 : 0]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func deleteMessageReaction(conversationId: String, timestampMs: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "DELETE FROM chat_message_reactions WHERE conversationId = ? AND timestampMs = ?",
+                    params: [conversationId, timestampMs]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func messageReactions(conversationId: String) async -> [Int64: Bool] {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query("SELECT timestampMs, liked FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
+                var result: [Int64: Bool] = [:]
+                for row in rows {
+                    guard let timestampMs = row["timestampMs"] as? Int64, let liked = row["liked"] as? Int64 else { continue }
+                    result[timestampMs] = liked != 0
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -349,6 +477,8 @@ public final class ChatCacheDao {
             queue.async {
                 self.exec("DELETE FROM chat_conversations WHERE id = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_messages WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_pending_feedback WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

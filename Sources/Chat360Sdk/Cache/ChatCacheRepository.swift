@@ -61,20 +61,27 @@ public final class ChatCacheRepository {
         await dao.replaceAgentRoomConversations(botId: botId, conversations: conversations)
     }
 
-    public func thirdPartyRoomConversations(botId: String, rooms: [RoomDto]) -> [CachedConversationEntity] {
+    public func thirdPartyRoomConversations(botId: String, rooms: [RoomDto]) async -> [CachedConversationEntity] {
+        guard Self.enabled else { return [] }
         let fetchedAt = nowMs()
-        return rooms.enumerated().compactMap { index, room -> CachedConversationEntity? in
-            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { return nil }
+        var result: [CachedConversationEntity] = []
+        for (index, room) in rooms.enumerated() {
+            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { continue }
+            // Don't trust `session_count` here - it can already read 1 from the bot's own
+            // opening message, sent before the user ever replies. Only a real local record of
+            // the user actually sending something should keep a room in history.
+            guard await dao.hasUserMessage(botId: botId, roomId: room.roomId) else { continue }
             let title = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
-            return CachedConversationEntity(
+            result.append(CachedConversationEntity(
                 id: "agent-room:\(room.roomId)",
                 botId: botId,
                 roomId: room.roomId,
                 title: title.isEmpty ? "Conversation" : title,
                 createdAt: fetchedAt - Int64(index),
                 updatedAt: fetchedAt - Int64(index)
-            )
+            ))
         }
+        return result
     }
 
     public func replaceRawHistory(conversationId: String, history: [RawSocketEnvelope]) async {
@@ -116,6 +123,36 @@ public final class ChatCacheRepository {
         } else {
             await dao.touch(conversationId: conversationId, updatedAt: now, botId: botId)
         }
+    }
+
+    public func markFeedbackPending(messageId: String, conversationId: String, timestampMs: Int64?) async {
+        guard Self.enabled else { return }
+        await dao.insertPendingFeedbackIfMissing(messageId: messageId, conversationId: conversationId, timestampMs: timestampMs, createdAt: nowMs())
+    }
+
+    public func pendingFeedbackEntries(conversationId: String) async -> [PendingFeedbackEntity] {
+        guard Self.enabled else { return [] }
+        return await dao.pendingFeedbackEntries(conversationId: conversationId)
+    }
+
+    public func clearPendingFeedback(messageId: String) async {
+        guard Self.enabled else { return }
+        await dao.deletePendingFeedback(messageId: messageId)
+    }
+
+    public func setMessageReaction(conversationId: String, timestampMs: Int64, liked: Bool) async {
+        guard Self.enabled else { return }
+        await dao.setMessageReaction(conversationId: conversationId, timestampMs: timestampMs, liked: liked)
+    }
+
+    public func messageReactions(conversationId: String) async -> [Int64: Bool] {
+        guard Self.enabled else { return [:] }
+        return await dao.messageReactions(conversationId: conversationId)
+    }
+
+    public func clearMessageReaction(conversationId: String, timestampMs: Int64) async {
+        guard Self.enabled else { return }
+        await dao.deleteMessageReaction(conversationId: conversationId, timestampMs: timestampMs)
     }
 
     private func nowMs() -> Int64 {

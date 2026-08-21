@@ -220,7 +220,7 @@ private struct HistoryGroup: View {
                 .font(typography.textFamily.font(size: 11, weight: .semibold))
                 .tracking(0.4)
                 .foregroundColor(colors.textSecondary)
-            Spacer().frame(height: 12)
+            Spacer().frame(height: 8)
             LazyVStack(spacing: 0) {
                 ForEach(items, id: \.id) { conversation in
                     ConversationItem(
@@ -283,24 +283,25 @@ private struct ConversationItem: View {
                             .foregroundColor(colors.textSecondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Spacer()
             Menu {
                 Button("Rename") { title = displayTitle; showRenameDialog = true }
                 Button("Delete", role: .destructive) { showDeleteDialog = true }
             } label: {
-                Chat360Icon.more.image.foregroundColor(colors.textSecondary)
+                Chat360Icon.more.image
+                    .foregroundColor(colors.textSecondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(isActive ? colors.backgroundSunken : colors.backgroundElevated)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.bottom, 10)
+        .padding(.bottom, 4)
         .alert("Rename conversation", isPresented: $showRenameDialog) {
             TextField("Conversation name", text: $title)
             Button("Save") { onRenamed(title) }

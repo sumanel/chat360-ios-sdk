@@ -10,15 +10,22 @@ public struct BotMessageRow: View {
     private let actions: BotContentActions
     private let isLiveChat: Bool
     private let assignedAgent: AssignedAgent?
+    // `messageReactions` loads from local cache asynchronously, separately from the message
+    // replay itself, so this is almost always still nil the first time this row mounts after an
+    // app restart. `@State`'s init-time seeding only runs once per view identity, so the
+    // `onChange` below is what actually picks up the persisted value once it arrives.
+    private let initialReaction: Bool?
 
     @State private var feedback: Bool?
     @State private var justCopied = false
 
-    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil) {
+    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil, initialReaction: Bool? = nil) {
         self.message = message
         self.actions = actions
         self.isLiveChat = isLiveChat
         self.assignedAgent = assignedAgent
+        self.initialReaction = initialReaction
+        self._feedback = State(initialValue: initialReaction)
     }
 
     private var agent: AssignedAgent? {
@@ -74,7 +81,14 @@ public struct BotMessageRow: View {
                         .padding(6)
                         .background(feedback == true ? colors.accent : Color.clear)
                         .clipShape(Circle())
-                        .onTapGesture { feedback = (feedback == true) ? nil : true }
+                        .onTapGesture {
+                            // Once either reaction is set it's permanent - a dislike that's
+                            // already had feedback submitted for it can't be overridden by
+                            // tapping like afterward.
+                            guard feedback == nil else { return }
+                            feedback = true
+                            actions.onLikeClicked()
+                        }
                 }
                 if config.features.showFeedback && config.features.showDislike {
                     Chat360Icon.thumbDown.image
@@ -83,9 +97,14 @@ public struct BotMessageRow: View {
                         .padding(6)
                         .background(feedback == false ? colors.accent : Color.clear)
                         .clipShape(Circle())
-                        .onTapGesture { feedback = (feedback == false) ? nil : false }
+                        .onTapGesture {
+                            guard feedback == nil else { return }
+                            feedback = false
+                            actions.onDislikeClicked()
+                        }
                 }
             }
         }
+        .onChange(of: initialReaction) { feedback = $0 }
     }
 }

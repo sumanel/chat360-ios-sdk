@@ -22,6 +22,8 @@ public struct BotContentActions {
     public var onWelcomeCardSelected: (BotContent.WelcomeScreen.Card, Int) -> Void = { _, _ in }
     public var onIframeAdvance: (String) -> Void = { _ in }
     public var onRegenerateClicked: () -> Void = {}
+    public var onLikeClicked: () -> Void = {}
+    public var onDislikeClicked: () -> Void = {}
 
     public init() {}
 }

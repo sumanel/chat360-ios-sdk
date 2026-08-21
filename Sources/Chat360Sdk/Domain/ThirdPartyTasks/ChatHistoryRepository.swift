@@ -30,7 +30,7 @@ public final class ChatHistoryRepository {
             let response = try await withAuthRetry { token in
                 try await self.apiService.fetchRoomsList(clientId: self.clientId, bearerToken: token, agentId: self.endUserId)
             }
-            let conversations = cache.thirdPartyRoomConversations(botId: botId, rooms: response.rooms)
+            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: response.rooms)
             await cache.syncAgentRooms(botId: botId, conversations: conversations)
             return conversations
         } catch {

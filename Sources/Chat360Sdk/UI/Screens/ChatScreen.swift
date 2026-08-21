@@ -20,6 +20,7 @@ public struct ChatScreen: View {
     @State private var isTrainingMode = false
     @State private var showAttachmentPicker = false
     @State private var showCameraCapture = false
+    @State private var hasNotifiedChatReady = false
     @FocusState private var isInputFocused: Bool
 
     public init(viewModel: ChatViewModel) {
@@ -226,11 +227,11 @@ public struct ChatScreen: View {
                             }
                         )
                         .frame(width: min(320, geo.size.width * 0.84))
-                        Spacer(minLength: 0)
+                        Color.black.opacity(0.55)
+                            .contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } }
                     }
                 }
-                .background(Color.black.opacity(0.55))
-                .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } }
                 .transition(.move(edge: .leading))
             }
 
@@ -242,9 +243,26 @@ public struct ChatScreen: View {
                     onDismiss: { viewModel.dismissFeedbackPrompt() }
                 )
             }
+
+            // Deliberately no dismiss path here (no tap-outside, no close button on the dialog
+            // itself) - a dislike blocks the rest of the chat until feedback is actually
+            // submitted, by design, and `pendingFeedbackMessageId` is re-derived from local
+            // cache on every conversation open, so this reappears across restarts too.
+            if let messageId = viewModel.uiState.pendingFeedbackMessageId {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                DislikeFeedbackDialog(
+                    onSubmit: { text in viewModel.submitDislikeFeedback(messageId: messageId, text: text) },
+                    onCancel: { viewModel.cancelDislikeFeedback(messageId: messageId) }
+                )
+            }
         }
         .onDisappear {
             viewModel.onCleared()
+        }
+        .onChange(of: viewModel.uiState.isConnected) { connected in
+            guard connected, !hasNotifiedChatReady else { return }
+            hasNotifiedChatReady = true
+            Chat360Bot.shared.onChatSessionReady?()
         }
         .onChange(of: speechToText.transcript) { transcript in
             if speechToText.isListening { viewModel.onInputChange(transcript) }
@@ -314,7 +332,10 @@ private struct BotMessageItem: View {
         actions.onWelcomeCardSelected = { card, index in viewModel.selectWelcomeCard(messageId: message.id, card: card, index: index) }
         actions.onIframeAdvance = { targetId in viewModel.advanceFromIframe(targetId: targetId) }
         actions.onRegenerateClicked = { viewModel.regenerateMessage(messageId: message.id) }
+        actions.onLikeClicked = { viewModel.likeMessage(timestampMs: message.timestampMs) }
+        actions.onDislikeClicked = { viewModel.dislikeMessage(messageId: message.id, timestampMs: message.timestampMs) }
 
-        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent)
+        let initialReaction = message.timestampMs.flatMap { viewModel.uiState.messageReactions[$0] }
+        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent, initialReaction: initialReaction)
     }
 }

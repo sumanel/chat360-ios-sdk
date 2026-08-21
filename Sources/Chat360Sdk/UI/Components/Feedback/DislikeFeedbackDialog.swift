@@ -1,0 +1,75 @@
+import SwiftUI
+
+@available(iOS 16.0, *)
+public struct DislikeFeedbackDialog: View {
+    @Environment(\.chat360Colors) private var colors
+    @Environment(\.chat360Typography) private var typography
+
+    private static let minCharCount = 20
+
+    private let onSubmit: (String) -> Void
+    private let onCancel: () -> Void
+
+    @State private var text = ""
+
+    public init(onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.onSubmit = onSubmit
+        self.onCancel = onCancel
+    }
+
+    private var charCount: Int {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).count
+    }
+
+    private var canSubmit: Bool { charCount >= Self.minCharCount }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                Text("Help us improve")
+                    .font(typography.textFamily.font(size: 16, weight: .semibold))
+                    .foregroundColor(colors.textPrimary)
+                Spacer()
+                // Undoes the dislike itself (reaction reverts, obligation clears) - it is not a
+                // skip button, so this can't just dismiss and leave feedback owed.
+                Button(action: onCancel) {
+                    Chat360Icon.close.image
+                        .foregroundColor(colors.textSecondary)
+                        .frame(width: 24, height: 24)
+                }
+            }
+            Spacer().frame(height: 6)
+            Text("Please tell us what went wrong with this response before continuing.")
+                .font(typography.textFamily.font(size: 13))
+                .foregroundColor(colors.textSecondary)
+            Spacer().frame(height: 14)
+            TextEditor(text: $text)
+                .font(typography.textFamily.font(size: 14))
+                .foregroundColor(colors.textPrimary)
+                .scrollContentBackground(.hidden)
+                .frame(height: 140)
+                .padding(8)
+                .background(colors.inputBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(colors.inputBorder, lineWidth: 1))
+            Spacer().frame(height: 6)
+            Text("\(min(charCount, Self.minCharCount))/\(Self.minCharCount) characters minimum")
+                .font(typography.textFamily.font(size: 12))
+                .foregroundColor(canSubmit ? colors.textSecondary : activeRed)
+            Spacer().frame(height: 16)
+            Button(action: { onSubmit(text) }) {
+                Text("Submit")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundColor(colors.accentContrast)
+                    .background(canSubmit ? colors.accent : colors.textDisabled)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .disabled(!canSubmit)
+        }
+        .padding(20)
+        .background(colors.backgroundElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.horizontal, 16)
+    }
+}

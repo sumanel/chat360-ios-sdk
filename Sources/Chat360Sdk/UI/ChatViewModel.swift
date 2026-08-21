@@ -14,7 +14,6 @@ public final class ChatViewModel: ObservableObject {
     @Published public private(set) var shortcuts: [String: String] = [:]
     @Published public private(set) var languages: [SessionLanguage] = []
 
-    private var hasStartedConversation = false
     private var activeConversationId: String?
     private var connectedConversationId: String?
     private var connectedRoomId: String?
@@ -50,8 +49,13 @@ public final class ChatViewModel: ObservableObject {
         if let chatHistoryRepository {
             Task { [weak self] in
                 guard let self else { return }
+                // Don't assign the fetched list to `conversations` directly - `refreshRooms()`
+                // already reconciles it into the local cache (see `syncAgentRooms`), which
+                // `conversationsObservationTask` picks up via its live subscription. Writing it
+                // here too raced that subscription: this one-shot assignment could land after
+                // the stream's already-correct snapshot and stomp it with a narrower one, then
+                // never get corrected until some unrelated local write re-fired the stream.
                 let refreshed = await chatHistoryRepository.refreshRooms()
-                if let refreshed { self.conversations = refreshed }
                 self.update { $0.isHistoryUnavailable = refreshed == nil }
             }
         }
@@ -118,6 +122,96 @@ public final class ChatViewModel: ObservableObject {
     private func setActiveConversationId(_ id: String?) {
         activeConversationId = id
         update { $0.activeConversationId = id }
+        Task { [weak self] in
+            await self?.refreshPendingFeedback(conversationId: id)
+            await self?.refreshMessageReactions(conversationId: id)
+        }
+    }
+
+    // Dislike must durably block the chat with a mandatory feedback prompt - including across
+    // app restarts, conversation switches, and reopening the same room later - with no backend
+    // to ask "is feedback still owed here". The local cache (already used for message/history
+    // persistence) is the only thing that survives all of those, so a pending row there is the
+    // source of truth this reads back from, rather than any in-memory flag. The timestampMs
+    // carried alongside it is what lets cancelling also undo the reaction on the right message
+    // even after a restart, when the messageId that was disliked no longer matches anything
+    // on screen.
+    private func refreshPendingFeedback(conversationId: String?) async {
+        guard let conversationId else {
+            update { $0.pendingFeedbackMessageId = nil; $0.pendingFeedbackTimestampMs = nil }
+            return
+        }
+        let pending = await cache.pendingFeedbackEntries(conversationId: conversationId)
+        guard activeConversationId == conversationId else { return }
+        update {
+            $0.pendingFeedbackMessageId = pending.first?.messageId
+            $0.pendingFeedbackTimestampMs = pending.first?.timestampMs
+        }
+    }
+
+    // Keyed on `timestampMs`, not `ChatMessage.id` - the id is a fresh random UUID minted every
+    // time a message is constructed, including on replay, so it can't identify "the same
+    // message" across an app restart. The server timestamp is the only thing that round-trips
+    // identically through both live delivery and replay.
+    private func refreshMessageReactions(conversationId: String?) async {
+        guard let conversationId else {
+            update { $0.messageReactions = [:] }
+            return
+        }
+        let reactions = await cache.messageReactions(conversationId: conversationId)
+        guard activeConversationId == conversationId else { return }
+        update { $0.messageReactions = reactions }
+    }
+
+    private func setReaction(timestampMs: Int64?, liked: Bool) {
+        guard let timestampMs, let conversationId = activeConversationId else { return }
+        update { $0.messageReactions[timestampMs] = liked }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.setMessageReaction(conversationId: conversationId, timestampMs: timestampMs, liked: liked)
+        }
+    }
+
+    public func likeMessage(timestampMs: Int64?) {
+        setReaction(timestampMs: timestampMs, liked: true)
+    }
+
+    public func dislikeMessage(messageId: String, timestampMs: Int64?) {
+        guard let conversationId = activeConversationId else { return }
+        setReaction(timestampMs: timestampMs, liked: false)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.markFeedbackPending(messageId: messageId, conversationId: conversationId, timestampMs: timestampMs)
+            await self.refreshPendingFeedback(conversationId: conversationId)
+        }
+    }
+
+    public func submitDislikeFeedback(messageId: String, text: String) {
+        repository.sendConfigurableFeedback(rating: 1, feedbackText: text)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.clearPendingFeedback(messageId: messageId)
+            await self.refreshPendingFeedback(conversationId: self.activeConversationId)
+        }
+    }
+
+    // The X on the feedback dialog undoes the dislike itself, not just the mandatory-feedback
+    // obligation - dislike-then-skip-feedback must stay impossible, so this can't be a bare
+    // dismiss. It reverts the reaction (using the timestampMs captured alongside the pending
+    // row, since the messageId alone can't be trusted to still match a message after a restart)
+    // so the thumbs-down un-highlights and the message goes back to unreacted.
+    public func cancelDislikeFeedback(messageId: String) {
+        let timestampMs = uiState.pendingFeedbackTimestampMs
+        let conversationId = activeConversationId
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.clearPendingFeedback(messageId: messageId)
+            if let timestampMs, let conversationId {
+                await self.cache.clearMessageReaction(conversationId: conversationId, timestampMs: timestampMs)
+                self.update { $0.messageReactions[timestampMs] = nil }
+            }
+            await self.refreshPendingFeedback(conversationId: self.activeConversationId)
+        }
     }
 
     private func handleEvent(_ event: IncomingSocketEvent) {
@@ -125,7 +219,11 @@ public final class ChatViewModel: ObservableObject {
         switch event {
         case .botMessage(let node):
             update { $0.isAgentTyping = false }
-            if suppressInitialBotMessages && !hasStartedConversation && !restoringFromCache { return }
+            // Hides the bot's opening/greeting node permanently, not just before the first live
+            // send - it's always present in the underlying flow (and gets replayed from cache
+            // when reopening a past conversation), so the only reliable signal that it's the
+            // suppressible opener rather than a real reply is that no user message exists yet.
+            if suppressInitialBotMessages && !uiState.messages.contains(where: { $0.fromUser }) { return }
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
             update {
@@ -156,7 +254,8 @@ public final class ChatViewModel: ObservableObject {
                 content: node.content,
                 formState: formState,
                 promptState: promptState,
-                author: node.author
+                author: node.author,
+                timestampMs: node.timestampMs
             ), cacheUserMessage: false)
         case .typingStatus(let isTyping):
             update { $0.isAgentTyping = isTyping }
@@ -193,7 +292,7 @@ public final class ChatViewModel: ObservableObject {
                     updated.repliesEnabled = false
                     return updated
                 }
-                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId))
+                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId, timestampMs: node.timestampMs))
             }
         }
     }
@@ -265,9 +364,11 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[index].selectedReplyIndex = option.index
             }
         }
-        let chatMsgId = repository.sendQuickReply(option)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: option.text, fromUser: true))
-        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendQuickReply(option)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: option.text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
     }
 
     public func selectRating(messageId: String, value: Int) {
@@ -278,9 +379,11 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[index].selectedReplyIndex = value - 1
             }
         }
-        let chatMsgId = repository.sendRating(value)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: String(value), fromUser: true))
-        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendRating(value)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: String(value), fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
     }
 
     public func selectAutoSuggestion(messageId: String, index: Int, text: String) {
@@ -291,8 +394,10 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[i].selectedReplyIndex = index
             }
         }
-        let chatMsgId = repository.sendAutoSuggestion(text)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendAutoSuggestion(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func updatePromptValue(messageId: String, primary: String, secondary: String = "") {
@@ -311,8 +416,10 @@ public final class ChatViewModel: ObservableObject {
         let email = prompt.value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !email.isBlank, !InputValidators.validateTest(email), InputValidators.validateEmail(email) else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId = repository.sendEmail(email)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: email, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendEmail(email)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: email, fromUser: true))
+        }
     }
 
     public func submitPhone(messageId: String) {
@@ -324,13 +431,15 @@ public final class ChatViewModel: ObservableObject {
         let combined = countryCode + nationalNumber
         guard !countryCode.isBlank, !nationalNumber.isBlank, InputValidators.validatePhoneNumber(combined, international: true) else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId: String
-        if content.splitVariable, let countryCodeVar = content.countryCodeVar {
-            chatMsgId = repository.sendSplitPhone(countryCode: countryCode, nationalNumber: nationalNumber, countryCodeVar: countryCodeVar)
-        } else {
-            chatMsgId = repository.sendPhone(combined)
+        sendAfterResumingRoom { vm in
+            let chatMsgId: String
+            if content.splitVariable, let countryCodeVar = content.countryCodeVar {
+                chatMsgId = vm.repository.sendSplitPhone(countryCode: countryCode, nationalNumber: nationalNumber, countryCodeVar: countryCodeVar)
+            } else {
+                chatMsgId = vm.repository.sendPhone(combined)
+            }
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: combined, fromUser: true))
         }
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: combined, fromUser: true))
     }
 
     public func selectDate(messageId: String, formattedDate: String) {
@@ -341,15 +450,19 @@ public final class ChatViewModel: ObservableObject {
             guard let index = state.messages.firstIndex(where: { $0.id == messageId }) else { return }
             state.messages[index].promptState = PromptState(value: formattedDate, secondaryValue: prompt.secondaryValue, submitted: true)
         }
-        let chatMsgId = repository.sendDate(formattedDate: formattedDate, format: content.rules.dateFormat)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedDate, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendDate(formattedDate: formattedDate, format: content.rules.dateFormat)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedDate, fromUser: true))
+        }
     }
 
     public func submitTime(messageId: String, formattedTime: String) {
         guard let message = uiState.messages.first(where: { $0.id == messageId }), let prompt = message.promptState, !prompt.submitted else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId = repository.sendTime(formattedTime)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedTime, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendTime(formattedTime)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedTime, fromUser: true))
+        }
     }
 
     private func markPromptSubmitted(messageId: String) {
@@ -374,12 +487,14 @@ public final class ChatViewModel: ObservableObject {
         guard let message = uiState.messages.first(where: { $0.id == messageId }),
               case .multiOption(let content) = message.content,
               message.repliesEnabled, !message.checkedIndices.isEmpty else { return }
-        let chatMsgId = repository.sendCheckboxOptions(allOptions: content.options, checkedIndices: message.checkedIndices)
         let text = content.options.filter { message.checkedIndices.contains($0.index) }.map { $0.text }.joined(separator: ", ")
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendCheckboxOptions(allOptions: content.options, checkedIndices: message.checkedIndices)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func selectImageButton(messageId: String, card: BotContent.ImageButtons.Card, button: BotContent.ImageButtons.Button, submitType: String) {
@@ -387,8 +502,10 @@ public final class ChatViewModel: ObservableObject {
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        let chatMsgId = repository.sendImageButton(card: card, button: button, submitType: submitType)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: button.text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendImageButton(card: card, button: button, submitType: submitType)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: button.text, fromUser: true))
+        }
     }
 
     public func selectTextCarouselReply(messageId: String, text: String, clickedIndex: Int, targetId: String?) {
@@ -396,8 +513,10 @@ public final class ChatViewModel: ObservableObject {
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        let chatMsgId = repository.sendTextCarouselReply(text: text, clickedIndex: clickedIndex, targetId: targetId)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendTextCarouselReply(text: text, clickedIndex: clickedIndex, targetId: targetId)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func selectWelcomeCard(messageId: String, card: BotContent.WelcomeScreen.Card, index: Int) {
@@ -408,8 +527,10 @@ public final class ChatViewModel: ObservableObject {
         let trimmed = card.name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = (trimmed?.isEmpty == false) ? trimmed! : "Card \(index + 1)"
         let ctaTargetId = (card.ctaEnabled && card.ctaType == "component" && !(card.ctaLink?.isBlank ?? true)) ? card.ctaLink : nil
-        let chatMsgId = repository.sendWelcomeCard(cardTitle: text, clickedIndexOneBased: index + 1, ctaTargetId: ctaTargetId)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendWelcomeCard(cardTitle: text, clickedIndexOneBased: index + 1, ctaTargetId: ctaTargetId)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func advanceFromIframe(targetId: String) {
@@ -417,8 +538,10 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func selectShortcut(targetId: String, label: String) {
-        let chatMsgId = repository.sendShortcut(targetId: targetId, label: label)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: label, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendShortcut(targetId: targetId, label: label)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: label, fromUser: true))
+        }
     }
 
     public func switchLanguage(targetId: String) {
@@ -427,7 +550,6 @@ public final class ChatViewModel: ObservableObject {
         }
         if !uiState.isConnected { repository.reconnectNow() }
         streamRawText.removeAll()
-        hasStartedConversation = false
         update {
             $0.messages = []
             $0.isAgentTyping = false
@@ -598,7 +720,6 @@ public final class ChatViewModel: ObservableObject {
         pendingRawEnvelopes.removeAll()
         setActiveConversationId(conversationId)
         streamRawText.removeAll()
-        hasStartedConversation = false
         update {
             $0.messages = []
             $0.inputText = ""
@@ -796,14 +917,11 @@ public final class ChatViewModel: ObservableObject {
     public func sendMessage() {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty && !uiState.isLiveChat { return }
-        hasStartedConversation = true
         update { $0.inputText = "" }
-        Task { [weak self] in
-            guard let self else { return }
-            await self.switchToActiveRoomIfResumable()
-            let chatMsgId = self.repository.sendFreeText(text)
-            self.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
-            self.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendFreeText(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
         }
     }
 
@@ -814,13 +932,23 @@ public final class ChatViewModel: ObservableObject {
         guard let botIndex = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
         guard let userMessage = uiState.messages[..<botIndex].last(where: { $0.fromUser }) else { return }
         let text = userMessage.text
-        hasStartedConversation = true
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendFreeText(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
+    }
+
+    // Every reply to a specific bot prompt (quick reply, rating, form field, welcome card, etc.)
+    // needs the live socket actually pointed at the room being viewed before it sends - otherwise
+    // it silently goes out through whichever room happens to still be connected instead, and the
+    // view then snaps to match wherever the message actually landed. This centralizes that
+    // resume-then-send sequencing so each call site only supplies what's different about it.
+    private func sendAfterResumingRoom(_ body: @escaping (ChatViewModel) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             await self.switchToActiveRoomIfResumable()
-            let chatMsgId = self.repository.sendFreeText(text)
-            self.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
-            self.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+            body(self)
         }
     }
 

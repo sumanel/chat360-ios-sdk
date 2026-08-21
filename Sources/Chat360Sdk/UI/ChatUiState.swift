@@ -106,13 +106,18 @@ public struct ChatMessage: Equatable, Identifiable {
     public var streamId: String?
     public var author: BotNode.MessageAuthor = .bot
     public var voiceMessage: VoiceMessageInfo?
+    // Unlike `id` (a fresh random UUID every time this struct is built, including on replay),
+    // this comes straight from the server and round-trips identically through both live
+    // delivery and cache/history replay - it's the only thing that reliably re-identifies "the
+    // same message" across an app restart, so it's what reaction persistence keys on.
+    public var timestampMs: Int64?
 
     public init(
         id: String = UUID().uuidString, chatMsgId: String? = nil, text: String, fromUser: Bool, failed: Bool = false,
         timeText: String = formatMessageTime(), content: BotContent = .plainText, repliesEnabled: Bool = true,
         selectedReplyIndex: Int? = nil, attachment: Attachment? = nil, formState: FormState? = nil,
         promptState: PromptState? = nil, checkedIndices: Set<Int> = [], streamId: String? = nil,
-        author: BotNode.MessageAuthor = .bot, voiceMessage: VoiceMessageInfo? = nil
+        author: BotNode.MessageAuthor = .bot, voiceMessage: VoiceMessageInfo? = nil, timestampMs: Int64? = nil
     ) {
         self.id = id
         self.chatMsgId = chatMsgId
@@ -130,6 +135,7 @@ public struct ChatMessage: Equatable, Identifiable {
         self.streamId = streamId
         self.author = author
         self.voiceMessage = voiceMessage
+        self.timestampMs = timestampMs
     }
 }
 
@@ -155,6 +161,9 @@ public struct ChatUiState: Equatable {
     public var isLoadingMoreHistory: Bool = false
     public var isHistoryUnavailable: Bool = false
     public var activeConversationId: String?
+    public var pendingFeedbackMessageId: String?
+    public var pendingFeedbackTimestampMs: Int64?
+    public var messageReactions: [Int64: Bool] = [:]
 
     public init() {}
 
@@ -176,6 +185,9 @@ public struct ChatUiState: Equatable {
             lhs.hasMoreHistory == rhs.hasMoreHistory &&
             lhs.isLoadingMoreHistory == rhs.isLoadingMoreHistory &&
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&
-            lhs.activeConversationId == rhs.activeConversationId
+            lhs.activeConversationId == rhs.activeConversationId &&
+            lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
+            lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&
+            lhs.messageReactions == rhs.messageReactions
     }
 }
