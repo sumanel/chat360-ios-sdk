@@ -227,11 +227,11 @@ public struct ChatScreen: View {
                             }
                         )
                         .frame(width: min(320, geo.size.width * 0.84))
-                        Spacer(minLength: 0)
+                        Color.black.opacity(0.55)
+                            .contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } }
                     }
                 }
-                .background(Color.black.opacity(0.55))
-                .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false } }
                 .transition(.move(edge: .leading))
             }
 
