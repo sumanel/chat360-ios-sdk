@@ -242,6 +242,17 @@ public struct ChatScreen: View {
                     onDismiss: { viewModel.dismissFeedbackPrompt() }
                 )
             }
+
+            // Deliberately no dismiss path here (no tap-outside, no close button on the dialog
+            // itself) - a dislike blocks the rest of the chat until feedback is actually
+            // submitted, by design, and `pendingFeedbackMessageId` is re-derived from local
+            // cache on every conversation open, so this reappears across restarts too.
+            if let messageId = viewModel.uiState.pendingFeedbackMessageId {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                DislikeFeedbackDialog(
+                    onSubmit: { text in viewModel.submitDislikeFeedback(messageId: messageId, text: text) }
+                )
+            }
         }
         .onDisappear {
             viewModel.onCleared()
@@ -314,6 +325,7 @@ private struct BotMessageItem: View {
         actions.onWelcomeCardSelected = { card, index in viewModel.selectWelcomeCard(messageId: message.id, card: card, index: index) }
         actions.onIframeAdvance = { targetId in viewModel.advanceFromIframe(targetId: targetId) }
         actions.onRegenerateClicked = { viewModel.regenerateMessage(messageId: message.id) }
+        actions.onDislikeClicked = { viewModel.dislikeMessage(messageId: message.id) }
 
         return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent)
     }

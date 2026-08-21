@@ -155,6 +155,7 @@ public struct ChatUiState: Equatable {
     public var isLoadingMoreHistory: Bool = false
     public var isHistoryUnavailable: Bool = false
     public var activeConversationId: String?
+    public var pendingFeedbackMessageId: String?
 
     public init() {}
 
@@ -176,6 +177,7 @@ public struct ChatUiState: Equatable {
             lhs.hasMoreHistory == rhs.hasMoreHistory &&
             lhs.isLoadingMoreHistory == rhs.isLoadingMoreHistory &&
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&
-            lhs.activeConversationId == rhs.activeConversationId
+            lhs.activeConversationId == rhs.activeConversationId &&
+            lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId
     }
 }

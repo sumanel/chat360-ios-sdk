@@ -73,6 +73,15 @@ public final class ChatCacheDao {
             )
             """)
             exec("CREATE INDEX IF NOT EXISTS index_chat_messages_conversationId ON chat_messages(conversationId)")
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_pending_feedback (
+                messageId TEXT PRIMARY KEY NOT NULL,
+                conversationId TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                FOREIGN KEY(conversationId) REFERENCES chat_conversations(id) ON DELETE CASCADE
+            )
+            """)
+            exec("CREATE INDEX IF NOT EXISTS index_chat_pending_feedback_conversationId ON chat_pending_feedback(conversationId)")
         }
     }
 
@@ -308,6 +317,39 @@ public final class ChatCacheDao {
         }
     }
 
+    public func insertPendingFeedbackIfMissing(messageId: String, conversationId: String, createdAt: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR IGNORE INTO chat_pending_feedback (messageId, conversationId, createdAt) VALUES (?, ?, ?)",
+                    params: [messageId, conversationId, createdAt]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func pendingFeedbackMessageIds(conversationId: String) async -> [String] {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query(
+                    "SELECT messageId FROM chat_pending_feedback WHERE conversationId = ? ORDER BY createdAt ASC",
+                    params: [conversationId]
+                )
+                continuation.resume(returning: rows.compactMap { $0["messageId"] as? String })
+            }
+        }
+    }
+
+    public func deletePendingFeedback(messageId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec("DELETE FROM chat_pending_feedback WHERE messageId = ?", params: [messageId])
+                continuation.resume()
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -349,6 +391,7 @@ public final class ChatCacheDao {
             queue.async {
                 self.exec("DELETE FROM chat_conversations WHERE id = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_messages WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_pending_feedback WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

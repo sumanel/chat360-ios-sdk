@@ -118,6 +118,21 @@ public final class ChatCacheRepository {
         }
     }
 
+    public func markFeedbackPending(messageId: String, conversationId: String) async {
+        guard Self.enabled else { return }
+        await dao.insertPendingFeedbackIfMissing(messageId: messageId, conversationId: conversationId, createdAt: nowMs())
+    }
+
+    public func pendingFeedbackMessageIds(conversationId: String) async -> [String] {
+        guard Self.enabled else { return [] }
+        return await dao.pendingFeedbackMessageIds(conversationId: conversationId)
+    }
+
+    public func clearPendingFeedback(messageId: String) async {
+        guard Self.enabled else { return }
+        await dao.deletePendingFeedback(messageId: messageId)
+    }
+
     private func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }

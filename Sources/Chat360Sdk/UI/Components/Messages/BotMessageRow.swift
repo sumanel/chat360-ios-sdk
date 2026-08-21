@@ -83,7 +83,11 @@ public struct BotMessageRow: View {
                         .padding(6)
                         .background(feedback == false ? colors.accent : Color.clear)
                         .clipShape(Circle())
-                        .onTapGesture { feedback = (feedback == false) ? nil : false }
+                        .onTapGesture {
+                            guard feedback != false else { return }
+                            feedback = false
+                            actions.onDislikeClicked()
+                        }
                 }
             }
         }

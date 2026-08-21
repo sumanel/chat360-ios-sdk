@@ -122,6 +122,40 @@ public final class ChatViewModel: ObservableObject {
     private func setActiveConversationId(_ id: String?) {
         activeConversationId = id
         update { $0.activeConversationId = id }
+        Task { [weak self] in await self?.refreshPendingFeedback(conversationId: id) }
+    }
+
+    // Dislike must durably block the chat with a mandatory feedback prompt - including across
+    // app restarts, conversation switches, and reopening the same room later - with no backend
+    // to ask "is feedback still owed here". The local cache (already used for message/history
+    // persistence) is the only thing that survives all of those, so a pending row there is the
+    // source of truth this reads back from, rather than any in-memory flag.
+    private func refreshPendingFeedback(conversationId: String?) async {
+        guard let conversationId else {
+            update { $0.pendingFeedbackMessageId = nil }
+            return
+        }
+        let pending = await cache.pendingFeedbackMessageIds(conversationId: conversationId)
+        guard activeConversationId == conversationId else { return }
+        update { $0.pendingFeedbackMessageId = pending.first }
+    }
+
+    public func dislikeMessage(messageId: String) {
+        guard let conversationId = activeConversationId else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.markFeedbackPending(messageId: messageId, conversationId: conversationId)
+            await self.refreshPendingFeedback(conversationId: conversationId)
+        }
+    }
+
+    public func submitDislikeFeedback(messageId: String, text: String) {
+        repository.sendConfigurableFeedback(rating: 1, feedbackText: text)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.clearPendingFeedback(messageId: messageId)
+            await self.refreshPendingFeedback(conversationId: self.activeConversationId)
+        }
     }
 
     private func handleEvent(_ event: IncomingSocketEvent) {
