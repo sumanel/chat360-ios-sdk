@@ -10,6 +10,11 @@ public struct BotMessageRow: View {
     private let actions: BotContentActions
     private let isLiveChat: Bool
     private let assignedAgent: AssignedAgent?
+    // `messageReactions` loads from local cache asynchronously, separately from the message
+    // replay itself, so this is almost always still nil the first time this row mounts after an
+    // app restart. `@State`'s init-time seeding only runs once per view identity, so the
+    // `onChange` below is what actually picks up the persisted value once it arrives.
+    private let initialReaction: Bool?
 
     @State private var feedback: Bool?
     @State private var justCopied = false
@@ -19,6 +24,7 @@ public struct BotMessageRow: View {
         self.actions = actions
         self.isLiveChat = isLiveChat
         self.assignedAgent = assignedAgent
+        self.initialReaction = initialReaction
         self._feedback = State(initialValue: initialReaction)
     }
 
@@ -96,5 +102,6 @@ public struct BotMessageRow: View {
                 }
             }
         }
+        .onChange(of: initialReaction) { feedback = $0 }
     }
 }
