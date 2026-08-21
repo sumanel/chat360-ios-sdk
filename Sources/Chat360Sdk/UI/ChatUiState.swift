@@ -162,6 +162,7 @@ public struct ChatUiState: Equatable {
     public var isHistoryUnavailable: Bool = false
     public var activeConversationId: String?
     public var pendingFeedbackMessageId: String?
+    public var pendingFeedbackTimestampMs: Int64?
     public var messageReactions: [Int64: Bool] = [:]
 
     public init() {}
@@ -186,6 +187,7 @@ public struct ChatUiState: Equatable {
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&
             lhs.activeConversationId == rhs.activeConversationId &&
             lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
+            lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&
             lhs.messageReactions == rhs.messageReactions
     }
 }

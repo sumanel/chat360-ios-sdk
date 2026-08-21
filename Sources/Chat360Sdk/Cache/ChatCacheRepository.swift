@@ -125,14 +125,14 @@ public final class ChatCacheRepository {
         }
     }
 
-    public func markFeedbackPending(messageId: String, conversationId: String) async {
+    public func markFeedbackPending(messageId: String, conversationId: String, timestampMs: Int64?) async {
         guard Self.enabled else { return }
-        await dao.insertPendingFeedbackIfMissing(messageId: messageId, conversationId: conversationId, createdAt: nowMs())
+        await dao.insertPendingFeedbackIfMissing(messageId: messageId, conversationId: conversationId, timestampMs: timestampMs, createdAt: nowMs())
     }
 
-    public func pendingFeedbackMessageIds(conversationId: String) async -> [String] {
+    public func pendingFeedbackEntries(conversationId: String) async -> [PendingFeedbackEntity] {
         guard Self.enabled else { return [] }
-        return await dao.pendingFeedbackMessageIds(conversationId: conversationId)
+        return await dao.pendingFeedbackEntries(conversationId: conversationId)
     }
 
     public func clearPendingFeedback(messageId: String) async {
@@ -148,6 +148,11 @@ public final class ChatCacheRepository {
     public func messageReactions(conversationId: String) async -> [Int64: Bool] {
         guard Self.enabled else { return [:] }
         return await dao.messageReactions(conversationId: conversationId)
+    }
+
+    public func clearMessageReaction(conversationId: String, timestampMs: Int64) async {
+        guard Self.enabled else { return }
+        await dao.deleteMessageReaction(conversationId: conversationId, timestampMs: timestampMs)
     }
 
     private func nowMs() -> Int64 {

@@ -37,6 +37,16 @@ public struct CachedMessageEntity: Equatable {
     }
 }
 
+public struct PendingFeedbackEntity: Equatable {
+    public var messageId: String
+    public var timestampMs: Int64?
+
+    public init(messageId: String, timestampMs: Int64?) {
+        self.messageId = messageId
+        self.timestampMs = timestampMs
+    }
+}
+
 @available(iOS 13.0, *)
 public final class ChatCacheDao {
     private let db: OpaquePointer
@@ -78,9 +88,13 @@ public final class ChatCacheDao {
                 messageId TEXT PRIMARY KEY NOT NULL,
                 conversationId TEXT NOT NULL,
                 createdAt INTEGER NOT NULL,
+                timestampMs INTEGER,
                 FOREIGN KEY(conversationId) REFERENCES chat_conversations(id) ON DELETE CASCADE
             )
             """)
+            // Best-effort migration for installs that created this table before timestampMs
+            // existed - fails harmlessly (ignored return value) if the column is already there.
+            exec("ALTER TABLE chat_pending_feedback ADD COLUMN timestampMs INTEGER")
             exec("CREATE INDEX IF NOT EXISTS index_chat_pending_feedback_conversationId ON chat_pending_feedback(conversationId)")
             exec("""
             CREATE TABLE IF NOT EXISTS chat_message_reactions (
@@ -348,26 +362,29 @@ public final class ChatCacheDao {
         }
     }
 
-    public func insertPendingFeedbackIfMissing(messageId: String, conversationId: String, createdAt: Int64) async {
+    public func insertPendingFeedbackIfMissing(messageId: String, conversationId: String, timestampMs: Int64?, createdAt: Int64) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
                 self.exec(
-                    "INSERT OR IGNORE INTO chat_pending_feedback (messageId, conversationId, createdAt) VALUES (?, ?, ?)",
-                    params: [messageId, conversationId, createdAt]
+                    "INSERT OR IGNORE INTO chat_pending_feedback (messageId, conversationId, createdAt, timestampMs) VALUES (?, ?, ?, ?)",
+                    params: [messageId, conversationId, createdAt, timestampMs]
                 )
                 continuation.resume()
             }
         }
     }
 
-    public func pendingFeedbackMessageIds(conversationId: String) async -> [String] {
+    public func pendingFeedbackEntries(conversationId: String) async -> [PendingFeedbackEntity] {
         await withCheckedContinuation { continuation in
             queue.async {
                 let rows = self.query(
-                    "SELECT messageId FROM chat_pending_feedback WHERE conversationId = ? ORDER BY createdAt ASC",
+                    "SELECT messageId, timestampMs FROM chat_pending_feedback WHERE conversationId = ? ORDER BY createdAt ASC",
                     params: [conversationId]
                 )
-                continuation.resume(returning: rows.compactMap { $0["messageId"] as? String })
+                continuation.resume(returning: rows.compactMap { row in
+                    guard let messageId = row["messageId"] as? String else { return nil }
+                    return PendingFeedbackEntity(messageId: messageId, timestampMs: row["timestampMs"] as? Int64)
+                })
             }
         }
     }
@@ -387,6 +404,18 @@ public final class ChatCacheDao {
                 self.exec(
                     "INSERT OR REPLACE INTO chat_message_reactions (conversationId, timestampMs, liked) VALUES (?, ?, ?)",
                     params: [conversationId, timestampMs, liked ? 1 : 0]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func deleteMessageReaction(conversationId: String, timestampMs: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "DELETE FROM chat_message_reactions WHERE conversationId = ? AND timestampMs = ?",
+                    params: [conversationId, timestampMs]
                 )
                 continuation.resume()
             }

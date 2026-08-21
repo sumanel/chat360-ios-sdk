@@ -132,15 +132,21 @@ public final class ChatViewModel: ObservableObject {
     // app restarts, conversation switches, and reopening the same room later - with no backend
     // to ask "is feedback still owed here". The local cache (already used for message/history
     // persistence) is the only thing that survives all of those, so a pending row there is the
-    // source of truth this reads back from, rather than any in-memory flag.
+    // source of truth this reads back from, rather than any in-memory flag. The timestampMs
+    // carried alongside it is what lets cancelling also undo the reaction on the right message
+    // even after a restart, when the messageId that was disliked no longer matches anything
+    // on screen.
     private func refreshPendingFeedback(conversationId: String?) async {
         guard let conversationId else {
-            update { $0.pendingFeedbackMessageId = nil }
+            update { $0.pendingFeedbackMessageId = nil; $0.pendingFeedbackTimestampMs = nil }
             return
         }
-        let pending = await cache.pendingFeedbackMessageIds(conversationId: conversationId)
+        let pending = await cache.pendingFeedbackEntries(conversationId: conversationId)
         guard activeConversationId == conversationId else { return }
-        update { $0.pendingFeedbackMessageId = pending.first }
+        update {
+            $0.pendingFeedbackMessageId = pending.first?.messageId
+            $0.pendingFeedbackTimestampMs = pending.first?.timestampMs
+        }
     }
 
     // Keyed on `timestampMs`, not `ChatMessage.id` - the id is a fresh random UUID minted every
@@ -175,7 +181,7 @@ public final class ChatViewModel: ObservableObject {
         setReaction(timestampMs: timestampMs, liked: false)
         Task { [weak self] in
             guard let self else { return }
-            await self.cache.markFeedbackPending(messageId: messageId, conversationId: conversationId)
+            await self.cache.markFeedbackPending(messageId: messageId, conversationId: conversationId, timestampMs: timestampMs)
             await self.refreshPendingFeedback(conversationId: conversationId)
         }
     }
@@ -185,6 +191,25 @@ public final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             await self.cache.clearPendingFeedback(messageId: messageId)
+            await self.refreshPendingFeedback(conversationId: self.activeConversationId)
+        }
+    }
+
+    // The X on the feedback dialog undoes the dislike itself, not just the mandatory-feedback
+    // obligation - dislike-then-skip-feedback must stay impossible, so this can't be a bare
+    // dismiss. It reverts the reaction (using the timestampMs captured alongside the pending
+    // row, since the messageId alone can't be trusted to still match a message after a restart)
+    // so the thumbs-down un-highlights and the message goes back to unreacted.
+    public func cancelDislikeFeedback(messageId: String) {
+        let timestampMs = uiState.pendingFeedbackTimestampMs
+        let conversationId = activeConversationId
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cache.clearPendingFeedback(messageId: messageId)
+            if let timestampMs, let conversationId {
+                await self.cache.clearMessageReaction(conversationId: conversationId, timestampMs: timestampMs)
+                self.update { $0.messageReactions[timestampMs] = nil }
+            }
             await self.refreshPendingFeedback(conversationId: self.activeConversationId)
         }
     }

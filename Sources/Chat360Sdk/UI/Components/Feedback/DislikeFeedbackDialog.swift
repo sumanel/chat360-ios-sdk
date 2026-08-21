@@ -8,11 +8,13 @@ public struct DislikeFeedbackDialog: View {
     private static let minCharCount = 20
 
     private let onSubmit: (String) -> Void
+    private let onCancel: () -> Void
 
     @State private var text = ""
 
-    public init(onSubmit: @escaping (String) -> Void) {
+    public init(onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
         self.onSubmit = onSubmit
+        self.onCancel = onCancel
     }
 
     private var charCount: Int {
@@ -23,9 +25,19 @@ public struct DislikeFeedbackDialog: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Help us improve")
-                .font(typography.textFamily.font(size: 16, weight: .semibold))
-                .foregroundColor(colors.textPrimary)
+            HStack(alignment: .top) {
+                Text("Help us improve")
+                    .font(typography.textFamily.font(size: 16, weight: .semibold))
+                    .foregroundColor(colors.textPrimary)
+                Spacer()
+                // Undoes the dislike itself (reaction reverts, obligation clears) - it is not a
+                // skip button, so this can't just dismiss and leave feedback owed.
+                Button(action: onCancel) {
+                    Chat360Icon.close.image
+                        .foregroundColor(colors.textSecondary)
+                        .frame(width: 24, height: 24)
+                }
+            }
             Spacer().frame(height: 6)
             Text("Please tell us what went wrong with this response before continuing.")
                 .font(typography.textFamily.font(size: 13))

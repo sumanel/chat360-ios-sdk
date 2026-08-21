@@ -251,7 +251,8 @@ public struct ChatScreen: View {
             if let messageId = viewModel.uiState.pendingFeedbackMessageId {
                 Color.black.opacity(0.4).ignoresSafeArea()
                 DislikeFeedbackDialog(
-                    onSubmit: { text in viewModel.submitDislikeFeedback(messageId: messageId, text: text) }
+                    onSubmit: { text in viewModel.submitDislikeFeedback(messageId: messageId, text: text) },
+                    onCancel: { viewModel.cancelDislikeFeedback(messageId: messageId) }
                 )
             }
         }
