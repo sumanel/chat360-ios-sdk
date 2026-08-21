@@ -283,10 +283,10 @@ private struct ConversationItem: View {
                             .foregroundColor(colors.textSecondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Spacer()
             Menu {
                 Button("Rename") { title = displayTitle; showRenameDialog = true }
                 Button("Delete", role: .destructive) { showDeleteDialog = true }
