@@ -65,6 +65,10 @@ public final class ChatCacheRepository {
         let fetchedAt = nowMs()
         return rooms.enumerated().compactMap { index, room -> CachedConversationEntity? in
             if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { return nil }
+            // A room the server created but the user never actually sent anything in has no
+            // sessions yet - it has no title either, so it'd otherwise show up as a blank
+            // "Conversation" entry in history despite nothing having happened in it.
+            if room.sessionCount <= 0 { return nil }
             let title = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
             return CachedConversationEntity(
                 id: "agent-room:\(room.roomId)",
