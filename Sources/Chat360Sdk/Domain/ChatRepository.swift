@@ -99,20 +99,28 @@ public final class ChatRepository {
         // Every open of the bot starts a fresh conversation rather than silently resuming
         // whatever room was last active - the previous conversation is still reachable from
         // the history drawer, this just controls what greets the user on open.
-        await establishSession(onConversationStarted: onConversationStarted, persisted: nil)
+        await establishSession(onConversationStarted: onConversationStarted)
     }
 
     public func startNewSession(onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async {
         NSLog("[Chat360WS] Starting new session (user-initiated) - tearing down room=%@", roomId ?? "nil")
         teardownForResession()
-        await establishSession(onConversationStarted: onConversationStarted, persisted: nil)
+        await establishSession(onConversationStarted: onConversationStarted)
     }
 
     public func switchToRoom(targetRoomId: String, onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async -> Bool {
-        guard let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId) else { return false }
+        // No local session token doesn't mean the room can't be resumed - it just means this
+        // device never had a live socket session in it (e.g. it only exists because it was
+        // synced down from the server's room list). Try resuming by room id alone in that case
+        // rather than giving up: `getSession` already accepts room id and token as independent,
+        // separately-optional values, so the server can still attach to the existing room
+        // without one. If it can't, the resumedRoomId mismatch check in the caller already
+        // reconciles to whatever room the server allocates instead - this can't route worse
+        // than silently sending into an unrelated room the way giving up early did.
+        let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId)
         NSLog("[Chat360WS] Switching to room=%@ (tearing down room=%@)", targetRoomId, roomId ?? "nil")
         teardownForResession()
-        await establishSession(onConversationStarted: onConversationStarted, persisted: persisted)
+        await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: targetRoomId, resumeSessionToken: persisted?.sessionToken)
         return true
     }
 
@@ -131,15 +139,15 @@ public final class ChatRepository {
         shouldAskFeedback = false
     }
 
-    private func establishSession(onConversationStarted: @escaping (String) async -> Bool, persisted: PersistedSession?) async {
+    private func establishSession(onConversationStarted: @escaping (String) async -> Bool, resumeRoomId: String? = nil, resumeSessionToken: String? = nil) async {
         do {
             let host = hostComponent(of: baseUrl)
             let session = try await apiService.getSession(
                 botId: botId,
                 websiteUrl: host,
                 currentUrl: "\(baseUrl)/web_bot/?h=\(botId)",
-                roomId: persisted?.roomId,
-                sessionId: persisted?.sessionToken
+                roomId: resumeRoomId,
+                sessionId: resumeSessionToken
             )
             ownerId = session.owner_id
             roomId = session.room_id
