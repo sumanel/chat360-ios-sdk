@@ -364,9 +364,11 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[index].selectedReplyIndex = option.index
             }
         }
-        let chatMsgId = repository.sendQuickReply(option)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: option.text, fromUser: true))
-        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendQuickReply(option)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: option.text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
     }
 
     public func selectRating(messageId: String, value: Int) {
@@ -377,9 +379,11 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[index].selectedReplyIndex = value - 1
             }
         }
-        let chatMsgId = repository.sendRating(value)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: String(value), fromUser: true))
-        update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendRating(value)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: String(value), fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
     }
 
     public func selectAutoSuggestion(messageId: String, index: Int, text: String) {
@@ -390,8 +394,10 @@ public final class ChatViewModel: ObservableObject {
                 state.messages[i].selectedReplyIndex = index
             }
         }
-        let chatMsgId = repository.sendAutoSuggestion(text)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendAutoSuggestion(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func updatePromptValue(messageId: String, primary: String, secondary: String = "") {
@@ -410,8 +416,10 @@ public final class ChatViewModel: ObservableObject {
         let email = prompt.value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !email.isBlank, !InputValidators.validateTest(email), InputValidators.validateEmail(email) else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId = repository.sendEmail(email)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: email, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendEmail(email)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: email, fromUser: true))
+        }
     }
 
     public func submitPhone(messageId: String) {
@@ -423,13 +431,15 @@ public final class ChatViewModel: ObservableObject {
         let combined = countryCode + nationalNumber
         guard !countryCode.isBlank, !nationalNumber.isBlank, InputValidators.validatePhoneNumber(combined, international: true) else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId: String
-        if content.splitVariable, let countryCodeVar = content.countryCodeVar {
-            chatMsgId = repository.sendSplitPhone(countryCode: countryCode, nationalNumber: nationalNumber, countryCodeVar: countryCodeVar)
-        } else {
-            chatMsgId = repository.sendPhone(combined)
+        sendAfterResumingRoom { vm in
+            let chatMsgId: String
+            if content.splitVariable, let countryCodeVar = content.countryCodeVar {
+                chatMsgId = vm.repository.sendSplitPhone(countryCode: countryCode, nationalNumber: nationalNumber, countryCodeVar: countryCodeVar)
+            } else {
+                chatMsgId = vm.repository.sendPhone(combined)
+            }
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: combined, fromUser: true))
         }
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: combined, fromUser: true))
     }
 
     public func selectDate(messageId: String, formattedDate: String) {
@@ -440,15 +450,19 @@ public final class ChatViewModel: ObservableObject {
             guard let index = state.messages.firstIndex(where: { $0.id == messageId }) else { return }
             state.messages[index].promptState = PromptState(value: formattedDate, secondaryValue: prompt.secondaryValue, submitted: true)
         }
-        let chatMsgId = repository.sendDate(formattedDate: formattedDate, format: content.rules.dateFormat)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedDate, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendDate(formattedDate: formattedDate, format: content.rules.dateFormat)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedDate, fromUser: true))
+        }
     }
 
     public func submitTime(messageId: String, formattedTime: String) {
         guard let message = uiState.messages.first(where: { $0.id == messageId }), let prompt = message.promptState, !prompt.submitted else { return }
         markPromptSubmitted(messageId: messageId)
-        let chatMsgId = repository.sendTime(formattedTime)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedTime, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendTime(formattedTime)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: formattedTime, fromUser: true))
+        }
     }
 
     private func markPromptSubmitted(messageId: String) {
@@ -473,12 +487,14 @@ public final class ChatViewModel: ObservableObject {
         guard let message = uiState.messages.first(where: { $0.id == messageId }),
               case .multiOption(let content) = message.content,
               message.repliesEnabled, !message.checkedIndices.isEmpty else { return }
-        let chatMsgId = repository.sendCheckboxOptions(allOptions: content.options, checkedIndices: message.checkedIndices)
         let text = content.options.filter { message.checkedIndices.contains($0.index) }.map { $0.text }.joined(separator: ", ")
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendCheckboxOptions(allOptions: content.options, checkedIndices: message.checkedIndices)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func selectImageButton(messageId: String, card: BotContent.ImageButtons.Card, button: BotContent.ImageButtons.Button, submitType: String) {
@@ -486,8 +502,10 @@ public final class ChatViewModel: ObservableObject {
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        let chatMsgId = repository.sendImageButton(card: card, button: button, submitType: submitType)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: button.text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendImageButton(card: card, button: button, submitType: submitType)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: button.text, fromUser: true))
+        }
     }
 
     public func selectTextCarouselReply(messageId: String, text: String, clickedIndex: Int, targetId: String?) {
@@ -495,8 +513,10 @@ public final class ChatViewModel: ObservableObject {
         update { state in
             if let index = state.messages.firstIndex(where: { $0.id == messageId }) { state.messages[index].repliesEnabled = false }
         }
-        let chatMsgId = repository.sendTextCarouselReply(text: text, clickedIndex: clickedIndex, targetId: targetId)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendTextCarouselReply(text: text, clickedIndex: clickedIndex, targetId: targetId)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func selectWelcomeCard(messageId: String, card: BotContent.WelcomeScreen.Card, index: Int) {
@@ -507,8 +527,10 @@ public final class ChatViewModel: ObservableObject {
         let trimmed = card.name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = (trimmed?.isEmpty == false) ? trimmed! : "Card \(index + 1)"
         let ctaTargetId = (card.ctaEnabled && card.ctaType == "component" && !(card.ctaLink?.isBlank ?? true)) ? card.ctaLink : nil
-        let chatMsgId = repository.sendWelcomeCard(cardTitle: text, clickedIndexOneBased: index + 1, ctaTargetId: ctaTargetId)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendWelcomeCard(cardTitle: text, clickedIndexOneBased: index + 1, ctaTargetId: ctaTargetId)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+        }
     }
 
     public func advanceFromIframe(targetId: String) {
@@ -516,8 +538,10 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func selectShortcut(targetId: String, label: String) {
-        let chatMsgId = repository.sendShortcut(targetId: targetId, label: label)
-        appendMessage(ChatMessage(chatMsgId: chatMsgId, text: label, fromUser: true))
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendShortcut(targetId: targetId, label: label)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: label, fromUser: true))
+        }
     }
 
     public func switchLanguage(targetId: String) {
@@ -894,12 +918,10 @@ public final class ChatViewModel: ObservableObject {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty && !uiState.isLiveChat { return }
         update { $0.inputText = "" }
-        Task { [weak self] in
-            guard let self else { return }
-            await self.switchToActiveRoomIfResumable()
-            let chatMsgId = self.repository.sendFreeText(text)
-            self.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
-            self.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendFreeText(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
         }
     }
 
@@ -910,12 +932,23 @@ public final class ChatViewModel: ObservableObject {
         guard let botIndex = uiState.messages.firstIndex(where: { $0.id == messageId }) else { return }
         guard let userMessage = uiState.messages[..<botIndex].last(where: { $0.fromUser }) else { return }
         let text = userMessage.text
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendFreeText(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
+    }
+
+    // Every reply to a specific bot prompt (quick reply, rating, form field, welcome card, etc.)
+    // needs the live socket actually pointed at the room being viewed before it sends - otherwise
+    // it silently goes out through whichever room happens to still be connected instead, and the
+    // view then snaps to match wherever the message actually landed. This centralizes that
+    // resume-then-send sequencing so each call site only supplies what's different about it.
+    private func sendAfterResumingRoom(_ body: @escaping (ChatViewModel) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             await self.switchToActiveRoomIfResumable()
-            let chatMsgId = self.repository.sendFreeText(text)
-            self.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
-            self.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+            body(self)
         }
     }
 
