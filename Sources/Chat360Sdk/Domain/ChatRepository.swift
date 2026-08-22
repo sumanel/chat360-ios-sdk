@@ -164,7 +164,10 @@ public final class ChatRepository {
             }
             ownerId = session.owner_id
             roomId = session.room_id
-            sessionId = session.session_id
+            // Falls back to room_id when the bot's own session init doesn't return a distinct
+            // session_id (seen in practice - it's an optional field) - confirmed acceptable
+            // rather than blocking the feedback API on a value that isn't always present.
+            sessionId = session.session_id ?? session.room_id
             currentTargetId = session.targetId
             NSLog("[Chat360WS] Session established: owner=%@ room=%@", session.owner_id, session.room_id)
             sessionStore?.save(botId: botId, session: PersistedSession(roomId: session.room_id, sessionToken: session.session_token, ownerId: session.owner_id))
