@@ -204,14 +204,26 @@ public final class ChatViewModel: ObservableObject {
     // being reacted to can't be found, e.g. after a restart if the conversation hasn't replayed
     // yet - matches the existing best-effort pattern used for rooms/list, room/update, etc.
     private func reportFeedback(timestampMs: Int64?, feedback: String, remarks: String?) {
-        guard let chatHistoryRepository,
-              let timestampMs,
-              let conversationId = activeConversationId,
-              let roomId = conversations.first(where: { $0.id == conversationId })?.roomId,
-              let sessionId = repository.currentSessionId(),
-              let index = uiState.messages.firstIndex(where: { $0.timestampMs == timestampMs }),
+        guard let chatHistoryRepository else {
+            NSLog("[Chat360] Skipping %@ feedback report: third-party-tasks not configured", feedback)
+            return
+        }
+        guard let timestampMs, let conversationId = activeConversationId,
+              let roomId = conversations.first(where: { $0.id == conversationId })?.roomId
+        else {
+            NSLog("[Chat360] Skipping %@ feedback report: no active conversation/room", feedback)
+            return
+        }
+        guard let sessionId = repository.currentSessionId() else {
+            NSLog("[Chat360] Skipping %@ feedback report: no session id yet", feedback)
+            return
+        }
+        guard let index = uiState.messages.firstIndex(where: { $0.timestampMs == timestampMs }),
               let nodeId = uiState.messages[index].nodeId
-        else { return }
+        else {
+            NSLog("[Chat360] Skipping %@ feedback report: message not found (timestampMs=%lld)", feedback, timestampMs)
+            return
+        }
         let response = uiState.messages[index].text
         let query = uiState.messages[..<index].last(where: { $0.fromUser })?.text ?? ""
         Task {
