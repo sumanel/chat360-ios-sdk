@@ -11,8 +11,21 @@ public struct PlainTextContent: View {
     }
 
     public var body: some View {
-        if !text.isEmpty {
-            Text(text.toAttributedString(linkColor: colors.accent))
+        if let (before, table, after) = HTMLTableExtractor.extractFirstTable(from: text) {
+            VStack(alignment: .leading, spacing: 10) {
+                textView(before)
+                HTMLTableView(headers: table.headers, rows: table.rows)
+                textView(after)
+            }
+        } else if !text.isEmpty {
+            textView(text)
+        }
+    }
+
+    @ViewBuilder
+    private func textView(_ value: String) -> some View {
+        if !value.isEmpty {
+            Text(value.toAttributedString(linkColor: colors.accent))
                 .font(typography.textFamily.font(size: 15))
                 .lineSpacing(7)
                 .foregroundColor(colors.bubbleAiText)
