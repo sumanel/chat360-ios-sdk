@@ -131,6 +131,12 @@ public struct ChatScreen: View {
                         .onChange(of: viewModel.uiState.isAgentTyping) { _ in
                             scrollToBottom(proxy: proxy)
                         }
+                        // The keyboard appearing shrinks the scrollable area without this - the
+                        // list itself never re-scrolls to compensate, so whatever was at the
+                        // bottom ends up sitting behind the keyboard instead of above it.
+                        .onChange(of: isInputFocused) { focused in
+                            if focused { scrollToBottom(proxy: proxy) }
+                        }
                     }
                     .frame(maxHeight: .infinity)
                 } else {
