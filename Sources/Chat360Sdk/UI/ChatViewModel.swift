@@ -121,7 +121,9 @@ public final class ChatViewModel: ObservableObject {
 
     private func setActiveConversationId(_ id: String?) {
         activeConversationId = id
-        update { $0.activeConversationId = id }
+        // Hidden until whatever's actually running in this conversation sends a message again -
+        // it's tied to activity in the conversation currently being viewed, not a global clock.
+        update { $0.activeConversationId = id; $0.sessionTimerExpiresAt = nil }
         Task { [weak self] in
             await self?.refreshPendingFeedback(conversationId: id)
             await self?.refreshMessageReactions(conversationId: id)
@@ -342,6 +344,11 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func appendMessage(_ message: ChatMessage, cacheUserMessage: Bool? = nil) {
+        // Only a live send counts as "the session starting" - replaying old history on open
+        // shouldn't retroactively start or restart this.
+        if message.fromUser, !restoringFromCache {
+            ensureSessionTimerStarted()
+        }
         let shouldCache = cacheUserMessage ?? message.fromUser
         let target = connectedConversationId
         if message.fromUser, !restoringFromCache, let target, activeConversationId != target {
@@ -376,6 +383,14 @@ public final class ChatViewModel: ObservableObject {
                 self.upsertLiveConversationEntry(conversationId: conversationId, roomId: roomId, title: message.text)
             }
         }
+    }
+
+    // Only (re)starts when nothing is currently running or the last one already expired - a
+    // message sent while the hour is still counting down leaves it alone.
+    private func ensureSessionTimerStarted() {
+        let now = Date()
+        if let expiresAt = uiState.sessionTimerExpiresAt, expiresAt > now { return }
+        update { $0.sessionTimerExpiresAt = now.addingTimeInterval(3600) }
     }
 
     private func upsertLiveConversationEntry(conversationId: String, roomId: String?, title: String) {

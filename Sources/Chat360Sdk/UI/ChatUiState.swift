@@ -171,6 +171,11 @@ public struct ChatUiState: Equatable {
     public var pendingFeedbackMessageId: String?
     public var pendingFeedbackTimestampMs: Int64?
     public var messageReactions: [Int64: Bool] = [:]
+    // Purely a client-side display, not tied to any real backend session lifetime. Starts on
+    // the conversation's first user message, keeps counting down regardless of further
+    // activity, and only restarts (from a fresh hour) once it's actually expired and the user
+    // sends another message - never reset by messages sent while still running.
+    public var sessionTimerExpiresAt: Date?
 
     public init() {}
 
@@ -195,6 +200,7 @@ public struct ChatUiState: Equatable {
             lhs.activeConversationId == rhs.activeConversationId &&
             lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
             lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&
-            lhs.messageReactions == rhs.messageReactions
+            lhs.messageReactions == rhs.messageReactions &&
+            lhs.sessionTimerExpiresAt == rhs.sessionTimerExpiresAt
     }
 }

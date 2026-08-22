@@ -1,6 +1,6 @@
 import SwiftUI
 
-@available(iOS 14.0, *)
+@available(iOS 15.0, *)
 public struct HeaderBar: View {
     @Environment(\.chat360Colors) private var colors
 
@@ -15,6 +15,7 @@ public struct HeaderBar: View {
     private let onShortcutSelected: (String, String) -> Void
     private let onRefreshClick: () -> Void
     private let onCloseClick: (() -> Void)?
+    private let sessionTimerExpiresAt: Date?
 
     public init(
         connected: Bool,
@@ -27,7 +28,8 @@ public struct HeaderBar: View {
         shortcuts: [String: String] = [:],
         onShortcutSelected: @escaping (String, String) -> Void = { _, _ in },
         onRefreshClick: @escaping () -> Void = {},
-        onCloseClick: (() -> Void)? = nil
+        onCloseClick: (() -> Void)? = nil,
+        sessionTimerExpiresAt: Date? = nil
     ) {
         self.connected = connected
         self.assignedAgent = assignedAgent
@@ -40,6 +42,7 @@ public struct HeaderBar: View {
         self.onShortcutSelected = onShortcutSelected
         self.onRefreshClick = onRefreshClick
         self.onCloseClick = onCloseClick
+        self.sessionTimerExpiresAt = sessionTimerExpiresAt
     }
 
     public var body: some View {
@@ -64,6 +67,10 @@ public struct HeaderBar: View {
                 }
             }
             Spacer()
+            if let sessionTimerExpiresAt {
+                SessionCountdownText(expiresAt: sessionTimerExpiresAt)
+                    .padding(.trailing, showNewChat || onCloseClick != nil ? 14 : 0)
+            }
             if showNewChat {
                 Button(action: onNewChatClick) {
                     Chat360Icon.add.image
@@ -87,5 +94,26 @@ public struct HeaderBar: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(colors.background)
+    }
+}
+
+// Purely a display of `sessionTimerExpiresAt` - hides itself once expired rather than freezing
+// at 0:00, since nothing here restarts it; that only happens on the next user message.
+@available(iOS 15.0, *)
+private struct SessionCountdownText: View {
+    @Environment(\.chat360Colors) private var colors
+    let expiresAt: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = expiresAt.timeIntervalSince(context.date)
+            if remaining > 0 {
+                let minutes = Int(remaining) / 60
+                let seconds = Int(remaining) % 60
+                Text(String(format: "%02d:%02d", minutes, seconds))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundColor(colors.textSecondary)
+            }
+        }
     }
 }

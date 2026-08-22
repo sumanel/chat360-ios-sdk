@@ -75,7 +75,8 @@ public struct ChatScreen: View {
                         shortcuts: viewModel.shortcuts,
                         onShortcutSelected: { targetId, label in viewModel.selectShortcut(targetId: targetId, label: label) },
                         onRefreshClick: { viewModel.refreshConnection() },
-                        onCloseClick: features.showClose ? { Chat360Bot.shared.closeChatBot() } : nil
+                        onCloseClick: features.showClose ? { Chat360Bot.shared.closeChatBot() } : nil,
+                        sessionTimerExpiresAt: viewModel.uiState.sessionTimerExpiresAt
                     )
                 }
 
