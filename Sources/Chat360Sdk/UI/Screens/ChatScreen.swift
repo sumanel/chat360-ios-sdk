@@ -125,6 +125,20 @@ public struct ChatScreen: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                         }
+                        // Covers the initial open: when a conversation resumes with history
+                        // already loaded, the list can render fully-populated on its very first
+                        // appearance, before .onChange below ever sees a value transition to
+                        // react to - without this it starts wherever ScrollView defaults to
+                        // instead of scrolled to the bottom, leaving the last message behind
+                        // the input bar.
+                        .onAppear {
+                            // Deferred one runloop turn - at .onAppear time the LazyVStack hasn't
+                            // necessarily finished laying out its children yet, and scrollTo
+                            // silently no-ops if the target isn't measured yet.
+                            DispatchQueue.main.async {
+                                scrollToBottom(proxy: proxy)
+                            }
+                        }
                         .onChange(of: viewModel.uiState.messages.last?.id) { _ in
                             scrollToBottom(proxy: proxy)
                         }
