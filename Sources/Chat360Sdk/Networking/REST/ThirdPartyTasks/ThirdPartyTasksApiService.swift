@@ -96,6 +96,30 @@ public final class ThirdPartyTasksApiService {
         return value
     }
 
+    public func submitFeedback(
+        roomId: String, sessionId: String, messageId: String, query: String, response: String,
+        feedback: String, remarks: String?, bearerToken: String
+    ) async throws {
+        let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/feedback/queries")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        let data: [String: Any] = [
+            "message_id": messageId,
+            "query": query,
+            "response": response,
+            "feedback": feedback,
+            "Remarks": remarks ?? NSNull(),
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "room_id": roomId,
+            "session_id": sessionId,
+            "data": data,
+        ] as [String: Any])
+        _ = try await execute(request)
+    }
+
     private func execute(_ request: URLRequest) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let task = session.dataTask(with: request) { data, response, error in

@@ -59,6 +59,19 @@ public final class ChatHistoryRepository {
         }
     }
 
+    public func submitFeedback(roomId: String, sessionId: String, messageId: String, query: String, response: String, feedback: String, remarks: String?) async {
+        do {
+            try await withAuthRetry { token in
+                try await self.apiService.submitFeedback(
+                    roomId: roomId, sessionId: sessionId, messageId: messageId, query: query, response: response,
+                    feedback: feedback, remarks: remarks, bearerToken: token
+                )
+            }
+        } catch {
+            NSLog("[Chat360] third-party-tasks feedback/queries failed: %@", error.localizedDescription)
+        }
+    }
+
     private func withAuthRetry<T>(_ block: @escaping (String) async throws -> T) async throws -> T {
         let token = try await tokenManager.validToken()
         do {

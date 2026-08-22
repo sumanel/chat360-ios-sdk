@@ -111,13 +111,19 @@ public struct ChatMessage: Equatable, Identifiable {
     // delivery and cache/history replay - it's the only thing that reliably re-identifies "the
     // same message" across an app restart, so it's what reaction persistence keys on.
     public var timestampMs: Int64?
+    // The bot flow node this message was generated from - reported to the third-party-tasks
+    // feedback API as `message_id` on like/dislike, per the backend contract. Same caveat as
+    // any other field sourced from the flow graph rather than a per-instance id: if the same
+    // node fires more than once in a conversation, both messages share this value.
+    public var nodeId: String?
 
     public init(
         id: String = UUID().uuidString, chatMsgId: String? = nil, text: String, fromUser: Bool, failed: Bool = false,
         timeText: String = formatMessageTime(), content: BotContent = .plainText, repliesEnabled: Bool = true,
         selectedReplyIndex: Int? = nil, attachment: Attachment? = nil, formState: FormState? = nil,
         promptState: PromptState? = nil, checkedIndices: Set<Int> = [], streamId: String? = nil,
-        author: BotNode.MessageAuthor = .bot, voiceMessage: VoiceMessageInfo? = nil, timestampMs: Int64? = nil
+        author: BotNode.MessageAuthor = .bot, voiceMessage: VoiceMessageInfo? = nil, timestampMs: Int64? = nil,
+        nodeId: String? = nil
     ) {
         self.id = id
         self.chatMsgId = chatMsgId
@@ -136,6 +142,7 @@ public struct ChatMessage: Equatable, Identifiable {
         self.author = author
         self.voiceMessage = voiceMessage
         self.timestampMs = timestampMs
+        self.nodeId = nodeId
     }
 }
 

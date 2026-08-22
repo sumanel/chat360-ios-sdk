@@ -17,6 +17,7 @@ public final class ChatRepository {
 
     private var ownerId: String?
     private var roomId: String?
+    private var sessionId: String?
     private var currentTargetId: String?
     private var lastBotNode: BotNode?
     private var pendingInitJumpTargetId: String?
@@ -138,6 +139,7 @@ public final class ChatRepository {
 
         ownerId = nil
         roomId = nil
+        sessionId = nil
         currentTargetId = nil
         lastBotNode = nil
         pendingInitJumpTargetId = nil
@@ -162,6 +164,7 @@ public final class ChatRepository {
             }
             ownerId = session.owner_id
             roomId = session.room_id
+            sessionId = session.session_id
             currentTargetId = session.targetId
             NSLog("[Chat360WS] Session established: owner=%@ room=%@", session.owner_id, session.room_id)
             sessionStore?.save(botId: botId, session: PersistedSession(roomId: session.room_id, sessionToken: session.session_token, ownerId: session.owner_id))
@@ -271,6 +274,10 @@ public final class ChatRepository {
         } catch {
             onAppearanceLoaded(nil, nil)
         }
+    }
+
+    public func currentSessionId() -> String? {
+        sessionId
     }
 
     public func reconnectNow() {

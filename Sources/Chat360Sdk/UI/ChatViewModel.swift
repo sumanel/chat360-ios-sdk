@@ -174,6 +174,7 @@ public final class ChatViewModel: ObservableObject {
 
     public func likeMessage(timestampMs: Int64?) {
         setReaction(timestampMs: timestampMs, liked: true)
+        reportFeedback(timestampMs: timestampMs, feedback: "Like", remarks: nil)
     }
 
     public func dislikeMessage(messageId: String, timestampMs: Int64?) {
@@ -187,11 +188,37 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func submitDislikeFeedback(messageId: String, text: String) {
+        let timestampMs = uiState.pendingFeedbackTimestampMs
         repository.sendConfigurableFeedback(rating: 1, feedbackText: text, endSession: false)
+        reportFeedback(timestampMs: timestampMs, feedback: "Dislike", remarks: text)
         Task { [weak self] in
             guard let self else { return }
             await self.cache.clearPendingFeedback(messageId: messageId)
             await self.refreshPendingFeedback(conversationId: self.activeConversationId)
+        }
+    }
+
+    // Reports a like/dislike to the third-party-tasks feedback API - a separate, analytics-side
+    // record from the bot's own conversational feedback message sent over the socket. Silently
+    // no-ops if third-party-tasks isn't configured (no clientId/apiKey/endUserId) or the message
+    // being reacted to can't be found, e.g. after a restart if the conversation hasn't replayed
+    // yet - matches the existing best-effort pattern used for rooms/list, room/update, etc.
+    private func reportFeedback(timestampMs: Int64?, feedback: String, remarks: String?) {
+        guard let chatHistoryRepository,
+              let timestampMs,
+              let conversationId = activeConversationId,
+              let roomId = conversations.first(where: { $0.id == conversationId })?.roomId,
+              let sessionId = repository.currentSessionId(),
+              let index = uiState.messages.firstIndex(where: { $0.timestampMs == timestampMs }),
+              let nodeId = uiState.messages[index].nodeId
+        else { return }
+        let response = uiState.messages[index].text
+        let query = uiState.messages[..<index].last(where: { $0.fromUser })?.text ?? ""
+        Task {
+            await chatHistoryRepository.submitFeedback(
+                roomId: roomId, sessionId: sessionId, messageId: nodeId, query: query, response: response,
+                feedback: feedback, remarks: remarks
+            )
         }
     }
 
@@ -255,7 +282,8 @@ public final class ChatViewModel: ObservableObject {
                 formState: formState,
                 promptState: promptState,
                 author: node.author,
-                timestampMs: node.timestampMs
+                timestampMs: node.timestampMs,
+                nodeId: node.nodeId
             ), cacheUserMessage: false)
         case .typingStatus(let isTyping):
             update { $0.isAgentTyping = isTyping }
@@ -292,7 +320,7 @@ public final class ChatViewModel: ObservableObject {
                     updated.repliesEnabled = false
                     return updated
                 }
-                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId, timestampMs: node.timestampMs))
+                state.messages.append(ChatMessage(text: mergedRaw, fromUser: false, streamId: streamId, timestampMs: node.timestampMs, nodeId: node.nodeId))
             }
         }
     }
