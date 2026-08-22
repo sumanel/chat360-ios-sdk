@@ -92,9 +92,14 @@ public final class ChatCacheDao {
                 FOREIGN KEY(conversationId) REFERENCES chat_conversations(id) ON DELETE CASCADE
             )
             """)
-            // Best-effort migration for installs that created this table before timestampMs
-            // existed - fails harmlessly (ignored return value) if the column is already there.
-            exec("ALTER TABLE chat_pending_feedback ADD COLUMN timestampMs INTEGER")
+            // Migration for installs that created this table before timestampMs existed. Checked
+            // first rather than letting a blind ALTER fail-and-ignore every launch forever once
+            // the column exists - that alternative logs a SQLite "duplicate column name" error
+            // on every single app start indefinitely, which reads as a real problem even though
+            // it's harmless.
+            if !columnExists(table: "chat_pending_feedback", column: "timestampMs") {
+                exec("ALTER TABLE chat_pending_feedback ADD COLUMN timestampMs INTEGER")
+            }
             exec("CREATE INDEX IF NOT EXISTS index_chat_pending_feedback_conversationId ON chat_pending_feedback(conversationId)")
             exec("""
             CREATE TABLE IF NOT EXISTS chat_message_reactions (
@@ -105,6 +110,13 @@ public final class ChatCacheDao {
             )
             """)
         }
+    }
+
+    // `table` is always one of this file's own hardcoded schema constants, never external
+    // input, so interpolating it is safe - PRAGMA statements don't support bound parameters
+    // for identifiers anyway.
+    private func columnExists(table: String, column: String) -> Bool {
+        query("PRAGMA table_info(\(table))").contains { ($0["name"] as? String) == column }
     }
 
     @discardableResult

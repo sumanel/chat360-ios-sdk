@@ -26,6 +26,11 @@ public final class ChatRepository {
     private var reconnectPending = false
     private var lastDispatchedNode: BotNode?
     private var lastDispatchedAt: Int64 = 0
+    // Bumped on every establishSession() call so a slower, superseded attempt (e.g. the app's
+    // own cold-start connect racing a switchToRoom triggered by an early tap) can tell it's
+    // stale after its network call returns, instead of overwriting newer state or opening a
+    // second, wrong socket - same idea as Chat360WebSocketClient's own generation guard.
+    private var sessionGeneration: Int = 0
 
     private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
     private var onConnected: () -> Void = {}
@@ -140,6 +145,8 @@ public final class ChatRepository {
     }
 
     private func establishSession(onConversationStarted: @escaping (String) async -> Bool, resumeRoomId: String? = nil, resumeSessionToken: String? = nil) async {
+        sessionGeneration += 1
+        let myGeneration = sessionGeneration
         do {
             let host = hostComponent(of: baseUrl)
             let session = try await apiService.getSession(
@@ -149,6 +156,10 @@ public final class ChatRepository {
                 roomId: resumeRoomId,
                 sessionId: resumeSessionToken
             )
+            guard myGeneration == sessionGeneration else {
+                NSLog("[Chat360WS] Discarding superseded session establish (room=%@)", session.room_id)
+                return
+            }
             ownerId = session.owner_id
             roomId = session.room_id
             currentTargetId = session.targetId
@@ -195,8 +206,10 @@ public final class ChatRepository {
             } else if await loadConversationStarter() {
                 pendingInitJumpTargetId = nil
             }
+            guard myGeneration == sessionGeneration else { return }
             openSocket()
         } catch {
+            guard myGeneration == sessionGeneration else { return }
             onError(error)
         }
     }
