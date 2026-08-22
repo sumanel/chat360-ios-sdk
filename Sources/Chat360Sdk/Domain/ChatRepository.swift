@@ -672,7 +672,13 @@ public final class ChatRepository {
         return sendTracked(outgoing)
     }
 
-    public func sendConfigurableFeedback(rating: Int?, feedbackText: String) {
+    // `endSession` defaults to true for the original end-of-conversation feedback form, where
+    // the user is considered done chatting and tearing the socket down afterward is correct.
+    // The per-message dislike-feedback flow reuses this same send path but passes false - the
+    // user is still mid-conversation, and disconnecting there was silently killing the live
+    // socket (no reconnect scheduled, heartbeat stopped, window-event bridge unregistered)
+    // right before the next message they send.
+    public func sendConfigurableFeedback(rating: Int?, feedbackText: String, endSession: Bool = true) {
         let sanitizedFeedback = InputValidators.sanitizeInput(feedbackText)
         let outgoing = OutgoingMessage(
             message: .object(["type": .string("feedback"), "rating": .string(rating.map { String($0) } ?? ""), "feedback": .string(sanitizedFeedback)]),
@@ -682,7 +688,7 @@ public final class ChatRepository {
             nodeType: "feedback"
         )
         sendTracked(outgoing)
-        disconnect()
+        if endSession { disconnect() }
     }
 
     @discardableResult

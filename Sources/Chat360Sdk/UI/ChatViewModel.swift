@@ -187,7 +187,7 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func submitDislikeFeedback(messageId: String, text: String) {
-        repository.sendConfigurableFeedback(rating: 1, feedbackText: text)
+        repository.sendConfigurableFeedback(rating: 1, feedbackText: text, endSession: false)
         Task { [weak self] in
             guard let self else { return }
             await self.cache.clearPendingFeedback(messageId: messageId)
