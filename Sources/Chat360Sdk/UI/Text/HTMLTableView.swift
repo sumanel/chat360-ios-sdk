@@ -42,7 +42,12 @@ struct HTMLTableView: View {
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .frame(minWidth: 90, alignment: .leading)
+            // Without a maxWidth, Text has no reason to wrap - it just keeps growing to fit the
+            // whole string on one line, however long, which is what forced so much horizontal
+            // scrolling. Capping it lets long cells wrap to multiple lines instead, and Grid
+            // already gives every cell in that row the same (taller) height for free once one
+            // of them wraps - no extra row-height syncing needed.
+            .frame(minWidth: 90, maxWidth: 160, alignment: .leading)
             .background(isHeader ? colors.backgroundSunken : colors.bubbleAiBackground)
             .overlay(Rectangle().stroke(colors.cardBorder, lineWidth: 0.5))
     }
