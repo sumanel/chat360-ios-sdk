@@ -45,4 +45,30 @@ final class HTMLTableExtractorTests: XCTestCase {
         let result = HTMLTableExtractor.extractFirstTable(from: html)
         XCTAssertEqual(result?.table.rows, [["Bold text"]])
     }
+
+    // A category cell spanning several sub-rows must repeat into every row it covers - dropping
+    // it (the old behavior) leaves each subsequent row one column short, which staggers every
+    // row after it out of alignment with the header.
+    func testRepeatsRowspanCellIntoEveryRowItCovers() {
+        let html = """
+        <table>
+        <tr><th>Parameter</th><th>Hyundai CRETA E</th><th>Maruti Brezza Zeta</th></tr>
+        <tr><td rowspan="3">Engine</td><td>Power</td><td>115 PS</td></tr>
+        <tr><td>Torque</td><td>143.8 Nm</td></tr>
+        <tr><td>Transmission</td><td>6-Speed MT</td></tr>
+        </table>
+        """
+        guard let result = HTMLTableExtractor.extractFirstTable(from: html) else {
+            return XCTFail("Expected a table to be extracted")
+        }
+        XCTAssertEqual(result.table.rows[0], ["Engine", "Power", "115 PS"])
+        XCTAssertEqual(result.table.rows[1], ["Engine", "Torque", "143.8 Nm"])
+        XCTAssertEqual(result.table.rows[2], ["Engine", "Transmission", "6-Speed MT"])
+    }
+
+    func testRepeatsColspanCellAcrossTheColumnsItCovers() {
+        let html = "<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td colspan=\"2\">Wide</td><td>Value</td></tr></table>"
+        let result = HTMLTableExtractor.extractFirstTable(from: html)
+        XCTAssertEqual(result?.table.rows, [["Wide", "Wide", "Value"]])
+    }
 }
