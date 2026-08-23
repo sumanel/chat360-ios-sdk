@@ -25,6 +25,14 @@ public struct ChatDrawer: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
 
+    // Centralized here rather than one `.alert` per row (as it was before): SwiftUI only
+    // reliably drives one alert-presentation source per view hierarchy, so with a separate
+    // `.alert` attached to every `ConversationItem`, only whichever row's alert got claimed
+    // first kept working - every other room's rename/delete silently stopped doing anything.
+    @State private var pendingRename: (id: String, title: String)?
+    @State private var pendingDelete: (id: String, title: String)?
+    @State private var renameDraft: String = ""
+
     private let onDismiss: () -> Void
     private let onNewChat: () -> Void
     private let isTrainingMode: Bool
@@ -124,8 +132,13 @@ public struct ChatDrawer: View {
                                     items: group.items,
                                     activeConversationId: activeConversationId,
                                     onConversationSelected: onConversationSelected,
-                                    onConversationRenamed: onConversationRenamed,
-                                    onConversationDeleted: onConversationDeleted
+                                    onRenameRequested: { id, title in
+                                        renameDraft = title
+                                        pendingRename = (id, title)
+                                    },
+                                    onDeleteRequested: { id, title in
+                                        pendingDelete = (id, title)
+                                    }
                                 )
                             }
                         }
@@ -179,6 +192,27 @@ public struct ChatDrawer: View {
         }
         .frame(maxHeight: .infinity)
         .background(colors.backgroundElevated)
+        .alert(
+            "Rename conversation",
+            isPresented: Binding(get: { pendingRename != nil }, set: { if !$0 { pendingRename = nil } })
+        ) {
+            TextField("Conversation name", text: $renameDraft)
+            Button("Save") {
+                if let id = pendingRename?.id { onConversationRenamed(id, renameDraft) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert(
+            "Delete conversation",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = pendingDelete?.id { onConversationDeleted(id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This can't be undone. Delete \"\(pendingDelete?.title ?? "")\"?")
+        }
     }
 }
 
@@ -211,8 +245,8 @@ private struct HistoryGroup: View {
     let items: [CachedConversationEntity]
     let activeConversationId: String?
     let onConversationSelected: (String) -> Void
-    let onConversationRenamed: (String, String) -> Void
-    let onConversationDeleted: (String) -> Void
+    let onRenameRequested: (String, String) -> Void
+    let onDeleteRequested: (String, String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -227,8 +261,8 @@ private struct HistoryGroup: View {
                         conversation: conversation,
                         isActive: conversation.id == activeConversationId,
                         onSelected: { onConversationSelected(conversation.id) },
-                        onRenamed: { onConversationRenamed(conversation.id, $0) },
-                        onDeleted: { onConversationDeleted(conversation.id) }
+                        onRenameRequested: { onRenameRequested(conversation.id, $0) },
+                        onDeleteRequested: { onDeleteRequested(conversation.id, $0) }
                     )
                 }
             }
@@ -253,12 +287,8 @@ private struct ConversationItem: View {
     let conversation: CachedConversationEntity
     let isActive: Bool
     let onSelected: () -> Void
-    let onRenamed: (String) -> Void
-    let onDeleted: () -> Void
-
-    @State private var showRenameDialog = false
-    @State private var showDeleteDialog = false
-    @State private var title = ""
+    let onRenameRequested: (String) -> Void
+    let onDeleteRequested: (String) -> Void
 
     private var displayTitle: String {
         if conversation.title == "New conversation" {
@@ -288,8 +318,8 @@ private struct ConversationItem: View {
             }
             .buttonStyle(.plain)
             Menu {
-                Button("Rename") { title = displayTitle; showRenameDialog = true }
-                Button("Delete", role: .destructive) { showDeleteDialog = true }
+                Button("Rename") { onRenameRequested(displayTitle) }
+                Button("Delete", role: .destructive) { onDeleteRequested(displayTitle) }
             } label: {
                 Chat360Icon.more.image
                     .foregroundColor(colors.textSecondary)
@@ -302,17 +332,6 @@ private struct ConversationItem: View {
         .background(isActive ? colors.backgroundSunken : colors.backgroundElevated)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.bottom, 4)
-        .alert("Rename conversation", isPresented: $showRenameDialog) {
-            TextField("Conversation name", text: $title)
-            Button("Save") { onRenamed(title) }
-            Button("Cancel", role: .cancel) {}
-        }
-        .alert("Delete conversation", isPresented: $showDeleteDialog) {
-            Button("Delete", role: .destructive) { onDeleted() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This can't be undone. Delete \"\(displayTitle)\"?")
-        }
     }
 }
 
