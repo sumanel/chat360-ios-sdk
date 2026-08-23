@@ -126,6 +126,7 @@ public struct ChatScreen: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                         }
+                        .scrollDismissesKeyboard(.interactively)
                         // Covers the initial open: when a conversation resumes with history
                         // already loaded, the list can render fully-populated on its very first
                         // appearance, before .onChange below ever sees a value transition to
