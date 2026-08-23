@@ -35,8 +35,8 @@ public struct QuickReplyButton: View {
                 .font(typography.textFamily.font(size: 14, weight: .medium))
                 .foregroundColor(textColor)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
                 .overlay(RoundedRectangle(cornerRadius: 22).stroke(borderColor, lineWidth: 1))
         }
         .disabled(!enabled)
