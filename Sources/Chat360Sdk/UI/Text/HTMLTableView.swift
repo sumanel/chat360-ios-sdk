@@ -1,6 +1,12 @@
 import SwiftUI
 
-@available(iOS 15.0, *)
+// `Grid`/`GridRow` (not a plain VStack of independent per-row HStacks) is what actually keeps
+// columns aligned across rows here - each row previously sized its own cells independently, so
+// a row with a long label (e.g. "Fuel Tank Capacity") ended up wider than a row with a short one
+// ("Segment"), and with nothing syncing widths across rows, every row drifted to a different
+// column position - a staircase, not a table. Grid measures each column's width from the widest
+// cell anywhere in that column, across every row, which is the actual fix.
+@available(iOS 16.0, *)
 struct HTMLTableView: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
@@ -10,14 +16,14 @@ struct HTMLTableView: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
                     ForEach(Array(headers.enumerated()), id: \.offset) { _, header in
                         cell(header, isHeader: true)
                     }
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 0) {
+                    GridRow {
                         ForEach(Array(row.enumerated()), id: \.offset) { _, value in
                             cell(value, isHeader: false)
                         }
