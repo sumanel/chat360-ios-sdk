@@ -25,6 +25,12 @@ public final class ChatViewModel: ObservableObject {
     private var streamRawText: [String: String] = [:]
     private let decoder = JSONDecoder()
     private var conversationsObservationTask: Task<Void, Never>?
+    // Keyed per conversation, not just "the current one" - an absolute deadline, not a paused
+    // duration, so it keeps counting down in real time whether or not that conversation is the
+    // one currently being viewed. Switching away and back should resume showing whatever's
+    // actually left, not restart, and only actual expiry (not merely having left and returned)
+    // should trigger a fresh hour on the next message.
+    private var sessionTimerExpiresAtByConversation: [String: Date] = [:]
 
     public init(
         repository: ChatRepository,
@@ -121,9 +127,12 @@ public final class ChatViewModel: ObservableObject {
 
     private func setActiveConversationId(_ id: String?) {
         activeConversationId = id
-        // Hidden until whatever's actually running in this conversation sends a message again -
-        // it's tied to activity in the conversation currently being viewed, not a global clock.
-        update { $0.activeConversationId = id; $0.sessionTimerExpiresAt = nil }
+        // Restores whatever's already running for this specific conversation (if anything) -
+        // switching to a conversation with time left resumes that countdown rather than hiding
+        // or restarting it; one with no entry yet (or a past deadline) shows nothing until a
+        // message is actually sent in it.
+        let expiresAt = id.flatMap { sessionTimerExpiresAtByConversation[$0] }
+        update { $0.activeConversationId = id; $0.sessionTimerExpiresAt = expiresAt }
         Task { [weak self] in
             await self?.refreshPendingFeedback(conversationId: id)
             await self?.refreshMessageReactions(conversationId: id)
@@ -385,12 +394,16 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
-    // Only (re)starts when nothing is currently running or the last one already expired - a
-    // message sent while the hour is still counting down leaves it alone.
+    // Only (re)starts when nothing is currently running for THIS conversation, or its last
+    // deadline already passed - a message sent while its hour is still counting down leaves it
+    // alone, and merely having left and come back doesn't count as expiry.
     private func ensureSessionTimerStarted() {
+        guard let conversationId = activeConversationId else { return }
         let now = Date()
-        if let expiresAt = uiState.sessionTimerExpiresAt, expiresAt > now { return }
-        update { $0.sessionTimerExpiresAt = now.addingTimeInterval(3600) }
+        if let expiresAt = sessionTimerExpiresAtByConversation[conversationId], expiresAt > now { return }
+        let newExpiresAt = now.addingTimeInterval(3600)
+        sessionTimerExpiresAtByConversation[conversationId] = newExpiresAt
+        update { $0.sessionTimerExpiresAt = newExpiresAt }
     }
 
     private func upsertLiveConversationEntry(conversationId: String, roomId: String?, title: String) {
