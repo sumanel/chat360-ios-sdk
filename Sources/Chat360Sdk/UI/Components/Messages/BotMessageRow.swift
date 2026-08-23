@@ -82,9 +82,9 @@ public struct BotMessageRow: View {
                         .background(feedback == true ? colors.accent : Color.clear)
                         .clipShape(Circle())
                         .onTapGesture {
-                            // Once either reaction is set it's permanent - a dislike that's
-                            // already had feedback submitted for it can't be overridden by
-                            // tapping like afterward.
+                            // A dislike is permanent once set (it already had mandatory feedback
+                            // submitted for it) - liking afterward can't override that. But like
+                            // itself isn't locked from the other direction (see dislike below).
                             guard feedback == nil else { return }
                             feedback = true
                             actions.onLikeClicked()
@@ -98,7 +98,10 @@ public struct BotMessageRow: View {
                         .background(feedback == false ? colors.accent : Color.clear)
                         .clipShape(Circle())
                         .onTapGesture {
-                            guard feedback == nil else { return }
+                            // Only already-disliked is a no-op - switching from like to dislike
+                            // is allowed, unlike the other direction, since dislike has its own
+                            // mandatory feedback step gating it regardless.
+                            guard feedback != false else { return }
                             feedback = false
                             actions.onDislikeClicked()
                         }
