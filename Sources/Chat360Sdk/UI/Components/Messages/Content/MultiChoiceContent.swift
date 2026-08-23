@@ -1,6 +1,6 @@
 import SwiftUI
 
-@available(iOS 15.0, *)
+@available(iOS 16.0, *)
 public struct MultiChoiceContent: View {
     private let message: ChatMessage
     private let content: BotContent.MultiChoice
@@ -15,16 +15,17 @@ public struct MultiChoiceContent: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 10) {
             PlainTextContent(message.text)
-            ForEach(content.options, id: \.index) { option in
-                Spacer().frame(height: 10)
-                QuickReplyButton(
-                    text: option.text,
-                    enabled: message.repliesEnabled && !isLiveChat,
-                    selected: message.selectedReplyIndex == option.index,
-                    onClick: { onQuickReply(option) }
-                )
+            FlowLayout(spacing: 8) {
+                ForEach(content.options, id: \.index) { option in
+                    QuickReplyButton(
+                        text: option.text,
+                        enabled: message.repliesEnabled && !isLiveChat,
+                        selected: message.selectedReplyIndex == option.index,
+                        onClick: { onQuickReply(option) }
+                    )
+                }
             }
         }
     }
