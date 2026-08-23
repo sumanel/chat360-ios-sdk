@@ -8,10 +8,16 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - Fully themeable: colors (light/dark), typography, and branding (logo, copy) via `Chat360Config`.
 - Feature flags to show/hide individual pieces of chrome (menu, history drawer, new chat, feedback, regenerate, voice input, close button, etc.) via `Chat360UIConfig`.
 - Conversation history with local caching, resume-on-relaunch, and room switching.
+- Bot responses containing an HTML `<table>` render as an actual aligned table (with wrapping
+  cell text), instead of jumbled plain text.
+- A 1-hour session countdown timer, shown in the header once the user sends their first
+  message, that resumes correctly when switching between conversations instead of resetting.
 - Like/dislike on bot messages, persisted locally across app restarts. Disliking opens a
   mandatory feedback box (min 20 characters) that blocks the chat until submitted or
-  cancelled — cancelling undoes the dislike rather than letting feedback be skipped. Once a
-  reaction is set on a message it's permanent.
+  cancelled — cancelling undoes the dislike rather than letting feedback be skipped. Dislike
+  is permanent once set; a like can still be switched to a dislike afterward, but not the
+  reverse. When `clientId`/`apiKey`/`endUserId` are configured, reactions are also reported to
+  Chat360's `third-party-tasks` feedback API.
 - `onChatSessionReady` callback so the host app can show its own loading state between
   presenting the chat screen and the connection actually being live.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
@@ -170,9 +176,11 @@ config.uiConfig = Chat360UIConfig(
 
 ### Feedback (like/dislike)
 
-Tapping like or dislike on a bot message is permanent — once either is set for a message, the other button no longer does anything for it. Both persist locally and survive app restarts.
+Dislike is permanent once set for a message — a like can still be switched to a dislike afterward, but not the other way around. Both persist locally and survive app restarts.
 
 Disliking opens a feedback box requiring at least 20 characters before it can be submitted, and it blocks the rest of the chat until it's resolved — there's no way to close it and move on without either submitting or explicitly cancelling. Cancelling (the X in the top-right) undoes the dislike itself rather than letting the user skip giving feedback, so a dislike can't end up silently unaccounted for.
+
+When `clientId`/`apiKey`/`endUserId` are all configured (see `historyEnabled` above), likes and dislikes are also reported to Chat360's `third-party-tasks` feedback API for analytics, separately from the bot's own conversational feedback message. This is automatic and requires no extra integration work; it silently no-ops if those aren't configured.
 
 ### Showing your own loading state
 

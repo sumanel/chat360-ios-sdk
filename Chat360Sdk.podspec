@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
     spec.name = "Chat360SDK"
-    spec.version = "3.2.0"
+    spec.version = "3.3.0"
     spec.summary = "Generative AI for Enhanced CX Engagement"
     spec.homepage = "https://chat360.io/"
   
