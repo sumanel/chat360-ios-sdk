@@ -87,11 +87,11 @@ public final class Chat360WebSocketClient: NSObject {
             case .success(let message):
                 switch message {
                 case .string(let text):
-                    NSLog("[Chat360WS] << RECEIVED: %@", text)
+                    Chat360WebSocketClient.logFull("[Chat360WS] << RECEIVED", text)
                     callbacks.onMessage(text)
                 case .data(let data):
                     let text = String(data: data, encoding: .utf8) ?? ""
-                    NSLog("[Chat360WS] << RECEIVED (data): %@", text)
+                    Chat360WebSocketClient.logFull("[Chat360WS] << RECEIVED (data)", text)
                     callbacks.onMessage(text)
                 @unknown default:
                     break
@@ -111,7 +111,7 @@ public final class Chat360WebSocketClient: NSObject {
     @discardableResult
     public func send(_ text: String) -> Bool {
         guard let task, task.state == .running else {
-            NSLog("[Chat360WS] >> SEND FAILED (socket not open): %@", text)
+            Chat360WebSocketClient.logFull("[Chat360WS] >> SEND FAILED (socket not open)", text)
             return false
         }
         let myGeneration = generation
@@ -121,7 +121,7 @@ public final class Chat360WebSocketClient: NSObject {
             NSLog("[Chat360WS] >> SEND FAILED: %@", error.localizedDescription)
             self.callbacks?.onFailure(error)
         }
-        NSLog("[Chat360WS] >> SENT: %@", text)
+        Chat360WebSocketClient.logFull("[Chat360WS] >> SENT", text)
         return true
     }
 
@@ -133,6 +133,27 @@ public final class Chat360WebSocketClient: NSObject {
         task = nil
         callbacks = nil
         closedCallbacks?.onClosed(1000, "client closed")
+    }
+
+    // NSLog (like os_log, which it's built on) silently truncates each %@ argument around 1024
+    // bytes, which was cutting these payloads off mid-JSON - unusable for debugging a malformed
+    // or unexpected bot response. Splitting into fixed-size chunks and logging each on its own
+    // line keeps every line under that limit so the full payload always makes it to the console.
+    private static let logChunkSize = 800
+
+    private static func logFull(_ prefix: String, _ text: String) {
+        guard text.count > logChunkSize else {
+            NSLog("%@: %@", prefix, text)
+            return
+        }
+        let chunks = stride(from: 0, to: text.count, by: logChunkSize).map { start -> Substring in
+            let from = text.index(text.startIndex, offsetBy: start)
+            let to = text.index(from, offsetBy: logChunkSize, limitedBy: text.endIndex) ?? text.endIndex
+            return text[from..<to]
+        }
+        for (index, chunk) in chunks.enumerated() {
+            NSLog("%@ [%d/%d]: %@", prefix, index + 1, chunks.count, String(chunk))
+        }
     }
 }
 
