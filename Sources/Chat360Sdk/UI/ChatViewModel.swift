@@ -24,6 +24,7 @@ public final class ChatViewModel: ObservableObject {
     private var previousHistoryCursor: Int?
     private var streamRawText: [String: String] = [:]
     private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
     private var conversationsObservationTask: Task<Void, Never>?
     // Keyed per conversation, not just "the current one" - an absolute deadline, not a paused
     // duration, so it keeps counting down in real time whether or not that conversation is the
@@ -268,6 +269,13 @@ public final class ChatViewModel: ObservableObject {
         if !restoringFromCache && activeConversationId != connectedConversationId { return }
         switch event {
         case .botMessage(let node):
+            // Guards against seeing the same reply twice - e.g. `backfillMissingReplies` recovers
+            // it via a direct history fetch, and moments later the live socket (which opens after
+            // that fetch completes) redelivers the same node once connected. Node ids are stable
+            // across both paths, so this is a reliable identity check where it's available.
+            if let nodeId = node.nodeId, uiState.messages.contains(where: { $0.nodeId == nodeId }) {
+                return
+            }
             update { $0.isAgentTyping = false }
             // A live reply for the room we're actually connected to answers whatever was pending
             // on it - clears the flag before we ever check it again on switching back in. History
@@ -655,9 +663,7 @@ public final class ChatViewModel: ObservableObject {
         guard let conversationId = activeConversationId, conversationId == connectedConversationId,
               let roomId = connectedRoomId else { return }
         Task { [weak self] in
-            guard let self else { return }
-            guard await self.cache.replyPending(conversationId: conversationId) != nil else { return }
-            _ = await self.refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+            await self?.backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
         }
     }
 
@@ -877,16 +883,65 @@ public final class ChatViewModel: ObservableObject {
         if !hasCachedMessages { pendingRawEnvelopes.removeAll() }
         setActiveConversationId(conversationId)
         previousHistoryCursor = nil
-        // A room this device still owes a reply to (see `ReplyPendingEntity`) can't be trusted to
-        // the local cache alone - whatever socket would have delivered that reply is already gone
-        // by the time we're reconnecting here, whether we're switching rooms, resuming after the
-        // app was killed, or reconnecting after being backgrounded. Always go to the server in
-        // that case so a reply that arrived while we weren't watching still gets picked up.
-        if hasCachedMessages, await cache.replyPending(conversationId: conversationId) == nil {
+        if hasCachedMessages {
             _ = await replayFromCache(conversationId: conversationId)
+            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
             return true
         }
         return await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+    }
+
+    // A room this device still owes a reply to (see `ReplyPendingEntity`) can't be trusted to the
+    // local cache alone - whatever socket would have delivered that reply is already gone by the
+    // time we're reconnecting here, whether we're switching rooms, resuming after the app was
+    // killed, or reconnecting after being backgrounded. This checks the server for anything that
+    // arrived while we weren't watching, without touching whatever's already correctly loaded -
+    // notably, our own locally-cached sends (nudges included) are always trusted over the
+    // server's echo of them, which isn't reliable for every send type.
+    private func backfillIfReplyPending(conversationId: String, roomId: String) async {
+        guard let pending = await cache.replyPending(conversationId: conversationId) else { return }
+        // Shows the typing indicator immediately instead of leaving a silent gap while we wait to
+        // find out whether the reply already arrived (live, mid-fetch) or needs recovering here.
+        update { $0.isAgentTyping = true }
+        await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending)
+    }
+
+    // Only ever adds bot messages the server has that we don't - never wipes or rebuilds the
+    // existing list the way `refreshConversationHistory` does, since that would also discard
+    // locally-known user sends (e.g. nudge/quick-reply selections) that the server's own history
+    // doesn't always echo back as readable text.
+    private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity) async {
+        guard let response = try? await repository.fetchHistory(roomId: roomId) else { return }
+        guard activeConversationId == conversationId else { return }
+        var sawBotReply = false
+        restoringFromCache = true
+        for item in response.history {
+            let event = item.toIncomingEvent()
+            guard case .botMessage(let node) = event, let ts = node.timestampMs, ts >= pending.createdAt else { continue }
+            sawBotReply = true
+            handleEvent(event)
+            if let data = try? encoder.encode(item), let raw = String(data: data, encoding: .utf8) {
+                await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
+            }
+        }
+        restoringFromCache = false
+        if sawBotReply {
+            await cache.clearReplyPending(conversationId: conversationId)
+        } else if nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
+            if let chatMsgId = pending.chatMsgId {
+                update { state in
+                    state.messages = state.messages.map { m in
+                        var updated = m
+                        if updated.chatMsgId == chatMsgId { updated.failed = true }
+                        return updated
+                    }
+                    state.isAgentTyping = false
+                }
+            } else {
+                update { $0.isAgentTyping = false }
+            }
+            await cache.clearReplyPending(conversationId: conversationId)
+        }
     }
 
     @discardableResult
@@ -1033,16 +1088,18 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func restoreConversation(conversationId: String, roomId: String?) async {
-        // Same reasoning as `activateConversation` - a conversation still owed a reply is never
-        // trusted to its local cache, since whatever would have delivered that reply is already
-        // gone by the time the user taps back into it from history.
-        if let roomId, await cache.replyPending(conversationId: conversationId) != nil {
-            _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
-            return
-        }
         let hasCachedMessages = await replayFromCache(conversationId: conversationId)
         if !hasCachedMessages, let roomId {
             _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+            return
+        }
+        // Same reasoning as `activateConversation` - a conversation still owed a reply is never
+        // fully trusted to its local cache, since whatever would have delivered that reply is
+        // already gone by the time the user taps back into it from history. Backfilling instead
+        // of a full refetch keeps whatever's already correctly loaded (e.g. a nudge/quick-reply
+        // selection the server's own history doesn't echo back the same way typed text does).
+        if let roomId {
+            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
         }
     }
 
