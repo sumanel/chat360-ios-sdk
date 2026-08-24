@@ -269,6 +269,13 @@ public final class ChatViewModel: ObservableObject {
         switch event {
         case .botMessage(let node):
             update { $0.isAgentTyping = false }
+            // A live reply for the room we're actually connected to answers whatever was pending
+            // on it - clears the flag before we ever check it again on switching back in. History
+            // replay/refresh (restoringFromCache) clears this itself, scoped to whichever specific
+            // conversation it's fetching for - see `refreshConversationHistory`.
+            if !restoringFromCache, let conversationId = connectedConversationId {
+                Task { [weak self] in await self?.cache.clearReplyPending(conversationId: conversationId) }
+            }
             // Hides the bot's opening/greeting node permanently, not just before the first live
             // send - it's always present in the underlying flow (and gets replayed from cache
             // when reopening a past conversation), so the only reliable signal that it's the
@@ -389,6 +396,11 @@ public final class ChatViewModel: ObservableObject {
                 guard let self else { return }
                 await self.ensureConversationPersisted(conversationId: conversationId, roomId: roomId)
                 await self.cache.cacheUserMessage(conversationId: conversationId, text: message.text, chatMsgId: message.chatMsgId, botId: self.botId)
+                // Marks this conversation as owed a reply until a bot message is actually seen
+                // for it again (live or via a forced re-fetch) - see `ReplyPendingEntity`. Covers
+                // every send path uniformly (typed text, nudges, regenerate, form submits, etc.)
+                // since they all funnel through here.
+                await self.cache.markReplyPending(conversationId: conversationId, chatMsgId: message.chatMsgId)
                 self.upsertLiveConversationEntry(conversationId: conversationId, roomId: roomId, title: message.text)
             }
         }
@@ -634,8 +646,19 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func onAppForegrounded() {
-        if uiState.isConnected { return }
-        repository.reconnectNow()
+        if !uiState.isConnected { repository.reconnectNow() }
+        // The socket can be silently suspended by iOS for the whole time the app was backgrounded
+        // (with or without a formal disconnect ever being reported), so a reply generated during
+        // that window can be missed even though we never technically "switched away" from this
+        // room. If we still owe this conversation a reply, go check the server for it directly
+        // rather than assuming nothing happened while we were away.
+        guard let conversationId = activeConversationId, conversationId == connectedConversationId,
+              let roomId = connectedRoomId else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            guard await self.cache.replyPending(conversationId: conversationId) != nil else { return }
+            _ = await self.refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+        }
     }
 
     public func updateFormField(messageId: String, fieldIndex: Int, value: String) {
@@ -854,7 +877,12 @@ public final class ChatViewModel: ObservableObject {
         if !hasCachedMessages { pendingRawEnvelopes.removeAll() }
         setActiveConversationId(conversationId)
         previousHistoryCursor = nil
-        if hasCachedMessages {
+        // A room this device still owes a reply to (see `ReplyPendingEntity`) can't be trusted to
+        // the local cache alone - whatever socket would have delivered that reply is already gone
+        // by the time we're reconnecting here, whether we're switching rooms, resuming after the
+        // app was killed, or reconnecting after being backgrounded. Always go to the server in
+        // that case so a reply that arrived while we weren't watching still gets picked up.
+        if hasCachedMessages, await cache.replyPending(conversationId: conversationId) == nil {
             _ = await replayFromCache(conversationId: conversationId)
             return true
         }
@@ -885,6 +913,11 @@ public final class ChatViewModel: ObservableObject {
         return hasCachedMessages
     }
 
+    // A pending reply that's still missing after actually asking the server for this room's
+    // current state isn't just "hasn't arrived yet" forever - past this age, treat it as a real
+    // failure instead of silently leaving the sent message with no visible outcome at all.
+    private static let staleReplyThresholdMs: Int64 = 90_000
+
     @discardableResult
     private func refreshConversationHistory(conversationId: String, roomId: String) async -> Bool {
         guard let response = try? await repository.fetchHistory(roomId: roomId) else { return false }
@@ -893,12 +926,36 @@ public final class ChatViewModel: ObservableObject {
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
         restoringFromCache = true
-        for item in history { handleEvent(item.toIncomingEvent()) }
+        var sawBotReply = false
+        for item in history {
+            let event = item.toIncomingEvent()
+            if case .botMessage = event { sawBotReply = true }
+            handleEvent(event)
+        }
         restoringFromCache = false
         await cache.replaceRawHistory(conversationId: conversationId, history: history)
+        if sawBotReply {
+            await cache.clearReplyPending(conversationId: conversationId)
+        } else if let pending = await cache.replyPending(conversationId: conversationId),
+                  nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
+            if let chatMsgId = pending.chatMsgId {
+                update { state in
+                    state.messages = state.messages.map { m in
+                        var updated = m
+                        if updated.chatMsgId == chatMsgId { updated.failed = true }
+                        return updated
+                    }
+                }
+            }
+            await cache.clearReplyPending(conversationId: conversationId)
+        }
         previousHistoryCursor = response.previous_cursor
         update { $0.hasMoreHistory = response.previous_cursor != nil }
         return !history.isEmpty
+    }
+
+    private func nowMs() -> Int64 {
+        Int64(Date().timeIntervalSince1970 * 1000)
     }
 
     public func loadMoreHistory() {
@@ -976,6 +1033,13 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func restoreConversation(conversationId: String, roomId: String?) async {
+        // Same reasoning as `activateConversation` - a conversation still owed a reply is never
+        // trusted to its local cache, since whatever would have delivered that reply is already
+        // gone by the time the user taps back into it from history.
+        if let roomId, await cache.replyPending(conversationId: conversationId) != nil {
+            _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+            return
+        }
         let hasCachedMessages = await replayFromCache(conversationId: conversationId)
         if !hasCachedMessages, let roomId {
             _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId)

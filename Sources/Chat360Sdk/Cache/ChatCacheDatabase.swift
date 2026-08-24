@@ -47,6 +47,24 @@ public struct PendingFeedbackEntity: Equatable {
     }
 }
 
+// Tracks "this conversation has an outstanding user message with no bot reply yet", persisted
+// (not just an in-memory flag) so it survives whatever made us stop watching for that reply in
+// the first place - switching rooms tears down the socket that would have delivered it, the app
+// can be killed outright, or backgrounding can get the socket suspended by iOS. Without this,
+// reopening the room later just replays the (now permanently incomplete) local cache and the
+// reply is never seen again, even though the server most likely produced and stored it anyway.
+public struct ReplyPendingEntity: Equatable {
+    public var conversationId: String
+    public var chatMsgId: String?
+    public var createdAt: Int64
+
+    public init(conversationId: String, chatMsgId: String?, createdAt: Int64) {
+        self.conversationId = conversationId
+        self.chatMsgId = chatMsgId
+        self.createdAt = createdAt
+    }
+}
+
 @available(iOS 13.0, *)
 public final class ChatCacheDao {
     private let db: OpaquePointer
@@ -107,6 +125,13 @@ public final class ChatCacheDao {
                 timestampMs INTEGER NOT NULL,
                 liked INTEGER NOT NULL,
                 PRIMARY KEY (conversationId, timestampMs)
+            )
+            """)
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_pending_reply (
+                conversationId TEXT PRIMARY KEY NOT NULL,
+                chatMsgId TEXT,
+                createdAt INTEGER NOT NULL
             )
             """)
         }
@@ -448,6 +473,44 @@ public final class ChatCacheDao {
         }
     }
 
+    // Always overwrites with the latest send - only the most recent outstanding message in a
+    // conversation matters for "have we heard back since then", not a full history of every send.
+    public func markReplyPending(conversationId: String, chatMsgId: String?, createdAt: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR REPLACE INTO chat_pending_reply (conversationId, chatMsgId, createdAt) VALUES (?, ?, ?)",
+                    params: [conversationId, chatMsgId, createdAt]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func replyPending(conversationId: String) async -> ReplyPendingEntity? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query(
+                    "SELECT conversationId, chatMsgId, createdAt FROM chat_pending_reply WHERE conversationId = ? LIMIT 1",
+                    params: [conversationId]
+                )
+                continuation.resume(returning: rows.first.flatMap { row in
+                    guard let createdAt = row["createdAt"] as? Int64 else { return nil }
+                    return ReplyPendingEntity(conversationId: conversationId, chatMsgId: row["chatMsgId"] as? String, createdAt: createdAt)
+                })
+            }
+        }
+    }
+
+    public func clearReplyPending(conversationId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec("DELETE FROM chat_pending_reply WHERE conversationId = ?", params: [conversationId])
+                continuation.resume()
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -491,6 +554,7 @@ public final class ChatCacheDao {
                 self.exec("DELETE FROM chat_messages WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_pending_feedback WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_pending_reply WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

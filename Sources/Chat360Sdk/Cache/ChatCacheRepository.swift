@@ -155,6 +155,21 @@ public final class ChatCacheRepository {
         await dao.deleteMessageReaction(conversationId: conversationId, timestampMs: timestampMs)
     }
 
+    public func markReplyPending(conversationId: String, chatMsgId: String?) async {
+        guard Self.enabled else { return }
+        await dao.markReplyPending(conversationId: conversationId, chatMsgId: chatMsgId, createdAt: nowMs())
+    }
+
+    public func replyPending(conversationId: String) async -> ReplyPendingEntity? {
+        guard Self.enabled else { return nil }
+        return await dao.replyPending(conversationId: conversationId)
+    }
+
+    public func clearReplyPending(conversationId: String) async {
+        guard Self.enabled else { return }
+        await dao.clearReplyPending(conversationId: conversationId)
+    }
+
     private func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }
