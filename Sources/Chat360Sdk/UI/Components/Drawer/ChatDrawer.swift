@@ -101,30 +101,37 @@ public struct ChatDrawer: View {
             .frame(height: 60)
             .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .bottom)
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text("AI Chatbot - History")
-                    .font(typography.textFamily.font(size: 20, weight: .bold))
-                    .foregroundColor(colors.textPrimary)
-                Spacer().frame(height: 16)
-                Button(action: onNewChat) {
-                    HStack(spacing: 12) {
-                        Chat360Icon.add.image.foregroundColor(colors.accentContrast)
-                        Text("New chat")
-                            .font(typography.textFamily.font(size: 17, weight: .bold))
-                            .foregroundColor(colors.accentContrast)
+            // The history list and the settings block below it used to be split into a flexible
+            // middle section plus a fixed-size bottom section, sized against the drawer's full
+            // height. On a short landscape screen the fixed header + settings block alone can
+            // exceed the total available height, leaving nothing for the flexible middle - the
+            // history list would get squeezed down to zero instead of just scrolling further.
+            // One ScrollView holding everything below the top nav bar means it always scrolls
+            // instead of collapsing, regardless of orientation or how many settings rows show.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("AI Chatbot - History")
+                        .font(typography.textFamily.font(size: 20, weight: .bold))
+                        .foregroundColor(colors.textPrimary)
+                    Spacer().frame(height: 16)
+                    Button(action: onNewChat) {
+                        HStack(spacing: 12) {
+                            Chat360Icon.add.image.foregroundColor(colors.accentContrast)
+                            Text("New chat")
+                                .font(typography.textFamily.font(size: 17, weight: .bold))
+                                .foregroundColor(colors.accentContrast)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 49)
+                        .background(colors.accent)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 49)
-                    .background(colors.accent)
-                }
-                Spacer().frame(height: 28)
+                    Spacer().frame(height: 28)
 
-                if conversations.isEmpty {
-                    Text("No saved conversations yet")
-                        .font(typography.textFamily.font(size: 14))
-                        .foregroundColor(colors.textSecondary)
-                } else {
-                    ScrollView {
+                    if conversations.isEmpty {
+                        Text("No saved conversations yet")
+                            .font(typography.textFamily.font(size: 14))
+                            .foregroundColor(colors.textSecondary)
+                    } else {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(groupedConversations(conversations), id: \.label) { group in
                                 HistoryGroup(
@@ -144,51 +151,50 @@ public struct ChatDrawer: View {
                         }
                     }
                 }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
 
-            VStack(alignment: .leading, spacing: 0) {
-                if showAssistantMode {
-                    Text("Assistant Mode")
-                        .font(typography.textFamily.font(size: 13, weight: .semibold))
-                        .foregroundColor(colors.textSecondary)
-                    Spacer().frame(height: 12)
-                    HStack {
-                        ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
-                        ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
+                VStack(alignment: .leading, spacing: 0) {
+                    if showAssistantMode {
+                        Text("Assistant Mode")
+                            .font(typography.textFamily.font(size: 13, weight: .semibold))
+                            .foregroundColor(colors.textSecondary)
+                        Spacer().frame(height: 12)
+                        HStack {
+                            ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
+                            ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
+                        }
+                        Spacer().frame(height: 18)
                     }
-                    Spacer().frame(height: 18)
-                }
-                if showAppearanceSwitcher {
-                    Text("Appearance")
-                        .font(typography.textFamily.font(size: 13, weight: .semibold))
-                        .foregroundColor(colors.textSecondary)
-                    Spacer().frame(height: 12)
-                    HStack {
-                        ModeOption(text: "Light", icon: .lightMode, selected: !isDarkTheme) { onThemeChanged(false) }
-                        ModeOption(text: "Dark", icon: .darkMode, selected: isDarkTheme) { onThemeChanged(true) }
+                    if showAppearanceSwitcher {
+                        Text("Appearance")
+                            .font(typography.textFamily.font(size: 13, weight: .semibold))
+                            .foregroundColor(colors.textSecondary)
+                        Spacer().frame(height: 12)
+                        HStack {
+                            ModeOption(text: "Light", icon: .lightMode, selected: !isDarkTheme) { onThemeChanged(false) }
+                            ModeOption(text: "Dark", icon: .darkMode, selected: isDarkTheme) { onThemeChanged(true) }
+                        }
                     }
-                }
-                if languages.count > 1 {
-                    Spacer().frame(height: 18)
-                    Text("LANGUAGE")
-                        .font(typography.textFamily.font(size: 13, weight: .semibold))
-                        .foregroundColor(colors.textSecondary)
-                    Spacer().frame(height: 12)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(languages, id: \.key) { language in
-                                LanguageChip(label: language.value, selected: language.default) { onLanguageSelected(language.key) }
+                    if languages.count > 1 {
+                        Spacer().frame(height: 18)
+                        Text("LANGUAGE")
+                            .font(typography.textFamily.font(size: 13, weight: .semibold))
+                            .foregroundColor(colors.textSecondary)
+                        Spacer().frame(height: 12)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(languages, id: \.key) { language in
+                                    LanguageChip(label: language.value, selected: language.default) { onLanguageSelected(language.key) }
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
         }
         .frame(maxHeight: .infinity)
         .background(colors.backgroundElevated)
