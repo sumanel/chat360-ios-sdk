@@ -275,9 +275,15 @@ public final class ChatViewModel: ObservableObject {
         case .botMessage(let node):
             // Guards against seeing the same reply twice - e.g. `backfillMissingReplies` recovers
             // it via a direct history fetch, and moments later the live socket (which opens after
-            // that fetch completes) redelivers the same node once connected. Node ids are stable
-            // across both paths, so this is a reliable identity check where it's available.
-            if let nodeId = node.nodeId, uiState.messages.contains(where: { $0.nodeId == nodeId }) {
+            // that fetch completes) redelivers the same node once connected. Node id alone isn't
+            // enough to identify "the same message" though - flow builders commonly reuse one
+            // node id for a generic prompt (e.g. a MULTI_CHOICE follow-up) that gets revisited
+            // with different generated content each time, so two genuinely different replies can
+            // legitimately share a node id. Requiring the timestamp to match too is what actually
+            // distinguishes a true redelivery (identical payload, identical timestamp) from a
+            // fresh visit to the same flow node (same id, new timestamp).
+            if let nodeId = node.nodeId, let ts = node.timestampMs,
+               uiState.messages.contains(where: { $0.nodeId == nodeId && $0.timestampMs == ts }) {
                 return
             }
             update { $0.isAgentTyping = false }
