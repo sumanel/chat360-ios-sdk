@@ -20,6 +20,10 @@ public final class ChatViewModel: ObservableObject {
     private var conversationPersisted = false
     private var pendingRawEnvelopes: [String] = []
     private var restoringFromCache = false
+    // Set once, up front, by whichever function is about to replay/refresh/backfill a batch of
+    // history - see the comment at its read site in `handleEvent` for why this can't just be
+    // derived incrementally from `uiState.messages` while a replay is in progress.
+    private var cachedConversationHasUserMessage = false
     private var pendingSnapBackChatMsgId: String?
     private var previousHistoryCursor: Int?
     private var streamRawText: [String: String] = [:]
@@ -277,18 +281,21 @@ public final class ChatViewModel: ObservableObject {
                 return
             }
             update { $0.isAgentTyping = false }
-            // A live reply for the room we're actually connected to answers whatever was pending
-            // on it - clears the flag before we ever check it again on switching back in. History
-            // replay/refresh (restoringFromCache) clears this itself, scoped to whichever specific
-            // conversation it's fetching for - see `refreshConversationHistory`.
-            if !restoringFromCache, let conversationId = connectedConversationId {
-                Task { [weak self] in await self?.cache.clearReplyPending(conversationId: conversationId) }
-            }
             // Hides the bot's opening/greeting node permanently, not just before the first live
             // send - it's always present in the underlying flow (and gets replayed from cache
             // when reopening a past conversation), so the only reliable signal that it's the
             // suppressible opener rather than a real reply is that no user message exists yet.
-            if suppressInitialBotMessages && !uiState.messages.contains(where: { $0.fromUser }) { return }
+            // During a live send this is safe to read off `uiState.messages` directly, since
+            // messages arrive and get appended in true chronological order. During a replay/
+            // backfill/refresh pass it isn't: caching the user's own send and caching an incoming
+            // bot reply are two independent background writes with no guarantee either finishes
+            // first, so the two rows can land in local storage in the opposite order from how they
+            // actually happened - and replaying "no user message seen among what's been added so
+            // far" would then misidentify a real, already-answered reply as the suppressible
+            // opener, hiding it permanently. `cachedConversationHasUserMessage` is computed once
+            // up front from the *entire* dataset being replayed, so it can't be fooled by row order.
+            let hasUserMessage = restoringFromCache ? cachedConversationHasUserMessage : uiState.messages.contains(where: { $0.fromUser })
+            if suppressInitialBotMessages && !hasUserMessage { return }
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
             update {
@@ -913,6 +920,7 @@ public final class ChatViewModel: ObservableObject {
     private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity) async {
         guard let response = try? await repository.fetchHistory(roomId: roomId) else { return }
         guard activeConversationId == conversationId else { return }
+        cachedConversationHasUserMessage = uiState.messages.contains(where: { $0.fromUser }) || hasUserMessage(in: response.history)
         var sawBotReply = false
         restoringFromCache = true
         for item in response.history {
@@ -926,6 +934,10 @@ public final class ChatViewModel: ObservableObject {
         }
         restoringFromCache = false
         if sawBotReply {
+            // Don't assume `handleEvent` already cleared this - it no-ops (see the node id dedup
+            // check at the top of its `.botMessage` case) whenever the reply it's looking at turns
+            // out to already be on screen, which leaves nothing else to turn the indicator off.
+            update { $0.isAgentTyping = false }
             await cache.clearReplyPending(conversationId: conversationId)
         } else if nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
             if let chatMsgId = pending.chatMsgId {
@@ -948,9 +960,11 @@ public final class ChatViewModel: ObservableObject {
     private func replayFromCache(conversationId: String) async -> Bool {
         streamRawText.removeAll()
         update { $0.messages = []; $0.hasMoreHistory = false }
+        let cachedMessages = await cache.messages(conversationId: conversationId)
+        cachedConversationHasUserMessage = cachedMessages.contains { $0.kind == "USER" }
         restoringFromCache = true
         var hasCachedMessages = false
-        for cached in await cache.messages(conversationId: conversationId) {
+        for cached in cachedMessages {
             hasCachedMessages = true
             switch cached.kind {
             case "USER":
@@ -980,6 +994,7 @@ public final class ChatViewModel: ObservableObject {
         if activeConversationId != conversationId { return !history.isEmpty }
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
+        cachedConversationHasUserMessage = hasUserMessage(in: history)
         restoringFromCache = true
         var sawBotReply = false
         for item in history {
@@ -1013,6 +1028,13 @@ public final class ChatViewModel: ObservableObject {
         Int64(Date().timeIntervalSince1970 * 1000)
     }
 
+    private func hasUserMessage(in history: [RawSocketEnvelope]) -> Bool {
+        history.contains { envelope in
+            if case .echoedUserMessage = envelope.toIncomingEvent() { return true }
+            return false
+        }
+    }
+
     public func loadMoreHistory() {
         guard let conversationId = activeConversationId,
               let roomId = conversations.first(where: { $0.id == conversationId })?.roomId,
@@ -1026,6 +1048,7 @@ public final class ChatViewModel: ObservableObject {
                 return
             }
             let sizeBefore = self.uiState.messages.count
+            self.cachedConversationHasUserMessage = self.uiState.messages.contains(where: { $0.fromUser }) || self.hasUserMessage(in: response.history)
             self.restoringFromCache = true
             for item in response.history { self.handleEvent(item.toIncomingEvent()) }
             self.restoringFromCache = false
@@ -1050,6 +1073,17 @@ public final class ChatViewModel: ObservableObject {
             }
         }
         guard isRenderableBotEvent else { return }
+        // This fires for every bot event on the connected room regardless of which conversation
+        // is currently being viewed - `handleEvent`'s own rendering is gated on that (see its top
+        // guard), but bookkeeping "did this room get its reply" shouldn't be. Without this, a
+        // reply that arrives while you're looking at a different conversation gets cached
+        // correctly but leaves that room thinking it's still owed one, even after you've already
+        // seen the reply via a later replay.
+        let cache = self.cache
+        let botId = self.botId
+        Task {
+            await cache.clearReplyPending(conversationId: conversationId)
+        }
         if !conversationPersisted {
             pendingRawEnvelopes.append(raw)
             return
@@ -1058,8 +1092,6 @@ public final class ChatViewModel: ObservableObject {
         // ViewModel/view teardown racing the incoming envelope, otherwise a
         // conversation can end up with only the locally authored user messages
         // and silently miss the bot's reply.
-        let cache = self.cache
-        let botId = self.botId
         Task {
             await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
         }
