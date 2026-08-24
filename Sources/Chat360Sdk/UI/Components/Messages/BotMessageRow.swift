@@ -15,16 +15,22 @@ public struct BotMessageRow: View {
     // app restart. `@State`'s init-time seeding only runs once per view identity, so the
     // `onChange` below is what actually picks up the persisted value once it arrives.
     private let initialReaction: Bool?
+    // Regenerate re-sends the query and waits for a fresh bot reply, same as any other message -
+    // while one is already in flight, tapping it again queues up a second one on top, which is
+    // what let it be tapped repeatedly. Disabled for every row while the bot is responding, not
+    // just the one being regenerated, matching how the input bar's send button already behaves.
+    private let isAgentTyping: Bool
 
     @State private var feedback: Bool?
     @State private var justCopied = false
 
-    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil, initialReaction: Bool? = nil) {
+    public init(message: ChatMessage, actions: BotContentActions, isLiveChat: Bool = false, assignedAgent: AssignedAgent? = nil, initialReaction: Bool? = nil, isAgentTyping: Bool = false) {
         self.message = message
         self.actions = actions
         self.isLiveChat = isLiveChat
         self.assignedAgent = assignedAgent
         self.initialReaction = initialReaction
+        self.isAgentTyping = isAgentTyping
         self._feedback = State(initialValue: initialReaction)
     }
 
@@ -69,7 +75,9 @@ public struct BotMessageRow: View {
                     Chat360Icon.refresh.image
                         .foregroundColor(colors.textSecondary)
                         .frame(width: 20, height: 20)
+                        .opacity(isAgentTyping ? 0.4 : 1)
                         .onTapGesture {
+                            guard !isAgentTyping else { return }
                             config.callbacks.onRegenerateClicked(message.id)
                             actions.onRegenerateClicked()
                         }

@@ -358,6 +358,6 @@ private struct BotMessageItem: View {
         actions.onDislikeClicked = { viewModel.dislikeMessage(messageId: message.id, timestampMs: message.timestampMs) }
 
         let initialReaction = message.timestampMs.flatMap { viewModel.uiState.messageReactions[$0] }
-        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent, initialReaction: initialReaction)
+        return BotMessageRow(message: message, actions: actions, isLiveChat: isLiveChat, assignedAgent: assignedAgent, initialReaction: initialReaction, isAgentTyping: viewModel.uiState.isAgentTyping)
     }
 }
