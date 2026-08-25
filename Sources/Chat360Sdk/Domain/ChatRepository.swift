@@ -362,7 +362,7 @@ public final class ChatRepository {
             if let data = raw.data(using: .utf8),
                let response = try? decoder.decode(SessionTimeResponse.self, from: data),
                let createdAtRaw = response.session?.created_at,
-               let createdAt = Self.parseIstTimestamp(createdAtRaw) {
+               let createdAt = Self.parseSessionTimestamp(createdAtRaw) {
                 onSessionTimeReceived(createdAt)
             }
         }
@@ -769,18 +769,21 @@ public final class ChatRepository {
         return String(url[range.upperBound...])
     }
 
-    // `created_at` comes back with no timezone designator (e.g. "2026-08-25T07:32:39.310032"),
-    // but the value itself is Hyundai's backend's local wall-clock time, which is IST - parsing it
-    // as UTC (the usual default assumption for an unmarked timestamp) would place the session
-    // creation instant 5:30 later than it actually happened, making the session look 5:30 younger
-    // than it really is. Fractional seconds are dropped rather than parsed - they're µs-precision
-    // and irrelevant to a minute-granularity session countdown.
-    private static func parseIstTimestamp(_ raw: String) -> Date? {
+    // `created_at` comes back with no timezone designator (e.g. "2026-08-25T07:56:31.699927"),
+    // but the value itself is already UTC - confirmed against the same payload's own
+    // `@current_datetime`/`@room_updated` variables (which are IST) landing within a second of
+    // this value once converted to UTC, for a session that had just been created. An earlier
+    // version of this treated the unmarked string as IST and shifted it back 5:30, which placed
+    // a freshly-created session's `expiresAt` hours in the past - the countdown UI hides itself
+    // once remaining time goes negative, so that showed no timer at all instead of a wrong one.
+    // Fractional seconds are dropped rather than parsed - they're µs-precision and irrelevant to
+    // a minute-granularity session countdown.
+    private static func parseSessionTimestamp(_ raw: String) -> Date? {
         let wholeSeconds = raw.split(separator: ".").first.map(String.init) ?? raw
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Kolkata")
+        formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.date(from: wholeSeconds)
     }
 }
