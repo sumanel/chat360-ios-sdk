@@ -44,6 +44,7 @@ public final class ChatRepository {
     private var onAppearanceLoaded: (BotAppearanceDetails?, String?) -> Void = { _, _ in }
     private var onSessionResumed: (Bool, AssignedAgent?) -> Void = { _, _ in }
     private var onBotSettingsLoaded: ([String: String], [SessionLanguage]) -> Void = { _, _ in }
+    private var onSessionTimeReceived: (Date) -> Void = { _ in }
     private var shouldAskFeedback = false
 
     private lazy var heartbeat = HeartbeatManager(
@@ -87,7 +88,8 @@ public final class ChatRepository {
         onOpenUrl: @escaping (String) -> Void = { _ in },
         onSessionResumed: @escaping (Bool, AssignedAgent?) -> Void = { _, _ in },
         onFeedbackRequested: @escaping () -> Void = {},
-        onBotSettingsLoaded: @escaping ([String: String], [SessionLanguage]) -> Void = { _, _ in }
+        onBotSettingsLoaded: @escaping ([String: String], [SessionLanguage]) -> Void = { _, _ in },
+        onSessionTimeReceived: @escaping (Date) -> Void = { _ in }
     ) async {
         self.onEvent = onEvent
         self.onConnected = onConnected
@@ -101,6 +103,7 @@ public final class ChatRepository {
         self.onAppearanceLoaded = onAppearanceLoaded
         self.onSessionResumed = onSessionResumed
         self.onBotSettingsLoaded = onBotSettingsLoaded
+        self.onSessionTimeReceived = onSessionTimeReceived
 
         // Every open of the bot starts a fresh conversation rather than silently resuming
         // whatever room was last active - the previous conversation is still reachable from
@@ -353,10 +356,15 @@ public final class ChatRepository {
     private func handleIncoming(_ raw: String) {
         // The response shape for this one isn't part of the normal message protocol
         // (`RawSocketEnvelope` only decodes the fields it knows about, silently dropping anything
-        // else), so it's called out here by raw substring match rather than added as a proper
-        // parsed event - this is purely to see what the server actually returns.
+        // else), so it's parsed separately here rather than added as a proper `IncomingSocketEvent`.
         if raw.contains("session_time_hyundai") {
             NSLog("[Chat360WS] Session time response: %@", raw)
+            if let data = raw.data(using: .utf8),
+               let response = try? decoder.decode(SessionTimeResponse.self, from: data),
+               let createdAtRaw = response.session?.created_at,
+               let createdAt = Self.parseIstTimestamp(createdAtRaw) {
+                onSessionTimeReceived(createdAt)
+            }
         }
         guard let data = raw.data(using: .utf8), let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) else { return }
         if let envelopeRoomId = envelope.room_id, envelopeRoomId != roomId {
@@ -760,6 +768,33 @@ public final class ChatRepository {
         guard let range = url.range(of: "://") else { return url }
         return String(url[range.upperBound...])
     }
+
+    // `created_at` comes back with no timezone designator (e.g. "2026-08-25T07:32:39.310032"),
+    // but the value itself is Hyundai's backend's local wall-clock time, which is IST - parsing it
+    // as UTC (the usual default assumption for an unmarked timestamp) would place the session
+    // creation instant 5:30 later than it actually happened, making the session look 5:30 younger
+    // than it really is. Fractional seconds are dropped rather than parsed - they're µs-precision
+    // and irrelevant to a minute-granularity session countdown.
+    private static func parseIstTimestamp(_ raw: String) -> Date? {
+        let wholeSeconds = raw.split(separator: ".").first.map(String.init) ?? raw
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Kolkata")
+        return formatter.date(from: wholeSeconds)
+    }
+}
+
+private struct SessionTimeResponse: Codable {
+    struct Session: Codable {
+        let room_id: String?
+        let session_id: String?
+        let admin_uuid: String?
+        let created_at: String?
+    }
+    let data_type: String?
+    let session: Session?
+    let found: Bool?
 }
 
 public enum Chat360RepositoryError: Error {

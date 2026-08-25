@@ -37,6 +37,13 @@ public final class ChatViewModel: ObservableObject {
     // actually left, not restart, and only actual expiry (not merely having left and returned)
     // should trigger a fresh hour on the next message.
     private var sessionTimerExpiresAtByConversation: [String: Date] = [:]
+    // The server's own record of when this room's session actually started, keyed by
+    // conversation - anchors the countdown to real session age instead of "whenever this device
+    // happened to send its first message in it", which could understate a resumed room's true
+    // elapsed time. Populated by `handleSessionTimeReceived`, consumed by
+    // `ensureSessionTimerStarted`; a conversation with no entry here just falls back to the old
+    // client-side guess (e.g. the request hasn't answered yet, or this bot doesn't support it).
+    private var serverSessionCreatedAtByConversation: [String: Date] = [:]
 
     public init(
         repository: ChatRepository,
@@ -122,6 +129,9 @@ public final class ChatViewModel: ObservableObject {
                         self?.shortcuts = shortcuts
                         self?.languages = languages
                     }
+                },
+                onSessionTimeReceived: { [weak self] createdAt in
+                    Task { @MainActor [weak self] in self?.handleSessionTimeReceived(createdAt) }
                 }
             )
         }
@@ -452,9 +462,31 @@ public final class ChatViewModel: ObservableObject {
         guard let conversationId = activeConversationId else { return }
         let now = Date()
         if let expiresAt = sessionTimerExpiresAtByConversation[conversationId], expiresAt > now { return }
-        let newExpiresAt = now.addingTimeInterval(3600)
+        // Anchor to the server's real session creation time when we have it, rather than "now" -
+        // a resumed room's session may have actually started well before this device sent
+        // anything in it, and the client-side guess would understate how much time is really left.
+        let anchor = serverSessionCreatedAtByConversation[conversationId] ?? now
+        let newExpiresAt = anchor.addingTimeInterval(3600)
         sessionTimerExpiresAtByConversation[conversationId] = newExpiresAt
         update { $0.sessionTimerExpiresAt = newExpiresAt }
+    }
+
+    // `connectedConversationId` is the room whose session this response actually belongs to -
+    // the request is sent on every socket connect, keyed to the room being connected at that
+    // moment (see `ChatRepository.openSocket()`), so that's the correct key here too even if the
+    // user has since navigated to a different conversation before the response comes back.
+    private func handleSessionTimeReceived(_ createdAt: Date) {
+        guard let conversationId = connectedConversationId else { return }
+        serverSessionCreatedAtByConversation[conversationId] = createdAt
+        // The timer may have already started using "now" as a rough stand-in, if the user sent
+        // their first message before this response made it back - correct it now that the real
+        // anchor is known, rather than leaving it on the earlier guess for the rest of the hour.
+        guard sessionTimerExpiresAtByConversation[conversationId] != nil else { return }
+        let correctedExpiresAt = createdAt.addingTimeInterval(3600)
+        sessionTimerExpiresAtByConversation[conversationId] = correctedExpiresAt
+        if activeConversationId == conversationId {
+            update { $0.sessionTimerExpiresAt = correctedExpiresAt }
+        }
     }
 
     private func upsertLiveConversationEntry(conversationId: String, roomId: String?, title: String) {
