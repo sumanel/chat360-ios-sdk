@@ -895,7 +895,19 @@ public final class ChatViewModel: ObservableObject {
     // the requirement that it can't be skipped once shown.
     public func submitPeriodicFeedback(text: String) {
         update { $0.showPeriodicFeedbackPrompt = false }
-        guard let chatHistoryRepository, let roomId = connectedRoomId, let sessionId = repository.currentSessionId() else { return }
+        guard let chatHistoryRepository else {
+            NSLog("[Chat360] Skipping periodic feedback submit: third-party-tasks not configured")
+            return
+        }
+        guard let roomId = connectedRoomId else {
+            NSLog("[Chat360] Skipping periodic feedback submit: no connected room")
+            return
+        }
+        guard let sessionId = repository.currentSessionId() else {
+            NSLog("[Chat360] Skipping periodic feedback submit: no session id yet")
+            return
+        }
+        NSLog("[Chat360] Submitting periodic feedback: room=%@ session=%@ length=%d", roomId, sessionId, text.count)
         Task {
             await chatHistoryRepository.submitPeriodicFeedback(roomId: roomId, sessionId: sessionId, feedbackText: text)
         }

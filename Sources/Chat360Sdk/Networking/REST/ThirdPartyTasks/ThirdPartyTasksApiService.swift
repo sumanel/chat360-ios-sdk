@@ -129,12 +129,15 @@ public final class ThirdPartyTasksApiService {
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        let body: [String: Any] = [
             "room_id": roomId,
             "session_id": sessionId,
             "data": ["feedback": feedbackText],
-        ])
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        NSLog("[Chat360] >> PATCH %@ body=%@", url.absoluteString, body)
         _ = try await execute(request)
+        NSLog("[Chat360] << PATCH %@ succeeded (2xx)", url.absoluteString)
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
