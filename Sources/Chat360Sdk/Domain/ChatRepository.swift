@@ -314,6 +314,9 @@ public final class ChatRepository {
                     self.pendingInitJumpTargetId = nil
                     self.sendSystemJump(targetId: targetId)
                 }
+                if let data = try? self.encoder.encode(SessionTimeRequest(room_id: rId)), let text = String(data: data, encoding: .utf8) {
+                    self.wsClient.send(text)
+                }
             },
             onMessage: { [weak self] raw in self?.handleIncoming(raw) },
             onClosed: { [weak self] code, reason in self?.handleClosed(code: code, reason: reason) },
@@ -348,6 +351,13 @@ public final class ChatRepository {
     }
 
     private func handleIncoming(_ raw: String) {
+        // The response shape for this one isn't part of the normal message protocol
+        // (`RawSocketEnvelope` only decodes the fields it knows about, silently dropping anything
+        // else), so it's called out here by raw substring match rather than added as a proper
+        // parsed event - this is purely to see what the server actually returns.
+        if raw.contains("session_time_hyundai") {
+            NSLog("[Chat360WS] Session time response: %@", raw)
+        }
         guard let data = raw.data(using: .utf8), let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) else { return }
         if let envelopeRoomId = envelope.room_id, envelopeRoomId != roomId {
             NSLog("[Chat360WS] Dropping frame for room=%@ - no longer connected (current room=%@)", envelopeRoomId, roomId ?? "nil")
