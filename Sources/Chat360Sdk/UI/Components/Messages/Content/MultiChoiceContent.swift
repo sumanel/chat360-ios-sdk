@@ -14,11 +14,19 @@ public struct MultiChoiceContent: View {
         self.onQuickReply = onQuickReply
     }
 
+    // Bot-authored copy sometimes ends in trailing blank lines (`<br><br>`) meant to put daylight
+    // between the question and the old full-width buttons - with the links now sitting much
+    // closer to the text, that trailing whitespace just reads as a big empty gap, so it's trimmed
+    // rather than rendered.
+    private var trimmedText: String {
+        message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PlainTextContent(message.text)
+            PlainTextContent(trimmedText)
             if !content.options.isEmpty {
-                Spacer().frame(height: 10)
+                Spacer().frame(height: 6)
                 // Nudges render as comma-separated underlined links (via `FlowLayout`, which needs
                 // iOS 16's Layout protocol) rather than stacked buttons - MultiChoiceContent itself
                 // stays at iOS 15 for everything else it does, so this is gated locally instead of
@@ -42,7 +50,7 @@ public struct MultiChoiceContent: View {
                             selected: message.selectedReplyIndex == option.index,
                             onClick: { onQuickReply(option) }
                         )
-                        Spacer().frame(height: 6)
+                        Spacer().frame(height: 4)
                     }
                 }
             }
