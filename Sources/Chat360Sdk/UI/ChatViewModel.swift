@@ -285,7 +285,10 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func handleEvent(_ event: IncomingSocketEvent) {
-        if !restoringFromCache && activeConversationId != connectedConversationId { return }
+        if !restoringFromCache && activeConversationId != connectedConversationId {
+            NSLog("[Chat360] handleEvent dropped (viewing a different conversation than the one connected): active=%@ connected=%@", activeConversationId ?? "nil", connectedConversationId ?? "nil")
+            return
+        }
         switch event {
         case .botMessage(let node):
             // Guards against seeing the same reply twice - e.g. `backfillMissingReplies` recovers
@@ -299,6 +302,7 @@ public final class ChatViewModel: ObservableObject {
             // fresh visit to the same flow node (same id, new timestamp).
             if let nodeId = node.nodeId, let ts = node.timestampMs,
                uiState.messages.contains(where: { $0.nodeId == nodeId && $0.timestampMs == ts }) {
+                NSLog("[Chat360] botMessage dropped as duplicate: nodeId=%@ ts=%lld", nodeId, ts)
                 return
             }
             update { $0.isAgentTyping = false }
@@ -333,9 +337,18 @@ public final class ChatViewModel: ObservableObject {
             } else {
                 hasUserMessage = uiState.messages.contains(where: { $0.fromUser })
             }
-            if suppressInitialBotMessages && !hasUserMessage { return }
-            if node.text == nil, case .unsupported = node.content { return }
-            if case .windowEvent = node.content { return }
+            if suppressInitialBotMessages && !hasUserMessage {
+                NSLog("[Chat360] botMessage dropped as suppressed opener: nodeId=%@ restoringFromCache=%@", node.nodeId ?? "nil", String(restoringFromCache))
+                return
+            }
+            if node.text == nil, case .unsupported = node.content {
+                NSLog("[Chat360] botMessage dropped as unsupported/empty: nodeId=%@", node.nodeId ?? "nil")
+                return
+            }
+            if case .windowEvent = node.content {
+                NSLog("[Chat360] botMessage dropped as windowEvent: nodeId=%@", node.nodeId ?? "nil")
+                return
+            }
             update {
                 $0.isAgentTyping = false
                 if case .agentTransferNotice = node.content {
@@ -352,6 +365,11 @@ public final class ChatViewModel: ObservableObject {
             let isNewStreamMessage = node.streamId.map { streamRawText[$0] == nil } ?? true
             if !restoringFromCache && isNewStreamMessage {
                 registerLiveBotReplyForFeedbackPrompt()
+            } else {
+                NSLog(
+                    "[Chat360] Skipping feedback-prompt count: restoringFromCache=%@ isNewStreamMessage=%@ nodeId=%@",
+                    String(restoringFromCache), String(isNewStreamMessage), node.nodeId ?? "nil"
+                )
             }
             if node.streamId != nil {
                 appendOrMergeStreamChunk(node)
@@ -862,9 +880,14 @@ public final class ChatViewModel: ObservableObject {
 
     private func registerLiveBotReplyForFeedbackPrompt() {
         botRepliesSinceLastFeedbackPrompt += 1
+        NSLog(
+            "[Chat360] Feedback-prompt count: %d/%d",
+            botRepliesSinceLastFeedbackPrompt, nextFeedbackPromptThreshold
+        )
         guard botRepliesSinceLastFeedbackPrompt >= nextFeedbackPromptThreshold else { return }
         botRepliesSinceLastFeedbackPrompt = 0
         nextFeedbackPromptThreshold = Int.random(in: 3...5)
+        NSLog("[Chat360] Showing periodic feedback prompt - next threshold=%d", nextFeedbackPromptThreshold)
         update { $0.showPeriodicFeedbackPrompt = true }
     }
 
