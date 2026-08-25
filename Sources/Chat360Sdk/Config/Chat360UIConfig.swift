@@ -60,7 +60,7 @@ public struct Chat360FeatureConfig {
     public var showNewChat: Bool = false
     public var showFeedback: Bool = true
     public var showCopyMessage: Bool = true
-    public var showRegenerate: Bool = true
+    public var showRegenerate: Bool = false
     public var showLike: Bool = true
     public var showDislike: Bool = true
     public var showEmoji: Bool = false
@@ -80,7 +80,7 @@ public struct Chat360FeatureConfig {
 
     public init(
         showMenu: Bool = false, showHistorySidebar: Bool = true, showNewChat: Bool = false, showFeedback: Bool = true,
-        showCopyMessage: Bool = true, showRegenerate: Bool = true, showLike: Bool = true, showDislike: Bool = true,
+        showCopyMessage: Bool = true, showRegenerate: Bool = false, showLike: Bool = true, showDislike: Bool = true,
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
         showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true

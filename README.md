@@ -161,7 +161,7 @@ config.uiConfig = Chat360UIConfig(
         showNewChat: true,           // "+" new chat button
         showFeedback: true,          // like/dislike on bot messages — dislike opens a mandatory feedback box, see Feedback section below
         showCopyMessage: true,       // copy icon on bot messages
-        showRegenerate: true,        // regenerate icon on bot messages
+        showRegenerate: false,       // regenerate icon on bot messages (off by default)
         showVoiceInput: true,        // mic / voice note button
         showAssistantMode: true,     // Training/Customer toggle in the drawer
         showAppearanceSwitcher: true,// manual Light/Dark toggle in the drawer
