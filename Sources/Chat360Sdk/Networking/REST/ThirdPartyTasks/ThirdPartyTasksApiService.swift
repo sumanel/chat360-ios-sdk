@@ -120,6 +120,23 @@ public final class ThirdPartyTasksApiService {
         _ = try await execute(request)
     }
 
+    // A separate, lighter-weight feedback surface from `submitFeedback` above (message-specific
+    // like/dislike) - this is a periodic "how's the conversation going" prompt, so it only ever
+    // carries free text, no message/query/response context.
+    public func submitPeriodicFeedback(roomId: String, sessionId: String, feedbackText: String, bearerToken: String) async throws {
+        let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/feedback")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "room_id": roomId,
+            "session_id": sessionId,
+            "data": ["feedback": feedbackText],
+        ])
+        _ = try await execute(request)
+    }
+
     private func execute(_ request: URLRequest) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let task = session.dataTask(with: request) { data, response, error in

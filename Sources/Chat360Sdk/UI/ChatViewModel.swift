@@ -44,6 +44,10 @@ public final class ChatViewModel: ObservableObject {
     // `ensureSessionTimerStarted`; a conversation with no entry here just falls back to the old
     // client-side guess (e.g. the request hasn't answered yet, or this bot doesn't support it).
     private var serverSessionCreatedAtByConversation: [String: Date] = [:]
+    // Periodic "how's it going" feedback prompt - fires every random 3-5 live bot replies (not
+    // tied to any one conversation, just overall live engagement in this ViewModel's lifetime).
+    private var botRepliesSinceLastFeedbackPrompt = 0
+    private var nextFeedbackPromptThreshold = Int.random(in: 3...5)
 
     public init(
         repository: ChatRepository,
@@ -341,6 +345,13 @@ public final class ChatViewModel: ObservableObject {
                 } else {
                     $0.isLiveChat = false
                 }
+            }
+            // Counts once per logical reply, not once per event - a streamed reply fires this
+            // whole case repeatedly (once per chunk, same streamId), so only its first chunk
+            // (before `streamRawText` has an entry for it) counts as "one more bot reply".
+            let isNewStreamMessage = node.streamId.map { streamRawText[$0] == nil } ?? true
+            if !restoringFromCache && isNewStreamMessage {
+                registerLiveBotReplyForFeedbackPrompt()
             }
             if node.streamId != nil {
                 appendOrMergeStreamChunk(node)
@@ -847,6 +858,24 @@ public final class ChatViewModel: ObservableObject {
 
     public func dismissFeedbackPrompt() {
         update { $0.showFeedbackPrompt = false }
+    }
+
+    private func registerLiveBotReplyForFeedbackPrompt() {
+        botRepliesSinceLastFeedbackPrompt += 1
+        guard botRepliesSinceLastFeedbackPrompt >= nextFeedbackPromptThreshold else { return }
+        botRepliesSinceLastFeedbackPrompt = 0
+        nextFeedbackPromptThreshold = Int.random(in: 3...5)
+        update { $0.showPeriodicFeedbackPrompt = true }
+    }
+
+    // No dismiss counterpart by design - this dialog has no cancel/close affordance, matching
+    // the requirement that it can't be skipped once shown.
+    public func submitPeriodicFeedback(text: String) {
+        update { $0.showPeriodicFeedbackPrompt = false }
+        guard let chatHistoryRepository, let roomId = connectedRoomId, let sessionId = repository.currentSessionId() else { return }
+        Task {
+            await chatHistoryRepository.submitPeriodicFeedback(roomId: roomId, sessionId: sessionId, feedbackText: text)
+        }
     }
 
     private func updateAttachment(messageId: String, transform: (inout Attachment) -> Void) {

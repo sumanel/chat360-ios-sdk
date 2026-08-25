@@ -277,6 +277,14 @@ public struct ChatScreen: View {
                     onCancel: { viewModel.cancelDislikeFeedback(messageId: messageId) }
                 )
             }
+
+            // Same "no dismiss path" reasoning as the dislike dialog above, but this one isn't
+            // tied to any single message - it's a periodic prompt fired every random 3-5 live bot
+            // replies (see `registerLiveBotReplyForFeedbackPrompt`), so there's nothing to revert.
+            if viewModel.uiState.showPeriodicFeedbackPrompt {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                PeriodicFeedbackDialog(onSubmit: { text in viewModel.submitPeriodicFeedback(text: text) })
+            }
         }
         .onDisappear {
             viewModel.onCleared()

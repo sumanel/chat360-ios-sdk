@@ -176,6 +176,10 @@ public struct ChatUiState: Equatable {
     // activity, and only restarts (from a fresh hour) once it's actually expired and the user
     // sends another message - never reset by messages sent while still running.
     public var sessionTimerExpiresAt: Date?
+    // A periodic "how's it going" prompt, unrelated to `showFeedbackPrompt`/`pendingFeedbackMessageId`
+    // above (end-of-conversation and per-message dislike feedback respectively) - fires every
+    // random 3-5 live bot replies. Mandatory like the dislike dialog: no dismiss path.
+    public var showPeriodicFeedbackPrompt: Bool = false
 
     public init() {}
 
@@ -201,6 +205,7 @@ public struct ChatUiState: Equatable {
             lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
             lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&
             lhs.messageReactions == rhs.messageReactions &&
-            lhs.sessionTimerExpiresAt == rhs.sessionTimerExpiresAt
+            lhs.sessionTimerExpiresAt == rhs.sessionTimerExpiresAt &&
+            lhs.showPeriodicFeedbackPrompt == rhs.showPeriodicFeedbackPrompt
     }
 }

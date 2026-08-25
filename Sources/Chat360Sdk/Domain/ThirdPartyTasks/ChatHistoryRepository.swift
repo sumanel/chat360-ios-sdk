@@ -77,6 +77,17 @@ public final class ChatHistoryRepository {
         }
     }
 
+    public func submitPeriodicFeedback(roomId: String, sessionId: String, feedbackText: String) async {
+        do {
+            try await withAuthRetry { token in
+                try await self.apiService.submitPeriodicFeedback(roomId: roomId, sessionId: sessionId, feedbackText: feedbackText, bearerToken: token)
+            }
+            NSLog("[Chat360] Periodic feedback sent successfully (room=%@)", roomId)
+        } catch {
+            NSLog("[Chat360] third-party-tasks feedback failed: %@", error.localizedDescription)
+        }
+    }
+
     private func withAuthRetry<T>(_ block: @escaping (String) async throws -> T) async throws -> T {
         let token = try await tokenManager.validToken()
         do {
