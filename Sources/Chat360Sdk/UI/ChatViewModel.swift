@@ -20,10 +20,11 @@ public final class ChatViewModel: ObservableObject {
     private var conversationPersisted = false
     private var pendingRawEnvelopes: [String] = []
     private var restoringFromCache = false
-    // Set once, up front, by whichever function is about to replay/refresh/backfill a batch of
-    // history - see the comment at its read site in `handleEvent` for why this can't just be
-    // derived incrementally from `uiState.messages` while a replay is in progress.
-    private var cachedConversationHasUserMessage = false
+    // The timestamp of the earliest real user message in whatever batch is about to be replayed/
+    // refreshed/backfilled, set once up front - nil if there isn't one. See the comment at its
+    // read site in `handleEvent` for why suppression has to be judged by *when* a bot message
+    // happened relative to this, not by whether a user message exists anywhere in the batch.
+    private var cachedEarliestUserTimestampMs: Int64?
     private var pendingSnapBackChatMsgId: String?
     private var previousHistoryCursor: Int?
     private var streamRawText: [String: String] = [:]
@@ -298,9 +299,26 @@ public final class ChatViewModel: ObservableObject {
             // first, so the two rows can land in local storage in the opposite order from how they
             // actually happened - and replaying "no user message seen among what's been added so
             // far" would then misidentify a real, already-answered reply as the suppressible
-            // opener, hiding it permanently. `cachedConversationHasUserMessage` is computed once
-            // up front from the *entire* dataset being replayed, so it can't be fooled by row order.
-            let hasUserMessage = restoringFromCache ? cachedConversationHasUserMessage : uiState.messages.contains(where: { $0.fromUser })
+            // opener, hiding it permanently.
+            //
+            // The fix isn't "does a user message exist anywhere in the batch" either - that
+            // over-corrects: once the room has any real user message at all, it would call every
+            // bot node "answered", including the genuine opener that came before it. What actually
+            // matters is *when* - `cachedEarliestUserTimestampMs` is the timestamp of the room's
+            // earliest real user message, computed once up front from the whole dataset, and a bot
+            // node only counts as pre-conversation if its own timestamp is before that.
+            let hasUserMessage: Bool
+            if restoringFromCache {
+                if let earliest = cachedEarliestUserTimestampMs {
+                    // No timestamp on the node means we can't place it - default to showing it
+                    // rather than risk permanently hiding real content.
+                    hasUserMessage = node.timestampMs.map { $0 >= earliest } ?? true
+                } else {
+                    hasUserMessage = false
+                }
+            } else {
+                hasUserMessage = uiState.messages.contains(where: { $0.fromUser })
+            }
             if suppressInitialBotMessages && !hasUserMessage { return }
             if node.text == nil, case .unsupported = node.content { return }
             if case .windowEvent = node.content { return }
@@ -926,7 +944,7 @@ public final class ChatViewModel: ObservableObject {
     private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity) async {
         guard let response = try? await repository.fetchHistory(roomId: roomId) else { return }
         guard activeConversationId == conversationId else { return }
-        cachedConversationHasUserMessage = uiState.messages.contains(where: { $0.fromUser }) || hasUserMessage(in: response.history)
+        cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
         var sawBotReply = false
         restoringFromCache = true
         for item in response.history {
@@ -967,7 +985,7 @@ public final class ChatViewModel: ObservableObject {
         streamRawText.removeAll()
         update { $0.messages = []; $0.hasMoreHistory = false }
         let cachedMessages = await cache.messages(conversationId: conversationId)
-        cachedConversationHasUserMessage = cachedMessages.contains { $0.kind == "USER" }
+        cachedEarliestUserTimestampMs = cachedMessages.filter { $0.kind == "USER" }.map { $0.createdAt }.min()
         restoringFromCache = true
         var hasCachedMessages = false
         for cached in cachedMessages {
@@ -1000,7 +1018,7 @@ public final class ChatViewModel: ObservableObject {
         if activeConversationId != conversationId { return !history.isEmpty }
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
-        cachedConversationHasUserMessage = hasUserMessage(in: history)
+        cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: history)
         restoringFromCache = true
         var sawBotReply = false
         for item in history {
@@ -1034,11 +1052,20 @@ public final class ChatViewModel: ObservableObject {
         Int64(Date().timeIntervalSince1970 * 1000)
     }
 
-    private func hasUserMessage(in history: [RawSocketEnvelope]) -> Bool {
-        history.contains { envelope in
-            if case .echoedUserMessage = envelope.toIncomingEvent() { return true }
-            return false
+    // The earliest real user-message timestamp for this conversation, combining local cache
+    // (reliable for every send type, nudges included - see `markReplyPending`'s own reasoning)
+    // with whatever a freshly fetched batch of server history adds - `nil` if neither has one.
+    // Used to seed `cachedEarliestUserTimestampMs` before a replay/refresh/backfill pass; see its
+    // read site in `handleEvent` for why this needs to be an actual point in time, not a yes/no
+    // fact. Local cache is consulted directly rather than `uiState.messages`, since a user-
+    // authored `ChatMessage` doesn't carry a `timestampMs` today - only bot messages do.
+    private func earliestUserTimestampMs(conversationId: String, alsoConsidering history: [RawSocketEnvelope] = []) async -> Int64? {
+        let fromCache = await cache.messages(conversationId: conversationId).filter { $0.kind == "USER" }.map { $0.createdAt }
+        let fromHistory = history.compactMap { envelope -> Int64? in
+            guard case .echoedUserMessage(_, _, let timestampMs) = envelope.toIncomingEvent() else { return nil }
+            return timestampMs
         }
+        return (fromCache + fromHistory).min()
     }
 
     public func loadMoreHistory() {
@@ -1054,7 +1081,7 @@ public final class ChatViewModel: ObservableObject {
                 return
             }
             let sizeBefore = self.uiState.messages.count
-            self.cachedConversationHasUserMessage = self.uiState.messages.contains(where: { $0.fromUser }) || self.hasUserMessage(in: response.history)
+            self.cachedEarliestUserTimestampMs = await self.earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
             self.restoringFromCache = true
             for item in response.history { self.handleEvent(item.toIncomingEvent()) }
             self.restoringFromCache = false
