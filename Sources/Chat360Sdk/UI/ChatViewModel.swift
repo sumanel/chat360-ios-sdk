@@ -1289,6 +1289,20 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
+    // Same "re-send as a new message" pattern as regenerate above, just triggered from a failed
+    // user message instead of a bot reply - covers a plain delivery-ack timeout and a room found
+    // still owed a reply after the app was restarted/backgrounded mid-generation, since both
+    // converge on the same `message.failed` flag (see `UserMessageRow`).
+    public func retryFailedMessage(messageId: String) {
+        guard let message = uiState.messages.first(where: { $0.id == messageId }), message.fromUser, message.failed else { return }
+        let text = message.text
+        sendAfterResumingRoom { vm in
+            let chatMsgId = vm.repository.sendFreeText(text)
+            vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
+            vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
+    }
+
     // Every reply to a specific bot prompt (quick reply, rating, form field, welcome card, etc.)
     // needs the live socket actually pointed at the room being viewed before it sends - otherwise
     // it silently goes out through whichever room happens to still be connected instead, and the

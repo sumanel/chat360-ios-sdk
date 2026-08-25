@@ -10,19 +10,33 @@ public struct StatusBanner: View {
 
     private let text: String
     private let emphasized: Bool
+    // Only meaningful (and only rendered) alongside `emphasized: true` - the connection-error
+    // case. `isSlowConnection`/archived-conversation banners don't pass this, since neither is a
+    // broken state to retry out of.
+    private let onRetry: (() -> Void)?
 
-    public init(text: String, emphasized: Bool) {
+    public init(text: String, emphasized: Bool, onRetry: (() -> Void)? = nil) {
         self.text = text
         self.emphasized = emphasized
+        self.onRetry = onRetry
     }
 
     public var body: some View {
-        Text(text)
-            .font(typography.textFamily.font(size: 13))
-            .foregroundColor(emphasized ? activeRed : colors.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(colors.backgroundElevated)
+        HStack(spacing: 12) {
+            Text(text)
+                .font(typography.textFamily.font(size: 13))
+                .foregroundColor(emphasized ? activeRed : colors.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if emphasized, let onRetry {
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(typography.textFamily.font(size: 13, weight: .semibold))
+                        .foregroundColor(activeRed)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(colors.backgroundElevated)
     }
 }

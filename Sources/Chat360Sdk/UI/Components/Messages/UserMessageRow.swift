@@ -6,9 +6,15 @@ public struct UserMessageRow: View {
     @Environment(\.chat360Typography) private var typography
 
     private let message: ChatMessage
+    // Covers every way a reply can end up never arriving - a plain delivery-ack timeout, and the
+    // room being found still owed a reply (see `backfillMissingReplies`'s stale-threshold check)
+    // after the app was restarted or backgrounded while the bot was generating - all of them
+    // converge on the same `message.failed` flag, so one tap target here covers all of them.
+    private let onRetry: () -> Void
 
-    public init(message: ChatMessage) {
+    public init(message: ChatMessage, onRetry: @escaping () -> Void = {}) {
         self.message = message
+        self.onRetry = onRetry
     }
 
     public var body: some View {
@@ -32,9 +38,13 @@ public struct UserMessageRow: View {
             .frame(maxWidth: 300, alignment: .trailing)
 
             Spacer().frame(height: 4)
-            Text(message.failed ? "Not delivered" : message.timeText)
+            Text(message.failed ? "Not delivered · Tap to retry" : message.timeText)
                 .font(typography.textFamily.font(size: 11))
                 .foregroundColor(message.failed ? activeRed : colors.textDisabled)
+                .onTapGesture {
+                    guard message.failed else { return }
+                    onRetry()
+                }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }

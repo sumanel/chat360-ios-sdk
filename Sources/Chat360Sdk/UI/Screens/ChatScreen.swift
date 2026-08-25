@@ -84,7 +84,7 @@ public struct ChatScreen: View {
                     StatusBanner(text: "Slow connection…", emphasized: false)
                 }
                 if !viewModel.uiState.isConnected, let error = viewModel.uiState.error {
-                    StatusBanner(text: error, emphasized: true)
+                    StatusBanner(text: error, emphasized: true, onRetry: { viewModel.refreshConnection() })
                 }
 
                 if let pinned = pinnedWelcomeMessage {
@@ -112,7 +112,7 @@ public struct ChatScreen: View {
                                 ForEach(listMessages) { message in
                                     Group {
                                         if message.fromUser {
-                                            UserMessageRow(message: message)
+                                            UserMessageRow(message: message, onRetry: { viewModel.retryFailedMessage(messageId: message.id) })
                                         } else {
                                             BotMessageItem(message: message, viewModel: viewModel, pickAttachment: { showAttachmentPicker = true }, captureFromCamera: { showCameraCapture = true }, isLiveChat: viewModel.uiState.isLiveChat, assignedAgent: viewModel.uiState.assignedAgent)
                                         }
