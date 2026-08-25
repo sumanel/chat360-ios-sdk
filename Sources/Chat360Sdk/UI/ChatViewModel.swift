@@ -365,6 +365,10 @@ public final class ChatViewModel: ObservableObject {
             let isNewStreamMessage = node.streamId.map { streamRawText[$0] == nil } ?? true
             if !restoringFromCache && isNewStreamMessage {
                 registerLiveBotReplyForFeedbackPrompt()
+                // Shown once the bot has actually answered, not the instant the user's own
+                // message goes out - `ensureSessionTimerStarted`'s own "already running or not
+                // yet expired" guard means this is still a no-op on every reply after the first.
+                ensureSessionTimerStarted()
             } else {
                 NSLog(
                     "[Chat360] Skipping feedback-prompt count: restoringFromCache=%@ isNewStreamMessage=%@ nodeId=%@",
@@ -438,11 +442,6 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func appendMessage(_ message: ChatMessage, cacheUserMessage: Bool? = nil) {
-        // Only a live send counts as "the session starting" - replaying old history on open
-        // shouldn't retroactively start or restart this.
-        if message.fromUser, !restoringFromCache {
-            ensureSessionTimerStarted()
-        }
         let shouldCache = cacheUserMessage ?? message.fromUser
         let target = connectedConversationId
         if message.fromUser, !restoringFromCache, let target, activeConversationId != target {
