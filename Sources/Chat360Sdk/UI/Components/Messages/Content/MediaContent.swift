@@ -83,7 +83,13 @@ struct FlowLayout: Layout {
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            // Measuring with `.unspecified` asks for the subview's natural single-line width,
+            // however long that is, so a single long item (e.g. a full nudge phrase) never gets a
+            // chance to wrap its own text - it just reports its full unbroken width and overflows
+            // past the container's actual bounds. Capping the proposed width to what this row
+            // still has available lets Text wrap to multiple lines instead, same as it would if
+            // placed directly in a VStack with a width constraint.
+            let size = subview.sizeThatFits(ProposedViewSize(width: width.isFinite ? width : nil, height: nil))
             if x + size.width > width, x > 0 {
                 x = 0
                 y += rowHeight + spacing
@@ -100,13 +106,13 @@ struct FlowLayout: Layout {
         var y = bounds.minY
         var rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width.isFinite ? bounds.width : nil, height: nil))
             if x + size.width > bounds.maxX, x > bounds.minX {
                 x = bounds.minX
                 y += rowHeight + spacing
                 rowHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: size.width, height: size.height))
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
