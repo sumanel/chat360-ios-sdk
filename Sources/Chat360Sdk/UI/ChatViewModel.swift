@@ -332,8 +332,13 @@ public final class ChatViewModel: ObservableObject {
             if restoringFromCache {
                 if let earliest = cachedEarliestUserTimestampMs {
                     // No timestamp on the node means we can't place it - default to showing it
-                    // rather than risk permanently hiding real content.
-                    hasUserMessage = node.timestampMs.map { $0 >= earliest } ?? true
+                    // rather than risk permanently hiding real content. The tolerance absorbs
+                    // clock differences between the device (which timestamps the user's message)
+                    // and the server (which timestamps the bot's reply) - confirmed via logging
+                    // that a genuine reply can otherwise read as happening before the message it
+                    // was actually answering, and get permanently mistaken for the suppressible
+                    // opener. Same constant/reasoning as `backfillMissingReplies`'s own check.
+                    hasUserMessage = node.timestampMs.map { $0 >= earliest - Self.replyClockSkewToleranceMs } ?? true
                 } else {
                     hasUserMessage = false
                 }
