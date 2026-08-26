@@ -40,6 +40,11 @@ struct HTMLTableView: View {
             .font(typography.textFamily.font(size: 13, weight: isHeader ? .semibold : .regular))
             .foregroundColor(colors.bubbleAiText)
             .multilineTextAlignment(.leading)
+            // Without this, Text inside Grid can report a single-line height back to the row
+            // instead of its true wrapped height, so the row ends up too short and the extra
+            // lines get truncated with "…" instead of actually wrapping. This tells it to keep
+            // all its content (grow vertically) rather than compress to fit a guessed height.
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             // Without a maxWidth, Text has no reason to wrap - it just keeps growing to fit the
