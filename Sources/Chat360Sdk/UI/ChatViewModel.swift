@@ -44,10 +44,13 @@ public final class ChatViewModel: ObservableObject {
     // `ensureSessionTimerStarted`; a conversation with no entry here just falls back to the old
     // client-side guess (e.g. the request hasn't answered yet, or this bot doesn't support it).
     private var serverSessionCreatedAtByConversation: [String: Date] = [:]
-    // Periodic "how's it going" feedback prompt - fires every random 3-5 live bot replies (not
-    // tied to any one conversation, just overall live engagement in this ViewModel's lifetime).
-    private var botRepliesSinceLastFeedbackPrompt = 0
-    private var nextFeedbackPromptThreshold = Int.random(in: 3...5)
+    // Periodic "how's it going" feedback prompt - fires every random 3-5 live bot replies, scoped
+    // per conversation. Was originally a single pair of counters shared across every conversation
+    // in the ViewModel's lifetime, which meant switching to (or starting) a different conversation
+    // silently carried over progress from whatever you were doing before - e.g. 2 replies in room
+    // A plus 1 in a brand new room B would fire on room B's very first reply.
+    private var botRepliesSinceLastFeedbackPromptByConversation: [String: Int] = [:]
+    private var nextFeedbackPromptThresholdByConversation: [String: Int] = [:]
 
     public init(
         repository: ChatRepository,
@@ -878,15 +881,19 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func registerLiveBotReplyForFeedbackPrompt() {
-        botRepliesSinceLastFeedbackPrompt += 1
-        NSLog(
-            "[Chat360] Feedback-prompt count: %d/%d",
-            botRepliesSinceLastFeedbackPrompt, nextFeedbackPromptThreshold
-        )
-        guard botRepliesSinceLastFeedbackPrompt >= nextFeedbackPromptThreshold else { return }
-        botRepliesSinceLastFeedbackPrompt = 0
-        nextFeedbackPromptThreshold = Int.random(in: 3...5)
-        NSLog("[Chat360] Showing periodic feedback prompt - next threshold=%d", nextFeedbackPromptThreshold)
+        guard let conversationId = activeConversationId else { return }
+        if nextFeedbackPromptThresholdByConversation[conversationId] == nil {
+            nextFeedbackPromptThresholdByConversation[conversationId] = Int.random(in: 3...5)
+        }
+        let threshold = nextFeedbackPromptThresholdByConversation[conversationId]!
+        let count = (botRepliesSinceLastFeedbackPromptByConversation[conversationId] ?? 0) + 1
+        botRepliesSinceLastFeedbackPromptByConversation[conversationId] = count
+        NSLog("[Chat360] Feedback-prompt count: %d/%d (conversation=%@)", count, threshold, conversationId)
+        guard count >= threshold else { return }
+        botRepliesSinceLastFeedbackPromptByConversation[conversationId] = 0
+        let nextThreshold = Int.random(in: 3...5)
+        nextFeedbackPromptThresholdByConversation[conversationId] = nextThreshold
+        NSLog("[Chat360] Showing periodic feedback prompt - next threshold=%d (conversation=%@)", nextThreshold, conversationId)
         update { $0.showPeriodicFeedbackPrompt = true }
     }
 
@@ -1026,11 +1033,39 @@ public final class ChatViewModel: ObservableObject {
     // server's echo of them, which isn't reliable for every send type.
     private func backfillIfReplyPending(conversationId: String, roomId: String) async {
         guard let pending = await cache.replyPending(conversationId: conversationId) else { return }
-        // Shows the typing indicator immediately instead of leaving a silent gap while we wait to
-        // find out whether the reply already arrived (live, mid-fetch) or needs recovering here.
-        update { $0.isAgentTyping = true }
+        // Derives "this is overdue" from the persisted pending record itself, before ever asking
+        // the network - a restart wipes the in-memory `failed` flag along with everything else,
+        // so without this a message that's genuinely long overdue would show as neither answered
+        // nor failed until a fresh backfill fetch (below) came back, which could take a moment or
+        // silently not happen at all if the fetch fails. This makes the correct state visible
+        // immediately on reopening, then the fetch below still runs to check for a real answer.
+        if nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
+            setMessageFailed(chatMsgId: pending.chatMsgId, failed: true)
+        } else {
+            // Shows the typing indicator immediately instead of leaving a silent gap while we wait
+            // to find out whether the reply already arrived (live, mid-fetch) or needs recovering.
+            update { $0.isAgentTyping = true }
+        }
         await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending)
     }
+
+    private func setMessageFailed(chatMsgId: String?, failed: Bool) {
+        guard let chatMsgId else { return }
+        update { state in
+            state.messages = state.messages.map { m in
+                var updated = m
+                if updated.chatMsgId == chatMsgId { updated.failed = failed }
+                return updated
+            }
+        }
+    }
+
+    // Reasonable slack for the fact that the pending record's timestamp comes from the device's
+    // clock (captured when the user's own message was cached) while a bot node's timestamp comes
+    // from the server's - a real reply generated only a couple of seconds after the message was
+    // sent could otherwise appear to have happened *before* it and get silently treated as old
+    // history rather than the reply being recovered, if the two clocks aren't in perfect sync.
+    private static let replyClockSkewToleranceMs: Int64 = 60_000
 
     // Only ever adds bot messages the server has that we don't - never wipes or rebuilds the
     // existing list the way `refreshConversationHistory` does, since that would also discard
@@ -1044,7 +1079,8 @@ public final class ChatViewModel: ObservableObject {
         restoringFromCache = true
         for item in response.history {
             let event = item.toIncomingEvent()
-            guard case .botMessage(let node) = event, let ts = node.timestampMs, ts >= pending.createdAt else { continue }
+            guard case .botMessage(let node) = event, let ts = node.timestampMs,
+                  ts >= pending.createdAt - Self.replyClockSkewToleranceMs else { continue }
             sawBotReply = true
             handleEvent(event)
             if let data = try? encoder.encode(item), let raw = String(data: data, encoding: .utf8) {
@@ -1057,20 +1093,14 @@ public final class ChatViewModel: ObservableObject {
             // check at the top of its `.botMessage` case) whenever the reply it's looking at turns
             // out to already be on screen, which leaves nothing else to turn the indicator off.
             update { $0.isAgentTyping = false }
+            // Reverts the optimistic "overdue" mark from `backfillIfReplyPending` if it turns out
+            // there was a real answer after all - it wasn't actually undelivered, just recovered
+            // slightly later than the stale threshold assumed.
+            setMessageFailed(chatMsgId: pending.chatMsgId, failed: false)
             await cache.clearReplyPending(conversationId: conversationId)
         } else if nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
-            if let chatMsgId = pending.chatMsgId {
-                update { state in
-                    state.messages = state.messages.map { m in
-                        var updated = m
-                        if updated.chatMsgId == chatMsgId { updated.failed = true }
-                        return updated
-                    }
-                    state.isAgentTyping = false
-                }
-            } else {
-                update { $0.isAgentTyping = false }
-            }
+            setMessageFailed(chatMsgId: pending.chatMsgId, failed: true)
+            update { $0.isAgentTyping = false }
             await cache.clearReplyPending(conversationId: conversationId)
         }
     }
@@ -1127,15 +1157,7 @@ public final class ChatViewModel: ObservableObject {
             await cache.clearReplyPending(conversationId: conversationId)
         } else if let pending = await cache.replyPending(conversationId: conversationId),
                   nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
-            if let chatMsgId = pending.chatMsgId {
-                update { state in
-                    state.messages = state.messages.map { m in
-                        var updated = m
-                        if updated.chatMsgId == chatMsgId { updated.failed = true }
-                        return updated
-                    }
-                }
-            }
+            setMessageFailed(chatMsgId: pending.chatMsgId, failed: true)
             await cache.clearReplyPending(conversationId: conversationId)
         }
         previousHistoryCursor = response.previous_cursor
