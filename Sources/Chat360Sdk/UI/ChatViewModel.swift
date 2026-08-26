@@ -25,6 +25,11 @@ public final class ChatViewModel: ObservableObject {
     // read site in `handleEvent` for why suppression has to be judged by *when* a bot message
     // happened relative to this, not by whether a user message exists anywhere in the batch.
     private var cachedEarliestUserTimestampMs: Int64?
+    // The node id already recorded (see `ChatCacheRepository.suppressedOpenerNodeId`) as this
+    // conversation's one suppressible opening greeting, loaded once up front for whatever batch
+    // is about to be replayed/refreshed/backfilled - nil if this conversation hasn't had its
+    // opener identified yet (falls back to the timestamp heuristic below, just for that one load).
+    private var cachedSuppressedOpenerNodeId: String?
     private var pendingSnapBackChatMsgId: String?
     private var previousHistoryCursor: Int?
     private var streamRawText: [String: String] = [:]
@@ -311,43 +316,45 @@ public final class ChatViewModel: ObservableObject {
             update { $0.isAgentTyping = false }
             // Hides the bot's opening/greeting node permanently, not just before the first live
             // send - it's always present in the underlying flow (and gets replayed from cache
-            // when reopening a past conversation), so the only reliable signal that it's the
-            // suppressible opener rather than a real reply is that no user message exists yet.
-            // During a live send this is safe to read off `uiState.messages` directly, since
-            // messages arrive and get appended in true chronological order. During a replay/
-            // backfill/refresh pass it isn't: caching the user's own send and caching an incoming
-            // bot reply are two independent background writes with no guarantee either finishes
-            // first, so the two rows can land in local storage in the opposite order from how they
-            // actually happened - and replaying "no user message seen among what's been added so
-            // far" would then misidentify a real, already-answered reply as the suppressible
-            // opener, hiding it permanently.
-            //
-            // The fix isn't "does a user message exist anywhere in the batch" either - that
-            // over-corrects: once the room has any real user message at all, it would call every
-            // bot node "answered", including the genuine opener that came before it. What actually
-            // matters is *when* - `cachedEarliestUserTimestampMs` is the timestamp of the room's
-            // earliest real user message, computed once up front from the whole dataset, and a bot
-            // node only counts as pre-conversation if its own timestamp is before that.
-            let hasUserMessage: Bool
-            if restoringFromCache {
-                if let earliest = cachedEarliestUserTimestampMs {
-                    // No timestamp on the node means we can't place it - default to showing it
-                    // rather than risk permanently hiding real content. The tolerance absorbs
-                    // clock differences between the device (which timestamps the user's message)
-                    // and the server (which timestamps the bot's reply) - confirmed via logging
-                    // that a genuine reply can otherwise read as happening before the message it
-                    // was actually answering, and get permanently mistaken for the suppressible
-                    // opener. Same constant/reasoning as `backfillMissingReplies`'s own check.
-                    hasUserMessage = node.timestampMs.map { $0 >= earliest - Self.replyClockSkewToleranceMs } ?? true
+            // when reopening a past conversation). Identified by remembered node id, not by
+            // comparing timestamps: a live send is the one moment this is unambiguous (true
+            // chronological order, no clock skew or cache-write-race possible), so the first time
+            // a conversation identifies its opener live, that decision is persisted and reused on
+            // every future replay - re-deriving it from timestamps each time can't reliably tell
+            // the real opener apart from a genuine reply that happens to land close in time to it.
+            if suppressInitialBotMessages {
+                let isSuppressibleOpener: Bool
+                if restoringFromCache {
+                    if let openerNodeId = cachedSuppressedOpenerNodeId {
+                        isSuppressibleOpener = node.nodeId != nil && node.nodeId == openerNodeId
+                    } else {
+                        // This conversation has never had its opener identified live (e.g.
+                        // synced-in history) - fall back to the timestamp heuristic just for this
+                        // one load, then remember whatever it decides so it's stable from here on.
+                        let hasUserMessage: Bool
+                        if let earliest = cachedEarliestUserTimestampMs {
+                            hasUserMessage = node.timestampMs.map { $0 >= earliest - Self.replyClockSkewToleranceMs } ?? true
+                        } else {
+                            hasUserMessage = false
+                        }
+                        isSuppressibleOpener = !hasUserMessage
+                        if isSuppressibleOpener, let nodeId = node.nodeId, let conversationId = activeConversationId {
+                            cachedSuppressedOpenerNodeId = nodeId
+                            let cache = self.cache
+                            Task { await cache.setSuppressedOpenerNodeIdIfMissing(conversationId: conversationId, nodeId: nodeId) }
+                        }
+                    }
                 } else {
-                    hasUserMessage = false
+                    isSuppressibleOpener = !uiState.messages.contains(where: { $0.fromUser })
+                    if isSuppressibleOpener, let nodeId = node.nodeId, let conversationId = connectedConversationId {
+                        let cache = self.cache
+                        Task { await cache.setSuppressedOpenerNodeIdIfMissing(conversationId: conversationId, nodeId: nodeId) }
+                    }
                 }
-            } else {
-                hasUserMessage = uiState.messages.contains(where: { $0.fromUser })
-            }
-            if suppressInitialBotMessages && !hasUserMessage {
-                NSLog("[Chat360] botMessage dropped as suppressed opener: nodeId=%@ restoringFromCache=%@", node.nodeId ?? "nil", String(restoringFromCache))
-                return
+                if isSuppressibleOpener {
+                    NSLog("[Chat360] botMessage dropped as suppressed opener: nodeId=%@ restoringFromCache=%@", node.nodeId ?? "nil", String(restoringFromCache))
+                    return
+                }
             }
             if node.text == nil, case .unsupported = node.content {
                 NSLog("[Chat360] botMessage dropped as unsupported/empty: nodeId=%@", node.nodeId ?? "nil")
@@ -1088,6 +1095,7 @@ public final class ChatViewModel: ObservableObject {
         NSLog("[Chat360] SERVER returned %d history rows for room=%@", response.history.count, roomId)
         guard activeConversationId == conversationId else { return }
         cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
+        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
         var sawBotReply = false
         restoringFromCache = true
         for item in response.history {
@@ -1140,6 +1148,7 @@ public final class ChatViewModel: ObservableObject {
             cachedMessages.filter { $0.kind == "USER" }.count, cachedMessages.filter { $0.kind == "RAW" }.count
         )
         cachedEarliestUserTimestampMs = cachedMessages.filter { $0.kind == "USER" }.map { $0.createdAt }.min()
+        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
         restoringFromCache = true
         var hasCachedMessages = false
         for cached in cachedMessages {
@@ -1208,6 +1217,7 @@ public final class ChatViewModel: ObservableObject {
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
         cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: history)
+        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
         restoringFromCache = true
         var sawBotReply = false
         for item in history {
@@ -1264,6 +1274,7 @@ public final class ChatViewModel: ObservableObject {
             }
             let sizeBefore = self.uiState.messages.count
             self.cachedEarliestUserTimestampMs = await self.earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
+            self.cachedSuppressedOpenerNodeId = await self.cache.suppressedOpenerNodeId(conversationId: conversationId)
             self.restoringFromCache = true
             for item in response.history { self.handleEvent(item.toIncomingEvent()) }
             self.restoringFromCache = false

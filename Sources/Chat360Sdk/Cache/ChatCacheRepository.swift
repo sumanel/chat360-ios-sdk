@@ -170,6 +170,16 @@ public final class ChatCacheRepository {
         await dao.clearReplyPending(conversationId: conversationId)
     }
 
+    public func setSuppressedOpenerNodeIdIfMissing(conversationId: String, nodeId: String) async {
+        guard Self.enabled else { return }
+        await dao.setSuppressedOpenerNodeIdIfMissing(conversationId: conversationId, nodeId: nodeId)
+    }
+
+    public func suppressedOpenerNodeId(conversationId: String) async -> String? {
+        guard Self.enabled else { return nil }
+        return await dao.suppressedOpenerNodeId(conversationId: conversationId)
+    }
+
     private func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }

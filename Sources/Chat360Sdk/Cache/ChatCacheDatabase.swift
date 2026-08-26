@@ -134,6 +134,18 @@ public final class ChatCacheDao {
                 createdAt INTEGER NOT NULL
             )
             """)
+            // Remembers which one specific bot message was identified as a conversation's
+            // suppressible opening greeting - set once, the first time that conversation is live
+            // (real chronological order, no clock-skew or cache-write-race ambiguity possible),
+            // and reused on every future replay instead of re-guessing from timestamps, which
+            // can't reliably tell the opener apart from a real reply that happens to land close
+            // in time to it.
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_suppressed_opener (
+                conversationId TEXT PRIMARY KEY NOT NULL,
+                nodeId TEXT NOT NULL
+            )
+            """)
         }
     }
 
@@ -511,6 +523,29 @@ public final class ChatCacheDao {
         }
     }
 
+    // `OR IGNORE` because this is a one-time identification - once a conversation's opener is
+    // recorded, it never changes, so a later (re-)identification attempt must never overwrite it.
+    public func setSuppressedOpenerNodeIdIfMissing(conversationId: String, nodeId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR IGNORE INTO chat_suppressed_opener (conversationId, nodeId) VALUES (?, ?)",
+                    params: [conversationId, nodeId]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func suppressedOpenerNodeId(conversationId: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query("SELECT nodeId FROM chat_suppressed_opener WHERE conversationId = ? LIMIT 1", params: [conversationId])
+                continuation.resume(returning: rows.first?["nodeId"] as? String)
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -555,6 +590,7 @@ public final class ChatCacheDao {
                 self.exec("DELETE FROM chat_pending_feedback WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_pending_reply WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_suppressed_opener WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }
