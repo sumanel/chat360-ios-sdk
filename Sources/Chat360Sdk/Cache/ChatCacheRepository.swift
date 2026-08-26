@@ -180,6 +180,16 @@ public final class ChatCacheRepository {
         return await dao.suppressedOpenerNodeId(conversationId: conversationId)
     }
 
+    public func setSessionCreatedAt(conversationId: String, createdAtMs: Int64) async {
+        guard Self.enabled else { return }
+        await dao.setSessionCreatedAt(conversationId: conversationId, createdAtMs: createdAtMs)
+    }
+
+    public func sessionCreatedAt(conversationId: String) async -> Int64? {
+        guard Self.enabled else { return nil }
+        return await dao.sessionCreatedAt(conversationId: conversationId)
+    }
+
     private func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }

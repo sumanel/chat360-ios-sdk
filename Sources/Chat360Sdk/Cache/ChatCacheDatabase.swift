@@ -146,6 +146,16 @@ public final class ChatCacheDao {
                 nodeId TEXT NOT NULL
             )
             """)
+            // The server's own record of when a room's session actually started (from the
+            // `session_time_hyundai` request), saved so the session countdown can be shown the
+            // instant a conversation with time left is opened - even right after an app restart,
+            // before any live reconnect to that room has happened to re-derive it.
+            exec("""
+            CREATE TABLE IF NOT EXISTS chat_session_created_at (
+                conversationId TEXT PRIMARY KEY NOT NULL,
+                createdAtMs INTEGER NOT NULL
+            )
+            """)
         }
     }
 
@@ -546,6 +556,30 @@ public final class ChatCacheDao {
         }
     }
 
+    // `OR REPLACE`, unlike the opener's `OR IGNORE` above - a room's session can be superseded by
+    // a new one later (e.g. after the old one fully expired), so this should always reflect the
+    // most recently known session, not the first one ever seen.
+    public func setSessionCreatedAt(conversationId: String, createdAtMs: Int64) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                self.exec(
+                    "INSERT OR REPLACE INTO chat_session_created_at (conversationId, createdAtMs) VALUES (?, ?)",
+                    params: [conversationId, createdAtMs]
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    public func sessionCreatedAt(conversationId: String) async -> Int64? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let rows = self.query("SELECT createdAtMs FROM chat_session_created_at WHERE conversationId = ? LIMIT 1", params: [conversationId])
+                continuation.resume(returning: rows.first?["createdAtMs"] as? Int64)
+            }
+        }
+    }
+
     public func setRoom(conversationId: String, roomId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
@@ -591,6 +625,7 @@ public final class ChatCacheDao {
                 self.exec("DELETE FROM chat_message_reactions WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_pending_reply WHERE conversationId = ?", params: [conversationId])
                 self.exec("DELETE FROM chat_suppressed_opener WHERE conversationId = ?", params: [conversationId])
+                self.exec("DELETE FROM chat_session_created_at WHERE conversationId = ?", params: [conversationId])
                 self.notifyConversationsChanged(botId: botId)
                 continuation.resume()
             }

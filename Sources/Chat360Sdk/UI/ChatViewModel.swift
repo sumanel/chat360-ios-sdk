@@ -158,13 +158,35 @@ public final class ChatViewModel: ObservableObject {
         // Restores whatever's already running for this specific conversation (if anything) -
         // switching to a conversation with time left resumes that countdown rather than hiding
         // or restarting it; one with no entry yet (or a past deadline) shows nothing until a
-        // message is actually sent in it.
+        // message is actually sent in it. If nothing's running in memory yet (e.g. right after a
+        // cold launch), `refreshSessionTimerFromPersisted` below checks disk for the same thing.
         let expiresAt = id.flatMap { sessionTimerExpiresAtByConversation[$0] }
         update { $0.activeConversationId = id; $0.sessionTimerExpiresAt = expiresAt }
         Task { [weak self] in
             await self?.refreshPendingFeedback(conversationId: id)
             await self?.refreshMessageReactions(conversationId: id)
+            if let id { await self?.refreshSessionTimerFromPersisted(conversationId: id) }
         }
+    }
+
+    // Shows the countdown the instant a conversation with real time left is opened, even before
+    // any live reconnect to it happens - without this, a restarted app has nothing in memory for
+    // any conversation until it reconnects, so the timer would stay hidden until a new message
+    // was sent, rather than reflecting time that's already genuinely still on the clock.
+    private func refreshSessionTimerFromPersisted(conversationId: String) async {
+        guard sessionTimerExpiresAtByConversation[conversationId] == nil else { return }
+        guard let createdAtMs = await cache.sessionCreatedAt(conversationId: conversationId) else { return }
+        // Only for a conversation that's actually had a real message - a brand-new chat's session
+        // can exist server-side before the user has said anything, and the timer shouldn't appear
+        // until they've actually started the conversation.
+        guard await cache.messages(conversationId: conversationId).contains(where: { $0.kind == "USER" }) else { return }
+        let createdAt = Date(timeIntervalSince1970: Double(createdAtMs) / 1000)
+        let expiresAt = createdAt.addingTimeInterval(3600)
+        guard expiresAt > Date() else { return }
+        serverSessionCreatedAtByConversation[conversationId] = createdAt
+        sessionTimerExpiresAtByConversation[conversationId] = expiresAt
+        guard activeConversationId == conversationId else { return }
+        update { $0.sessionTimerExpiresAt = expiresAt }
     }
 
     // Dislike must durably block the chat with a mandatory feedback prompt - including across
@@ -521,6 +543,12 @@ public final class ChatViewModel: ObservableObject {
     private func handleSessionTimeReceived(_ createdAt: Date) {
         guard let conversationId = connectedConversationId else { return }
         serverSessionCreatedAtByConversation[conversationId] = createdAt
+        // Saved to disk too, so a future cold launch can show the countdown for this conversation
+        // the instant it's opened, without needing a live reconnect to re-derive it first - see
+        // `refreshSessionTimerFromPersisted`.
+        let createdAtMs = Int64(createdAt.timeIntervalSince1970 * 1000)
+        let cache = self.cache
+        Task { await cache.setSessionCreatedAt(conversationId: conversationId, createdAtMs: createdAtMs) }
         // The timer may have already started using "now" as a rough stand-in, if the user sent
         // their first message before this response made it back - correct it now that the real
         // anchor is known, rather than leaving it on the earlier guess for the rest of the hour.
