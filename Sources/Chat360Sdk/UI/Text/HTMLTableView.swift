@@ -40,19 +40,19 @@ struct HTMLTableView: View {
             .font(typography.textFamily.font(size: 13, weight: isHeader ? .semibold : .regular))
             .foregroundColor(colors.bubbleAiText)
             .multilineTextAlignment(.leading)
-            // Without this, Text inside Grid can report a single-line height back to the row
-            // instead of its true wrapped height, so the row ends up too short and the extra
-            // lines get truncated with "…" instead of actually wrapping. This tells it to keep
-            // all its content (grow vertically) rather than compress to fit a guessed height.
+            // Without a maxWidth, Text has no reason to wrap - it just keeps growing to fit the
+            // whole string on one line, however long, which is what forced so much horizontal
+            // scrolling. Capping it lets long cells wrap to multiple lines instead.
+            .frame(minWidth: 90, maxWidth: 160, alignment: .leading)
+            // Must come after the frame above, not before - fixedSize needs to measure the text
+            // once it's already wrapping at that constrained width, so it reports (and keeps) the
+            // true multi-line height for that width. Applied before the width constraint, it locks
+            // in the text's original single-line height, and the frame above only clips the
+            // *width* afterward - the row then stays too short and the wrapped lines spill down
+            // over the rows below instead of the row actually growing to fit them.
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            // Without a maxWidth, Text has no reason to wrap - it just keeps growing to fit the
-            // whole string on one line, however long, which is what forced so much horizontal
-            // scrolling. Capping it lets long cells wrap to multiple lines instead, and Grid
-            // already gives every cell in that row the same (taller) height for free once one
-            // of them wraps - no extra row-height syncing needed.
-            .frame(minWidth: 90, maxWidth: 160, alignment: .leading)
             .background(isHeader ? colors.backgroundSunken : colors.bubbleAiBackground)
             .overlay(Rectangle().stroke(colors.cardBorder, lineWidth: 0.5))
     }
