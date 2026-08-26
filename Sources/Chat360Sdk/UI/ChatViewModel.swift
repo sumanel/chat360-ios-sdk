@@ -1072,7 +1072,15 @@ public final class ChatViewModel: ObservableObject {
     // locally-known user sends (e.g. nudge/quick-reply selections) that the server's own history
     // doesn't always echo back as readable text.
     private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity) async {
-        guard let response = try? await repository.fetchHistory(roomId: roomId) else { return }
+        NSLog(
+            "[Chat360] Fetching from SERVER (backfill): room=%@ pending chatMsgId=%@ createdAt=%lld",
+            roomId, pending.chatMsgId ?? "nil", pending.createdAt
+        )
+        guard let response = try? await repository.fetchHistory(roomId: roomId) else {
+            NSLog("[Chat360] SERVER fetch (backfill) failed for room=%@", roomId)
+            return
+        }
+        NSLog("[Chat360] SERVER returned %d history rows for room=%@", response.history.count, roomId)
         guard activeConversationId == conversationId else { return }
         cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
         var sawBotReply = false
@@ -1080,8 +1088,19 @@ public final class ChatViewModel: ObservableObject {
         for item in response.history {
             let event = item.toIncomingEvent()
             guard case .botMessage(let node) = event, let ts = node.timestampMs,
-                  ts >= pending.createdAt - Self.replyClockSkewToleranceMs else { continue }
+                  ts >= pending.createdAt - Self.replyClockSkewToleranceMs else {
+                if case .botMessage(let node) = event {
+                    NSLog(
+                        "[Chat360]   SERVER row skipped (too old): %@ (pending.createdAt=%lld tolerance=%lld)",
+                        describeEvent(event), pending.createdAt, Self.replyClockSkewToleranceMs
+                    )
+                } else {
+                    NSLog("[Chat360]   SERVER row: %@", describeEvent(event))
+                }
+                continue
+            }
             sawBotReply = true
+            NSLog("[Chat360]   SERVER row accepted as new reply: %@", describeEvent(event))
             handleEvent(event)
             if let data = try? encoder.encode(item), let raw = String(data: data, encoding: .utf8) {
                 await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
@@ -1110,6 +1129,11 @@ public final class ChatViewModel: ObservableObject {
         streamRawText.removeAll()
         update { $0.messages = []; $0.hasMoreHistory = false }
         let cachedMessages = await cache.messages(conversationId: conversationId)
+        NSLog(
+            "[Chat360] Replaying from LOCAL cache: conversation=%@ rows=%d (user=%d raw=%d)",
+            conversationId, cachedMessages.count,
+            cachedMessages.filter { $0.kind == "USER" }.count, cachedMessages.filter { $0.kind == "RAW" }.count
+        )
         cachedEarliestUserTimestampMs = cachedMessages.filter { $0.kind == "USER" }.map { $0.createdAt }.min()
         restoringFromCache = true
         var hasCachedMessages = false
@@ -1117,11 +1141,16 @@ public final class ChatViewModel: ObservableObject {
             hasCachedMessages = true
             switch cached.kind {
             case "USER":
+                NSLog("[Chat360]   LOCAL row: USER chatMsgId=%@ text=%@", cached.chatMsgId ?? "nil", String(cached.payload.prefix(60)))
                 appendMessage(ChatMessage(chatMsgId: cached.chatMsgId, text: cached.payload, fromUser: true, timeText: formatMessageTime(cached.createdAt)), cacheUserMessage: false)
             case "RAW":
                 if let data = cached.payload.data(using: .utf8),
                    let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) {
-                    handleEvent(envelope.toIncomingEvent())
+                    let event = envelope.toIncomingEvent()
+                    NSLog("[Chat360]   LOCAL row: RAW %@", describeEvent(event))
+                    handleEvent(event)
+                } else {
+                    NSLog("[Chat360]   LOCAL row: RAW <failed to decode> payload=%@", String(cached.payload.prefix(120)))
                 }
             default:
                 break
@@ -1131,6 +1160,31 @@ public final class ChatViewModel: ObservableObject {
         return hasCachedMessages
     }
 
+    private func describeEvent(_ event: IncomingSocketEvent) -> String {
+        switch event {
+        case .botMessage(let node):
+            return "botMessage nodeId=\(node.nodeId ?? "nil") ts=\(node.timestampMs.map(String.init) ?? "nil") text=\(String((node.text ?? "").prefix(60)))"
+        case .echoedUserMessage(let chatMsgId, let text, let ts):
+            return "echoedUserMessage chatMsgId=\(chatMsgId ?? "nil") ts=\(ts.map(String.init) ?? "nil") text=\(String((text ?? "").prefix(60)))"
+        case .ack(let chatMsgId):
+            return "ack chatMsgId=\(chatMsgId ?? "nil")"
+        case .typingStatus(let isTyping):
+            return "typingStatus isTyping=\(isTyping)"
+        case .inactivityNotice:
+            return "inactivityNotice"
+        case .agentAssigned:
+            return "agentAssigned"
+        case .liveChatEnded:
+            return "liveChatEnded"
+        case .closeConnection:
+            return "closeConnection"
+        case .pong:
+            return "pong"
+        case .unhandled:
+            return "unhandled"
+        }
+    }
+
     // A pending reply that's still missing after actually asking the server for this room's
     // current state isn't just "hasn't arrived yet" forever - past this age, treat it as a real
     // failure instead of silently leaving the sent message with no visible outcome at all.
@@ -1138,8 +1192,13 @@ public final class ChatViewModel: ObservableObject {
 
     @discardableResult
     private func refreshConversationHistory(conversationId: String, roomId: String) async -> Bool {
-        guard let response = try? await repository.fetchHistory(roomId: roomId) else { return false }
+        NSLog("[Chat360] Fetching from SERVER (full refresh): room=%@", roomId)
+        guard let response = try? await repository.fetchHistory(roomId: roomId) else {
+            NSLog("[Chat360] SERVER fetch (full refresh) failed for room=%@", roomId)
+            return false
+        }
         let history = response.history
+        NSLog("[Chat360] SERVER returned %d history rows for room=%@ (full refresh)", history.count, roomId)
         if activeConversationId != conversationId { return !history.isEmpty }
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
@@ -1148,6 +1207,7 @@ public final class ChatViewModel: ObservableObject {
         var sawBotReply = false
         for item in history {
             let event = item.toIncomingEvent()
+            NSLog("[Chat360]   SERVER row: %@", describeEvent(event))
             if case .botMessage = event { sawBotReply = true }
             handleEvent(event)
         }
