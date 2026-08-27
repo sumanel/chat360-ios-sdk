@@ -8,16 +8,26 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - Fully themeable: colors (light/dark), typography, and branding (logo, copy) via `Chat360Config`.
 - Feature flags to show/hide individual pieces of chrome (menu, history drawer, new chat, feedback, regenerate, voice input, close button, etc.) via `Chat360UIConfig`.
 - Conversation history with local caching, resume-on-relaunch, and room switching.
-- Bot responses containing an HTML `<table>` render as an actual aligned table (with wrapping
-  cell text), instead of jumbled plain text.
-- A 1-hour session countdown timer, shown in the header once the user sends their first
-  message, that resumes correctly when switching between conversations instead of resetting.
+- Bot responses containing an HTML `<table>` render as an actual aligned table, with cells that
+  wrap and grow to fit their content instead of truncating or overlapping adjacent rows.
+- Nudge/quick-reply options render as comma-separated underlined links (wrapping onto multiple
+  lines for long options) rather than stacked full-width buttons.
+- A 1-hour session countdown timer, anchored to the server's real session start time — it shows
+  up the instant you open a conversation with time left, not only after sending a message, and
+  resumes correctly (rather than resetting) when switching between conversations.
+- A conversation is automatically checked for a missed reply whenever it's reopened (after
+  switching rooms, backgrounding, or restarting the app while the bot was still responding). A
+  reply that never actually arrives marks the message "Not delivered" with tap-to-retry; the
+  connection-error banner also has an explicit Retry button.
 - Like/dislike on bot messages, persisted locally across app restarts. Disliking opens a
   mandatory feedback box (min 20 characters) that blocks the chat until submitted or
   cancelled — cancelling undoes the dislike rather than letting feedback be skipped. Dislike
   is permanent once set; a like can still be switched to a dislike afterward, but not the
   reverse. When `clientId`/`apiKey`/`endUserId` are configured, reactions are also reported to
   Chat360's `third-party-tasks` feedback API.
+- Optional periodic feedback prompt (`showPeriodicFeedbackPrompt`, defaults to `true`) — a
+  mandatory, un-dismissable "how's it going so far?" text box that can appear every random 3-5
+  bot replies.
 - `onChatSessionReady` callback so the host app can show its own loading state between
   presenting the chat screen and the connection actually being live.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
@@ -165,7 +175,8 @@ config.uiConfig = Chat360UIConfig(
         showVoiceInput: true,        // mic / voice note button
         showAssistantMode: true,     // Training/Customer toggle in the drawer
         showAppearanceSwitcher: true,// manual Light/Dark toggle in the drawer
-        showClose: true              // header close (X) button — see note below
+        showClose: true,             // header close (X) button — see note below
+        showPeriodicFeedbackPrompt: true // mandatory "how's it going?" prompt every ~3-5 bot replies
     )
 )
 ```
