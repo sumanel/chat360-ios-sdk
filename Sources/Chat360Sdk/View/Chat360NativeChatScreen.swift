@@ -23,7 +23,8 @@ public struct Chat360NativeChatScreen: View {
             botId: resolvedBotId,
             cache: cache,
             chatHistoryRepository: historyRepository,
-            suppressInitialBotMessages: botConfig.uiConfig?.behavior.suppressInitialBotMessages ?? false
+            suppressInitialBotMessages: botConfig.uiConfig?.behavior.suppressInitialBotMessages ?? false,
+            showPeriodicFeedbackPrompt: botConfig.uiConfig?.features.showPeriodicFeedbackPrompt ?? true
         ))
     }
 

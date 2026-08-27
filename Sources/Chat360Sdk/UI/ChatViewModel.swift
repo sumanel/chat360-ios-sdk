@@ -8,6 +8,7 @@ public final class ChatViewModel: ObservableObject {
     private let cache: ChatCacheRepository
     private let chatHistoryRepository: ChatHistoryRepository?
     private let suppressInitialBotMessages: Bool
+    private let showPeriodicFeedbackPrompt: Bool
 
     @Published public private(set) var uiState = ChatUiState()
     @Published public private(set) var conversations: [CachedConversationEntity] = []
@@ -62,13 +63,15 @@ public final class ChatViewModel: ObservableObject {
         botId: String,
         cache: ChatCacheRepository,
         chatHistoryRepository: ChatHistoryRepository? = nil,
-        suppressInitialBotMessages: Bool = false
+        suppressInitialBotMessages: Bool = false,
+        showPeriodicFeedbackPrompt: Bool = true
     ) {
         self.repository = repository
         self.botId = botId
         self.cache = cache
         self.chatHistoryRepository = chatHistoryRepository
         self.suppressInitialBotMessages = suppressInitialBotMessages
+        self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
 
         conversationsObservationTask = Task { [weak self] in
             guard let self else { return }
@@ -921,6 +924,7 @@ public final class ChatViewModel: ObservableObject {
     }
 
     private func registerLiveBotReplyForFeedbackPrompt() {
+        guard showPeriodicFeedbackPrompt else { return }
         guard let conversationId = activeConversationId else { return }
         if nextFeedbackPromptThresholdByConversation[conversationId] == nil {
             nextFeedbackPromptThresholdByConversation[conversationId] = Int.random(in: 3...5)

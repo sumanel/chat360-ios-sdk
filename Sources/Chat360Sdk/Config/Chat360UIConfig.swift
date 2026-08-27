@@ -77,13 +77,18 @@ public struct Chat360FeatureConfig {
     // Defaults true: ChatController presents fullScreen, which doesn't support swipe-to-dismiss,
     // so a host that turns this off must provide its own way to close the chat screen.
     public var showClose: Bool = true
+    // The mandatory "how's it going so far?" prompt that fires every random 3-5 live bot replies
+    // (see `ChatViewModel.registerLiveBotReplyForFeedbackPrompt`) - separate from `showFeedback`
+    // above, which is the end-of-conversation rating dialog.
+    public var showPeriodicFeedbackPrompt: Bool = true
 
     public init(
         showMenu: Bool = false, showHistorySidebar: Bool = true, showNewChat: Bool = false, showFeedback: Bool = true,
         showCopyMessage: Bool = true, showRegenerate: Bool = false, showLike: Bool = true, showDislike: Bool = true,
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
-        showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true
+        showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true,
+        showPeriodicFeedbackPrompt: Bool = true
     ) {
         self.showMenu = showMenu
         self.showHistorySidebar = showHistorySidebar
@@ -93,6 +98,7 @@ public struct Chat360FeatureConfig {
         self.showRegenerate = showRegenerate
         self.showLike = showLike
         self.showDislike = showDislike
+        self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
         self.showEmoji = showEmoji
         self.showAttachment = showAttachment
         self.showVoiceInput = showVoiceInput
