@@ -238,6 +238,7 @@ extension JSONObject {
             variable: string("variable").flatMap { $0.isBlank ? nil : $0 },
             text: text,
             content: content,
+            requiresUserInput: boolean("userInput"),
             endUrlMessage: nodeType == "END" ? string("urlMessage").flatMap { $0.isBlank ? nil : $0 } : nil,
             endSessionRequested: nodeType == "END" && boolean("end_session")
         )

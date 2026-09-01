@@ -10,6 +10,11 @@ public final class ChatRepository {
     private let apiService: Chat360ApiService
     private let wsClient: Chat360WebSocketClient
     private let sessionStore: SessionStore?
+    /// Host-supplied key/value pairs (`Chat360Config.meta`), forwarded to session-init so the
+    /// flow's `@`-variables are pre-seeded the same way the legacy WebView path gets for free
+    /// via `/web_bot?h=...&meta=...` (see `Chat360Config.createUrl()`). See
+    /// `Chat360ApiService.getSession`.
+    private let meta: [String: String]?
 
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -66,7 +71,8 @@ public final class ChatRepository {
         historyEnabled: Bool = true,
         apiService: Chat360ApiService? = nil,
         wsClient: Chat360WebSocketClient = Chat360WebSocketClient(),
-        sessionStore: SessionStore? = nil
+        sessionStore: SessionStore? = nil,
+        meta: [String: String]? = nil
     ) {
         self.baseUrl = baseUrl
         self.botId = botId
@@ -74,6 +80,7 @@ public final class ChatRepository {
         self.apiService = apiService ?? Chat360ApiService(baseUrl: baseUrl)
         self.wsClient = wsClient
         self.sessionStore = sessionStore
+        self.meta = meta
     }
 
     public func connect(
@@ -158,8 +165,9 @@ public final class ChatRepository {
                 botId: botId,
                 websiteUrl: host,
                 currentUrl: "\(baseUrl)/web_bot/?h=\(botId)",
-                roomId: resumeRoomId,
-                sessionId: resumeSessionToken
+                roomId: persisted?.roomId,
+                sessionId: persisted?.sessionToken,
+                meta: meta
             )
             guard myGeneration == sessionGeneration else {
                 NSLog("[Chat360WS] Discarding superseded session establish (room=%@)", session.room_id)
@@ -395,7 +403,17 @@ public final class ChatRepository {
             }
             handleWindowEventNode(node.content)
             if let endUrlMessage = node.endUrlMessage { onOpenUrl(endUrlMessage) }
-            if node.endSessionRequested { disconnect() }
+            if node.endSessionRequested {
+                disconnect()
+            } else if let autoAdvanceTargetId = node.autoAdvanceTargetIdOrNull() {
+                // A passive node (plain text, link card, download-media notice, ...) doesn't
+                // wait on the user - the flow stays blocked server-side until the client
+                // re-submits this node's own targetId as a system jump, same as the web
+                // widget's auto-advance effect. Without this, a chain of several back-to-back
+                // passive messages (e.g. right after a WINDOW_EVENT response) renders only the
+                // first bubble and silently stalls.
+                sendSystemJump(targetId: autoAdvanceTargetId)
+            }
         case .ack(let chatMsgId):
             ackTracker.acknowledge(chatMsgId: chatMsgId)
         case .echoedUserMessage(let chatMsgId, _, _):
@@ -414,11 +432,16 @@ public final class ChatRepository {
         node.nodeType == "validation_error"
     }
 
+    /// Non-WindowEvent nodes leave the gate untouched: the host's response to a window event is
+    /// asynchronous (it waits on user interaction with a native dialog/WebView), so an unrelated
+    /// bot frame - a typing indicator, a session-time nudge, a concurrent flow node - can easily
+    /// land in between. Previously that frame flipped `receiving` back to false, so the host's
+    /// eventual sendEventToBot() call silently dropped the event, stalling the flow forever
+    /// ("no next message after a window event"). Only a *new* WindowEvent node should change who
+    /// is allowed to receive, since that's the only signal the flow has actually moved past the
+    /// one currently waiting on a host response.
     private func handleWindowEventNode(_ content: BotContent) {
-        guard case .windowEvent(let windowEvent) = content else {
-            WindowEventBridge.shared.setReceiving(false)
-            return
-        }
+        guard case .windowEvent(let windowEvent) = content else { return }
         WindowEventBridge.shared.setReceiving(windowEvent.shouldReceive)
         if windowEvent.shouldSend {
             let response = WindowEventBridge.shared.dispatchToHost(handleWindowEvent: Chat360Bot.shared.handleWindowEvents, sendData: windowEvent.sendData)
@@ -426,18 +449,17 @@ public final class ChatRepository {
         }
     }
 
+    /// The inbound half: an event handed to the active session becomes a system-jump frame
+    /// carrying it as `variable_values` - the same `user: "bot"` / `data.target_id` / `curr_id` /
+    /// `variable_values` shape the web widget's WindowEvent component sends (see jumpToEleBot /
+    /// sendSocketMessage there), not a regular end_user chat message. The flow engine's
+    /// window-event-advance handling is keyed on that shape: an end_user-authored frame (what
+    /// this used to send, reusing OutgoingMessage/variables/nodeType) looks like an ordinary
+    /// reply and is never recognized as "advance past this window-event node," so the bot
+    /// silently acks it and never emits a next message.
     private func sendWindowEvent(_ event: [String: String]) {
-        let node = lastBotNode
-        let outgoing = OutgoingMessage(
-            message: .object([:]),
-            bot_id: botId,
-            targetId: node?.targetId ?? currentTargetId,
-            room_id: roomId,
-            currentId: node?.nodeId,
-            nodeType: node?.nodeType,
-            variables: event
-        )
-        sendTracked(outgoing)
+        guard let targetId = lastBotNode?.targetId ?? currentTargetId else { return }
+        sendSystemJump(targetId: targetId, variableValues: event)
     }
 
     public func jumpToNode(targetId: String) {
@@ -458,11 +480,13 @@ public final class ChatRepository {
         return sendTracked(outgoing)
     }
 
-    private func sendSystemJump(targetId: String) {
+    private func sendSystemJump(targetId: String, variableValues: [String: String]? = nil) {
         let jump = SystemJumpMessage(
             data: SystemJumpMessage.JumpData(target_id: targetId, currentUrl: "\(baseUrl)/web_bot/?h=\(botId)"),
             bot_id: botId,
-            room_id: roomId
+            curr_id: lastBotNode?.nodeId,
+            room_id: roomId,
+            variable_values: variableValues
         )
         if let data = try? encoder.encode(jump), let text = String(data: data, encoding: .utf8) {
             wsClient.send(text)

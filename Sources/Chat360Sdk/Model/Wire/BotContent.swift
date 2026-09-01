@@ -9,6 +9,11 @@ public struct BotNode: Equatable {
     public var variable: String?
     public var text: String?
     public var content: BotContent
+    /// The wire's own `userInput` flag - true means the flow is waiting on the user (a
+    /// free-text answer, typically) even though this node's `content` doesn't otherwise signal
+    /// that (e.g. a CUSTOMINPUT free-text prompt renders as `.plainText` but still must not
+    /// auto-advance). See `autoAdvanceTargetIdOrNull()`.
+    public var requiresUserInput: Bool = false
     public var endUrlMessage: String?
     public var endSessionRequested: Bool = false
     public var streamId: String?
@@ -23,6 +28,7 @@ public struct BotNode: Equatable {
         variable: String?,
         text: String?,
         content: BotContent,
+        requiresUserInput: Bool = false,
         endUrlMessage: String? = nil,
         endSessionRequested: Bool = false,
         streamId: String? = nil,
@@ -36,12 +42,42 @@ public struct BotNode: Equatable {
         self.variable = variable
         self.text = text
         self.content = content
+        self.requiresUserInput = requiresUserInput
         self.endUrlMessage = endUrlMessage
         self.endSessionRequested = endSessionRequested
         self.streamId = streamId
         self.streamEnded = streamEnded
         self.author = author
         self.timestampMs = timestampMs
+    }
+}
+
+/// A bot node that needs neither user input nor a tap to continue (a plain text bubble, a link
+/// card, a download-media notice) is only *displayed* by the server - the flow itself stays
+/// blocked server-side until the client explicitly re-submits this node's own `targetId` as a
+/// system jump (no variables), exactly the way the web widget's `sendSocketMessage(targetId)`
+/// effect does for any message it doesn't mark `shouldPauseFlow`. Without this, a flow segment
+/// built from several back-to-back passive messages (e.g. a WINDOW_EVENT response chain) renders
+/// only its first bubble and then silently stalls, even though nothing is actually wrong - the
+/// bot is just waiting on a jump nobody sends.
+///
+/// Returns the targetId to jump to, or nil if this node should NOT auto-advance (needs input, is
+/// itself interactive, has no next node, or is a type - WINDOW_EVENT/IFRAME - already driven by
+/// its own dedicated auto-advance path).
+extension BotNode {
+    public func autoAdvanceTargetIdOrNull() -> String? {
+        guard !requiresUserInput else { return nil }
+        guard let next = targetId, !next.isEmpty, next != "END" else { return nil }
+        let advances: Bool
+        switch content {
+        case .plainText, .linkCard, .downloadMedia:
+            advances = true
+        case .media(let media):
+            advances = media.dynamicButtons.isEmpty
+        default:
+            advances = false
+        }
+        return advances ? next : nil
     }
 }
 

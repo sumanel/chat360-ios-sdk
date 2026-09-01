@@ -14,7 +14,8 @@ public struct Chat360NativeChatScreen: View {
             baseUrl: resolvedBaseUrl,
             botId: resolvedBotId,
             historyEnabled: botConfig.historyEnabled,
-            sessionStore: UserDefaultsSessionStore()
+            sessionStore: UserDefaultsSessionStore(),
+            meta: botConfig.meta
         )
         let cache = ChatCacheRepository(dao: ChatCacheDatabase.shared.dao)
         let historyRepository = Chat360NativeChatScreen.buildChatHistoryRepository(botConfig: botConfig, baseUrl: resolvedBaseUrl, botId: resolvedBotId, cache: cache)

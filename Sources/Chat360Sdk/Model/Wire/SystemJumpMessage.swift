@@ -18,6 +18,7 @@ public struct SystemJumpMessage: Codable {
     public var last_name: String = "Message"
     public var curr_id: String?
     public var room_id: String?
+    public var variable_values: [String: String]?
 
     public init(
         user: String = "bot",
@@ -26,7 +27,8 @@ public struct SystemJumpMessage: Codable {
         first_name: String = "System",
         last_name: String = "Message",
         curr_id: String? = nil,
-        room_id: String? = nil
+        room_id: String? = nil,
+        variable_values: [String: String]? = nil
     ) {
         self.user = user
         self.data = data
@@ -35,5 +37,6 @@ public struct SystemJumpMessage: Codable {
         self.last_name = last_name
         self.curr_id = curr_id
         self.room_id = room_id
+        self.variable_values = variable_values
     }
 }

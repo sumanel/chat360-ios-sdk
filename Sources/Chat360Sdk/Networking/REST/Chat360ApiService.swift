@@ -25,7 +25,15 @@ public final class Chat360ApiService: NSObject {
         currentUrl: String,
         standalone: Bool = true,
         roomId: String? = nil,
-        sessionId: String? = nil
+        sessionId: String? = nil,
+        /// Host-supplied key/value pairs (`Chat360Config.meta`) seeded into the session's own
+        /// variables at creation time - e.g. `["dealer_id": "..."]` becomes `@dealer_id` in the
+        /// flow. Matches the legacy WebView path, which gets this for free by loading the real
+        /// `/web_bot?h=...&meta=...` page. Must be compact JSON (no spaces) - the backend's
+        /// parsing of this param is whitespace-sensitive and silently no-ops (200 OK, values
+        /// just never show up in `variables`) given `{"k": "v"}` instead of `{"k":"v"}`,
+        /// confirmed by direct testing against staging.
+        meta: [String: String]? = nil
     ) async throws -> SessionInitResponse {
         var components = URLComponents(string: "\(trimmedBaseUrl)/api/clientwidget_updated/session/\(botId)")!
         var items = [
@@ -38,6 +46,11 @@ public final class Chat360ApiService: NSObject {
         if standalone { items.append(URLQueryItem(name: "standalone", value: "true")) }
         if let roomId { items.append(URLQueryItem(name: "room_id", value: roomId)) }
         if let sessionId { items.append(URLQueryItem(name: "session_id", value: sessionId)) }
+        if let meta, !meta.isEmpty,
+           let metaData = try? JSONSerialization.data(withJSONObject: meta, options: []),
+           let metaString = String(data: metaData, encoding: .utf8) {
+            items.append(URLQueryItem(name: "meta", value: metaString))
+        }
         components.queryItems = items
 
         let request = URLRequest(url: components.url!)
