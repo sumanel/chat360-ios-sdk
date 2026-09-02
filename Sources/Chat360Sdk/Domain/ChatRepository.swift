@@ -165,8 +165,8 @@ public final class ChatRepository {
                 botId: botId,
                 websiteUrl: host,
                 currentUrl: "\(baseUrl)/web_bot/?h=\(botId)",
-                roomId: persisted?.roomId,
-                sessionId: persisted?.sessionToken,
+                roomId: resumeRoomId,
+                sessionId: resumeSessionToken,
                 meta: meta
             )
             guard myGeneration == sessionGeneration else {
