@@ -32,6 +32,9 @@ public struct ChatDrawer: View {
     @State private var pendingRename: (id: String, title: String)?
     @State private var pendingDelete: (id: String, title: String)?
     @State private var renameDraft: String = ""
+    // Measured height of the two pinned blocks (history header + settings). What's left of the
+    // panel goes to the scrollable conversation list.
+    @State private var chromeHeight: CGFloat = 0
 
     private let onDismiss: () -> Void
     private let onNewChat: () -> Void
@@ -101,100 +104,37 @@ public struct ChatDrawer: View {
             .frame(height: 60)
             .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .bottom)
 
-            // The history list and the settings block below it used to be split into a flexible
-            // middle section plus a fixed-size bottom section, sized against the drawer's full
-            // height. On a short landscape screen the fixed header + settings block alone can
-            // exceed the total available height, leaving nothing for the flexible middle - the
-            // history list would get squeezed down to zero instead of just scrolling further.
-            // One ScrollView holding everything below the top nav bar means it always scrolls
-            // instead of collapsing, regardless of orientation or how many settings rows show.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("AI Chatbot - History")
-                        .font(typography.textFamily.font(size: 20, weight: .bold))
-                        .foregroundColor(colors.textPrimary)
-                    Spacer().frame(height: 16)
-                    Button(action: onNewChat) {
-                        HStack(spacing: 12) {
-                            Chat360Icon.add.image.foregroundColor(colors.accentContrast)
-                            Text("New chat")
-                                .font(typography.textFamily.font(size: 17, weight: .bold))
-                                .foregroundColor(colors.accentContrast)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 49)
-                        .background(colors.accent)
-                    }
-                    Spacer().frame(height: 28)
-
-                    if conversations.isEmpty {
-                        Text("No saved conversations yet")
-                            .font(typography.textFamily.font(size: 14))
-                            .foregroundColor(colors.textSecondary)
-                    } else {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(groupedConversations(conversations), id: \.label) { group in
-                                HistoryGroup(
-                                    title: group.label,
-                                    items: group.items,
-                                    activeConversationId: activeConversationId,
-                                    onConversationSelected: onConversationSelected,
-                                    onRenameRequested: { id, title in
-                                        renameDraft = title
-                                        pendingRename = (id, title)
-                                    },
-                                    onDeleteRequested: { id, title in
-                                        pendingDelete = (id, title)
-                                    }
-                                )
-                            }
+            // Only the conversation list scrolls: the history header ("New chat") stays pinned
+            // at the top and the settings block (Assistant Mode / Appearance / Language) stays
+            // pinned at the bottom, so those controls don't move as saved conversations pile up.
+            // The list gets whatever height is left between the two fixed blocks.
+            //
+            // On a short screen (landscape) that leftover can shrink below `minHistoryHeight` -
+            // the fixed header + settings alone nearly fill the panel. Rather than collapse the
+            // list to nothing, fall back to scrolling the whole area as one piece so the history
+            // is still reachable.
+            GeometryReader { geo in
+                let historyHeight = geo.size.height - chromeHeight
+                if chromeHeight > 0 && historyHeight < Self.minHistoryHeight {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            historyHeader
+                            historyList
+                            settingsBlock
                         }
                     }
+                } else {
+                    VStack(spacing: 0) {
+                        historyHeader
+                        ScrollView { historyList }
+                            .frame(height: max(historyHeight, Self.minHistoryHeight))
+                        settingsBlock
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 16)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    if showAssistantMode {
-                        Text("Assistant Mode")
-                            .font(typography.textFamily.font(size: 13, weight: .semibold))
-                            .foregroundColor(colors.textSecondary)
-                        Spacer().frame(height: 12)
-                        HStack {
-                            ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
-                            ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
-                        }
-                        Spacer().frame(height: 18)
-                    }
-                    if showAppearanceSwitcher {
-                        Text("Appearance")
-                            .font(typography.textFamily.font(size: 13, weight: .semibold))
-                            .foregroundColor(colors.textSecondary)
-                        Spacer().frame(height: 12)
-                        HStack {
-                            ModeOption(text: "Light", icon: .lightMode, selected: !isDarkTheme) { onThemeChanged(false) }
-                            ModeOption(text: "Dark", icon: .darkMode, selected: isDarkTheme) { onThemeChanged(true) }
-                        }
-                    }
-                    if languages.count > 1 {
-                        Spacer().frame(height: 18)
-                        Text("LANGUAGE")
-                            .font(typography.textFamily.font(size: 13, weight: .semibold))
-                            .foregroundColor(colors.textSecondary)
-                        Spacer().frame(height: 12)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(languages, id: \.key) { language in
-                                    LanguageChip(label: language.value, selected: language.default) { onLanguageSelected(language.key) }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
-                .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
             }
+            .frame(maxHeight: .infinity)
+            .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
         }
         .frame(maxHeight: .infinity)
         .background(colors.backgroundElevated)
@@ -219,6 +159,126 @@ public struct ChatDrawer: View {
         } message: {
             Text("This can't be undone. Delete \"\(pendingDelete?.title ?? "")\"?")
         }
+    }
+
+    /// Smallest height the conversation list is allowed before the layout stops pinning the
+    /// header/settings and scrolls the whole panel instead (keeps ~2 rows visible).
+    private static let minHistoryHeight: CGFloat = 140
+
+    @ViewBuilder
+    private var historyHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("AI Chatbot - History")
+                .font(typography.textFamily.font(size: 20, weight: .bold))
+                .foregroundColor(colors.textPrimary)
+            Spacer().frame(height: 16)
+            Button(action: onNewChat) {
+                HStack(spacing: 12) {
+                    Chat360Icon.add.image.foregroundColor(colors.accentContrast)
+                    Text("New chat")
+                        .font(typography.textFamily.font(size: 17, weight: .bold))
+                        .foregroundColor(colors.accentContrast)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 49)
+                .background(colors.accent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+        .background(GeometryReader { g in
+            Color.clear.preference(key: ChromeHeightKey.self, value: g.size.height)
+        })
+    }
+
+    @ViewBuilder
+    private var historyList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if conversations.isEmpty {
+                Text("No saved conversations yet")
+                    .font(typography.textFamily.font(size: 14))
+                    .foregroundColor(colors.textSecondary)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(groupedConversations(conversations), id: \.label) { group in
+                        HistoryGroup(
+                            title: group.label,
+                            items: group.items,
+                            activeConversationId: activeConversationId,
+                            onConversationSelected: onConversationSelected,
+                            onRenameRequested: { id, title in
+                                renameDraft = title
+                                pendingRename = (id, title)
+                            },
+                            onDeleteRequested: { id, title in
+                                pendingDelete = (id, title)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 16)
+    }
+
+    @ViewBuilder
+    private var settingsBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showAssistantMode {
+                Text("Assistant Mode")
+                    .font(typography.textFamily.font(size: 13, weight: .semibold))
+                    .foregroundColor(colors.textSecondary)
+                Spacer().frame(height: 12)
+                HStack {
+                    ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
+                    ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
+                }
+                Spacer().frame(height: 18)
+            }
+            if showAppearanceSwitcher {
+                Text("Appearance")
+                    .font(typography.textFamily.font(size: 13, weight: .semibold))
+                    .foregroundColor(colors.textSecondary)
+                Spacer().frame(height: 12)
+                HStack {
+                    ModeOption(text: "Light", icon: .lightMode, selected: !isDarkTheme) { onThemeChanged(false) }
+                    ModeOption(text: "Dark", icon: .darkMode, selected: isDarkTheme) { onThemeChanged(true) }
+                }
+            }
+            if languages.count > 1 {
+                Spacer().frame(height: 18)
+                Text("LANGUAGE")
+                    .font(typography.textFamily.font(size: 13, weight: .semibold))
+                    .foregroundColor(colors.textSecondary)
+                Spacer().frame(height: 12)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(languages, id: \.key) { language in
+                            LanguageChip(label: language.value, selected: language.default) { onLanguageSelected(language.key) }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .overlay(Rectangle().frame(height: 1).foregroundColor(colors.line), alignment: .top)
+        .background(GeometryReader { g in
+            Color.clear.preference(key: ChromeHeightKey.self, value: g.size.height)
+        })
+    }
+}
+
+@available(iOS 15.0, *)
+private struct ChromeHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value += nextValue()
     }
 }
 
