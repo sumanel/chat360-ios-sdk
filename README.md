@@ -7,7 +7,10 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - Native SwiftUI chat screen — no WebView required.
 - Fully themeable: colors (light/dark), typography, and branding (logo, copy) via `Chat360Config`.
 - Feature flags to show/hide individual pieces of chrome (menu, history drawer, new chat, feedback, regenerate, voice input, close button, etc.) via `Chat360UIConfig`.
-- Conversation history with local caching, resume-on-relaunch, and room switching.
+- Conversation history with local caching, resume-on-relaunch, and room switching. In the
+  history drawer only the conversation list scrolls — the "New chat" button and the Assistant
+  Mode / Appearance / Language controls stay pinned. On short (landscape) screens, where pinning
+  everything would leave no room for the list, the whole drawer scrolls as one piece instead.
 - Bot responses containing an HTML `<table>` render as an actual aligned table, with cells that
   wrap and grow to fit their content instead of truncating or overlapping adjacent rows.
 - Nudge/quick-reply options render as comma-separated underlined links (wrapping onto multiple
@@ -31,7 +34,8 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - `onChatSessionReady` callback so the host app can show its own loading state between
   presenting the chat screen and the connection actually being live.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
-- Supports sending metadata to enhance chatbot functionality.
+- Supports sending metadata (`meta`) that pre-seeds the bot flow's `@`-variables at session
+  start — on both the native screen and the legacy WebView.
 - Back button / close handling with custom callbacks.
 - A legacy WebView-based mode is still available (`useNewUI: false`) for existing integrations.
 
@@ -107,13 +111,12 @@ You can close the Bot View using the code below:
 try? Chat360Bot.shared.closeChatBot(animated: true)
 ```
 
-### Step 5: To Send Events to Bot
+### Step 5: Window Events (data exchange with the bot flow)
 
-You can send events to the Bot View using the code below:
-
-```swift
-try? Chat360Bot.shared.sendEventToBot(event: event)
-```
+If your bot flow uses a **Window Event** node, the SDK hands that node's payload to your app and
+sends your reply back so the flow can continue. Register a handler before presenting the chat —
+see [Window Event Handling](#window-event-handling) below. On the legacy WebView screen you can
+also push an event to the bot with `Chat360Bot.shared.sendEventToBot(event:)`.
 
 ## Configuration Options
 
@@ -123,7 +126,10 @@ try? Chat360Bot.shared.sendEventToBot(event: event)
 - **appId**: Your application ID.
 - **useNewUI**: `Bool` — presents the native SwiftUI chat screen when `true`. Defaults to `false` (legacy WebView).
 - **isDebug**: points requests at Chat360's staging environment when `true`.
-- **meta**: A dictionary for sending additional metadata as a JSON string.
+- **meta**: `[String: String]` of extra key/value pairs sent at session init (as a compact JSON
+  string). The backend seeds these into the conversation's flow variables, so a value passed as
+  `meta: ["user_id": "12345"]` is readable in the flow as `@user_id`. Applies to the native
+  screen and the legacy WebView alike.
 - **historyEnabled** / **clientId** / **apiKey** / **endUserId**: enable the third-party conversation-history/rooms API (multi-conversation drawer, resume across launches).
 
 ### Theming (native UI)
@@ -223,53 +229,48 @@ Chat360Bot.shared.startChatbot(animated: true, onBackClick: {
 
 #### Window Event Handling
 
-The SDK provides a way to handle events from the web channel through the `handleWindowEvents` callback. This allows you to receive and process events from the chatbot interface:
+A **Window Event** node in the bot flow is a request/response step: the flow sends your app a
+payload and then pauses until your app answers with the values it asked for. On the web this is
+served by the host page; in a native app your code provides the answer through
+`Chat360Bot.shared.handleWindowEvents`.
 
 ```swift
-Chat360Bot.shared.handleWindowEvents = { eventData in
-    // Handle window events here
-    // eventData is a dictionary containing event information
-    print("Received window event: \(eventData)")
+Chat360Bot.shared.handleWindowEvents = { sendData in
+    // `sendData` is the node's payload, e.g. ["type": "get_details"] — the keys are defined
+    // by whoever built the flow, not by the SDK.
+    // Return the values the flow expects back, keyed exactly as the node's "receive data".
+    return ["emp_id": currentEmployeeId, "dealer_id": currentDealerId]
 }
 ```
 
-Common use cases for window event handling, this feature is for Window Event Component:
+- The closure is **synchronous** — return the dictionary directly. Return `[:]` if you have
+  nothing to contribute.
+- Register it **before** calling `startChatbot`.
+- If the flow reaches a Window Event node and no handler is registered (or the handler returns
+  `[:]` when the node needs data), the flow has nothing to advance on and the conversation will
+  appear to hang — Window Event nodes are not shown in the transcript. Make sure any flow that
+  uses one has a handler that answers it.
 
-- Receiving user interactions from the chatbot
-- Handling custom actions triggered by the bot
-- Integrating with native app features
-- Tracking conversation events and analytics
-- You can send back your data to the bot by returning map data in this function
-
-Example implementation:
+Example:
 
 ```swift
-let config = Chat360Config(
-    botId: "YOUR_BOT_ID",
-    appId: "YOUR_APP_ID",
-    meta: ["user_id": "12345"]
-)
+let config = Chat360Config(botId: "YOUR_BOT_ID", appId: "YOUR_APP_ID", useNewUI: true)
 Chat360Bot.shared.setConfig(chat360Config: config)
 
-// Set up window event handler
-Chat360Bot.shared.handleWindowEvents = { eventData in
-    if let eventType = eventData["type"] as? String {
-        switch eventType {
-        case "message_sent":
-            print("User sent a message")
-        case "bot_response":
-            print("Bot responded")
-        case "conversation_ended":
-            print("Chat session ended")
-        default:
-            print("Received event: \(eventType)")
-        }
+Chat360Bot.shared.handleWindowEvents = { sendData in
+    switch sendData["type"] {
+    case "get_details":
+        return ["emp_id": Session.current.employeeId, "dealer_id": Session.current.dealerId]
+    default:
+        return [:]
     }
-    return eventData
 }
 
 try? Chat360Bot.shared.startChatbot(animated: true)
 ```
+
+On the legacy WebView screen (`useNewUI: false`), `Chat360Bot.shared.sendEventToBot(event:)`
+pushes an event into the embedded page.
 
 ## Error Handling
 
