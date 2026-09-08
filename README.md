@@ -34,8 +34,9 @@ Chat360 is a Swift library that lets you embed a full chatbot conversation scree
 - `onChatSessionReady` callback so the host app can show its own loading state between
   presenting the chat screen and the connection actually being live.
 - Configurable parameters for customization (bot ID, app ID, debug mode, etc.).
-- Supports sending metadata (`meta`) that pre-seeds the bot flow's `@`-variables at session
-  start — on both the native screen and the legacy WebView.
+- Supports passing extra session context to the bot flow: a generic `meta` dictionary, plus
+  dedicated `dealerId` / `empId` fields sent as their own `dealer_id` / `emp_id` query
+  parameters at session init — on both the native screen and the legacy WebView.
 - Back button / close handling with custom callbacks.
 - A legacy WebView-based mode is still available (`useNewUI: false`) for existing integrations.
 
@@ -127,9 +128,12 @@ also push an event to the bot with `Chat360Bot.shared.sendEventToBot(event:)`.
 - **useNewUI**: `Bool` — presents the native SwiftUI chat screen when `true`. Defaults to `false` (legacy WebView).
 - **isDebug**: points requests at Chat360's staging environment when `true`.
 - **meta**: `[String: String]` of extra key/value pairs sent at session init (as a compact JSON
-  string). The backend seeds these into the conversation's flow variables, so a value passed as
-  `meta: ["user_id": "12345"]` is readable in the flow as `@user_id`. Applies to the native
-  screen and the legacy WebView alike.
+  `&meta=` query parameter). Intended for the bot flow to consume as `@`-prefixed variables
+  (`meta: ["user_id": "12345"]` → `@user_id`); the mapping must be configured on the Chat360
+  side per bot. Applies to the native screen and the legacy WebView alike.
+- **dealerId** / **empId**: `String?` dealer and employee identifiers, sent as their own
+  `dealer_id` / `emp_id` query parameters on the session-init request (not folded into `meta`).
+  The bot flow must be configured to read them as `@dealer_id` / `@emp_id`. Added in 3.6.0.
 - **historyEnabled** / **clientId** / **apiKey** / **endUserId**: enable the third-party conversation-history/rooms API (multi-conversation drawer, resume across launches).
 
 ### Theming (native UI)
@@ -250,6 +254,8 @@ Chat360Bot.shared.handleWindowEvents = { sendData in
   `[:]` when the node needs data), the flow has nothing to advance on and the conversation will
   appear to hang — Window Event nodes are not shown in the transcript. Make sure any flow that
   uses one has a handler that answers it.
+- To pass dealer/employee identity that's known up front, prefer the dedicated `dealerId` /
+  `empId` config fields (sent at session init) over a Window Event round-trip.
 
 Example:
 

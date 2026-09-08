@@ -12,9 +12,9 @@ public class Chat360Config : NSObject {
     @objc public var flutter: Bool = false
     @objc public var meta: [String: String]?
 
-    /// Dealer / employee context sent straight to session-init as the `dealer_id` / `emp_id`
-    /// query params (alongside `country_code` etc.), not wrapped in `meta`. The backend seeds
-    /// them into the flow as `@dealer_id` / `@emp_id`.
+    /// Dealer / employee context. Sent as their own `dealer_id` / `emp_id` query params on the
+    /// session-init request (alongside `country_code` etc.), not wrapped in `meta`. The bot flow
+    /// must be configured on the Chat360 side to read them as `@dealer_id` / `@emp_id`.
     @objc public var dealerId: String?
     @objc public var empId: String?
 
