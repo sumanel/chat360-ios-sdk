@@ -253,7 +253,11 @@ public final class ChatViewModel: ObservableObject {
 
     public func submitDislikeFeedback(messageId: String, text: String) {
         let timestampMs = uiState.pendingFeedbackTimestampMs
-        repository.sendConfigurableFeedback(rating: 1, feedbackText: text, endSession: false)
+        // Deliberately NOT sending a socket `nodeType:"feedback"` frame here. That frame is
+        // wire-identical to the end-of-conversation feedback submission, so the backend treats
+        // a per-message dislike as "conversation done" and stops driving the flow for the room -
+        // every message the user sends afterward then goes unanswered. The dislike is still
+        // recorded out-of-band via reportFeedback() below (third-party-tasks analytics API).
         reportFeedback(timestampMs: timestampMs, feedback: "Dislike", remarks: text)
         Task { [weak self] in
             guard let self else { return }
