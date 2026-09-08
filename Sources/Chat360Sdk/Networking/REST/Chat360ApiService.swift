@@ -33,7 +33,12 @@ public final class Chat360ApiService: NSObject {
         /// parsing of this param is whitespace-sensitive and silently no-ops (200 OK, values
         /// just never show up in `variables`) given `{"k": "v"}` instead of `{"k":"v"}`,
         /// confirmed by direct testing against staging.
-        meta: [String: String]? = nil
+        meta: [String: String]? = nil,
+        /// Dealer / employee context sent as their own `dealer_id` / `emp_id` query params
+        /// (like `country_code`), not folded into `meta`. Backend seeds them as `@dealer_id` /
+        /// `@emp_id` in the flow.
+        dealerId: String? = nil,
+        empId: String? = nil
     ) async throws -> SessionInitResponse {
         var components = URLComponents(string: "\(trimmedBaseUrl)/api/clientwidget_updated/session/\(botId)")!
         var items = [
@@ -51,8 +56,12 @@ public final class Chat360ApiService: NSObject {
            let metaString = String(data: metaData, encoding: .utf8) {
             items.append(URLQueryItem(name: "meta", value: metaString))
         }
+        if let dealerId, !dealerId.isEmpty { items.append(URLQueryItem(name: "dealer_id", value: dealerId)) }
+        if let empId, !empId.isEmpty { items.append(URLQueryItem(name: "emp_id", value: empId)) }
         components.queryItems = items
 
+        NSLog("[Chat360] Session init request -> %@", components.url?.absoluteString ?? "nil")
+        NSLog("[Chat360] Session init dealer_id=%@ emp_id=%@", dealerId ?? "nil", empId ?? "nil")
         let request = URLRequest(url: components.url!)
         let data = try await execute(request)
         return try decoder.decode(SessionInitResponse.self, from: data)

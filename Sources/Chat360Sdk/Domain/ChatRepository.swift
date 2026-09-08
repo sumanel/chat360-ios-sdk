@@ -15,6 +15,10 @@ public final class ChatRepository {
     /// via `/web_bot?h=...&meta=...` (see `Chat360Config.createUrl()`). See
     /// `Chat360ApiService.getSession`.
     private let meta: [String: String]?
+    /// Dealer / employee context, forwarded to session-init as the `dealer_id` / `emp_id`
+    /// query params (not via `meta`). See `Chat360ApiService.getSession`.
+    private let dealerId: String?
+    private let empId: String?
 
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -72,7 +76,9 @@ public final class ChatRepository {
         apiService: Chat360ApiService? = nil,
         wsClient: Chat360WebSocketClient = Chat360WebSocketClient(),
         sessionStore: SessionStore? = nil,
-        meta: [String: String]? = nil
+        meta: [String: String]? = nil,
+        dealerId: String? = nil,
+        empId: String? = nil
     ) {
         self.baseUrl = baseUrl
         self.botId = botId
@@ -81,6 +87,8 @@ public final class ChatRepository {
         self.wsClient = wsClient
         self.sessionStore = sessionStore
         self.meta = meta
+        self.dealerId = dealerId
+        self.empId = empId
     }
 
     public func connect(
@@ -167,7 +175,9 @@ public final class ChatRepository {
                 currentUrl: "\(baseUrl)/web_bot/?h=\(botId)",
                 roomId: resumeRoomId,
                 sessionId: resumeSessionToken,
-                meta: meta
+                meta: meta,
+                dealerId: dealerId,
+                empId: empId
             )
             guard myGeneration == sessionGeneration else {
                 NSLog("[Chat360WS] Discarding superseded session establish (room=%@)", session.room_id)

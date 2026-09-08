@@ -12,6 +12,12 @@ public class Chat360Config : NSObject {
     @objc public var flutter: Bool = false
     @objc public var meta: [String: String]?
 
+    /// Dealer / employee context sent straight to session-init as the `dealer_id` / `emp_id`
+    /// query params (alongside `country_code` etc.), not wrapped in `meta`. The backend seeds
+    /// them into the flow as `@dealer_id` / `@emp_id`.
+    @objc public var dealerId: String?
+    @objc public var empId: String?
+
     @objc public var useNewUI: Bool = false
 
     public var historyEnabled: Bool = true
@@ -66,11 +72,19 @@ public class Chat360Config : NSObject {
         guard let botId = botId, let appId = appId else { return nil }
         
         var urlString = "\(host)\(path)\(botId)&store_session=1&app_id=\(appId)&is_mobile=true&mobile=1"
-        
+
         if let metaString = metaString {
             urlString += "&meta=\(metaString)"
         }
-        
+        if let dealerId = dealerId, !dealerId.isEmpty,
+           let encoded = dealerId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlString += "&dealer_id=\(encoded)"
+        }
+        if let empId = empId, !empId.isEmpty,
+           let encoded = empId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlString += "&emp_id=\(encoded)"
+        }
+
         if flutter {
             urlString += "&flutter_sdk_type=ios"
         }
