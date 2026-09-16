@@ -27,7 +27,8 @@ public struct Chat360NativeChatScreen: View {
             cache: cache,
             chatHistoryRepository: historyRepository,
             suppressInitialBotMessages: botConfig.uiConfig?.behavior.suppressInitialBotMessages ?? false,
-            showPeriodicFeedbackPrompt: botConfig.uiConfig?.features.showPeriodicFeedbackPrompt ?? true
+            showPeriodicFeedbackPrompt: botConfig.uiConfig?.features.showPeriodicFeedbackPrompt ?? true,
+            maintenanceApi: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl)
         ))
     }
 

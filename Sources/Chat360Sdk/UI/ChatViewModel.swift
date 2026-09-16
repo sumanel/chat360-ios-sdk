@@ -9,6 +9,7 @@ public final class ChatViewModel: ObservableObject {
     private let chatHistoryRepository: ChatHistoryRepository?
     private let suppressInitialBotMessages: Bool
     private let showPeriodicFeedbackPrompt: Bool
+    private let maintenanceApi: ThirdPartyTasksApiService?
 
     @Published public private(set) var uiState = ChatUiState()
     @Published public private(set) var conversations: [CachedConversationEntity] = []
@@ -64,7 +65,8 @@ public final class ChatViewModel: ObservableObject {
         cache: ChatCacheRepository,
         chatHistoryRepository: ChatHistoryRepository? = nil,
         suppressInitialBotMessages: Bool = false,
-        showPeriodicFeedbackPrompt: Bool = true
+        showPeriodicFeedbackPrompt: Bool = true,
+        maintenanceApi: ThirdPartyTasksApiService? = nil
     ) {
         self.repository = repository
         self.botId = botId
@@ -72,6 +74,7 @@ public final class ChatViewModel: ObservableObject {
         self.chatHistoryRepository = chatHistoryRepository
         self.suppressInitialBotMessages = suppressInitialBotMessages
         self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
+        self.maintenanceApi = maintenanceApi
 
         conversationsObservationTask = Task { [weak self] in
             guard let self else { return }
@@ -96,6 +99,10 @@ public final class ChatViewModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
+            if let maintenanceMessage = await self.checkMaintenanceMode() {
+                self.handleTerminalClose(message: maintenanceMessage)
+                return
+            }
             await self.repository.connect(
                 onEvent: { [weak self] event in
                     Task { @MainActor [weak self] in self?.handleEvent(event) }
@@ -570,6 +577,14 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
+    // Best-effort: a failed or unavailable check should never block the chat from starting, so
+    // any error (network, decoding, no API configured) is treated the same as "not in maintenance".
+    private func checkMaintenanceMode() async -> String? {
+        guard let maintenanceApi else { return nil }
+        guard let status = try? await maintenanceApi.fetchMaintenanceStatus(), status.isActive else { return nil }
+        return status.message.isBlank ? "This service is temporarily unavailable for maintenance." : status.message
+    }
+
     // Dealer/SE deactivated, or maintenance mode - a persistent fallback banner replaces the
     // input area (see ChatScreen), so nothing further should be interactable: stop the typing
     // indicator and the session countdown display, and disable every message's nudges/quick
@@ -814,20 +829,34 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func refreshConnection() {
-        repository.reconnectNow()
+        Task { [weak self] in
+            guard let self else { return }
+            if let maintenanceMessage = await self.checkMaintenanceMode() {
+                self.handleTerminalClose(message: maintenanceMessage)
+                return
+            }
+            self.repository.reconnectNow()
+        }
     }
 
     public func onAppForegrounded() {
-        if !uiState.isConnected { repository.reconnectNow() }
-        // The socket can be silently suspended by iOS for the whole time the app was backgrounded
-        // (with or without a formal disconnect ever being reported), so a reply generated during
-        // that window can be missed even though we never technically "switched away" from this
-        // room. If we still owe this conversation a reply, go check the server for it directly
-        // rather than assuming nothing happened while we were away.
-        guard let conversationId = activeConversationId, conversationId == connectedConversationId,
-              let roomId = connectedRoomId else { return }
+        let conversationId = activeConversationId
+        let roomId = connectedRoomId
+        let isActiveConversationConnected = conversationId != nil && conversationId == connectedConversationId
         Task { [weak self] in
-            await self?.backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
+            guard let self else { return }
+            if let maintenanceMessage = await self.checkMaintenanceMode() {
+                self.handleTerminalClose(message: maintenanceMessage)
+                return
+            }
+            if !self.uiState.isConnected { self.repository.reconnectNow() }
+            // The socket can be silently suspended by iOS for the whole time the app was
+            // backgrounded (with or without a formal disconnect ever being reported), so a reply
+            // generated during that window can be missed even though we never technically
+            // "switched away" from this room. If we still owe this conversation a reply, go check
+            // the server for it directly rather than assuming nothing happened while we were away.
+            guard isActiveConversationConnected, let conversationId, let roomId else { return }
+            await self.backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
         }
     }
 
@@ -1014,28 +1043,35 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func startNewChat() {
-        let conversationId = UUID().uuidString
-        connectedConversationId = conversationId
-        connectedRoomId = nil
-        conversationPersisted = false
-        pendingRawEnvelopes.removeAll()
-        setActiveConversationId(conversationId)
-        streamRawText.removeAll()
-        update {
-            $0.messages = []
-            $0.inputText = ""
-            $0.isAgentTyping = false
-            $0.isConnected = false
-            $0.isLiveChat = false
-            $0.assignedAgent = nil
-            $0.isArchived = false
-            $0.voiceDraft = nil
-            $0.showFeedbackPrompt = false
-            $0.pendingUrlToOpen = nil
-            $0.hasMoreHistory = false
-        }
         Task { [weak self] in
             guard let self else { return }
+            // Blocked: leave whatever conversation/history is currently on screen untouched
+            // rather than wiping it into a dead new chat - just surface why via the same banner
+            // used elsewhere for maintenance mode.
+            if let maintenanceMessage = await self.checkMaintenanceMode() {
+                self.handleTerminalClose(message: maintenanceMessage)
+                return
+            }
+            let conversationId = UUID().uuidString
+            self.connectedConversationId = conversationId
+            self.connectedRoomId = nil
+            self.conversationPersisted = false
+            self.pendingRawEnvelopes.removeAll()
+            self.setActiveConversationId(conversationId)
+            self.streamRawText.removeAll()
+            self.update {
+                $0.messages = []
+                $0.inputText = ""
+                $0.isAgentTyping = false
+                $0.isConnected = false
+                $0.isLiveChat = false
+                $0.assignedAgent = nil
+                $0.isArchived = false
+                $0.voiceDraft = nil
+                $0.showFeedbackPrompt = false
+                $0.pendingUrlToOpen = nil
+                $0.hasMoreHistory = false
+            }
             await self.repository.startNewSession(onConversationStarted: { roomId in await self.activateConversation(roomId: roomId) })
         }
     }

@@ -140,6 +140,12 @@ public final class ThirdPartyTasksApiService {
         NSLog("[Chat360] << PATCH %@ succeeded (2xx)", url.absoluteString)
     }
 
+    public func fetchMaintenanceStatus() async throws -> MaintenanceStatusResponse {
+        let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/maintainance")!
+        let data = try await execute(URLRequest(url: url))
+        return try decoder.decode(MaintenanceStatusResponse.self, from: data)
+    }
+
     private func execute(_ request: URLRequest) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let task = session.dataTask(with: request) { data, response, error in

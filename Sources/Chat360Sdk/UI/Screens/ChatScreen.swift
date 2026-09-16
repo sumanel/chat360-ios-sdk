@@ -136,7 +136,7 @@ public struct ChatScreen: View {
                 }
 
                 if viewModel.uiState.messages.isEmpty {
-                    WelcomeSplash().frame(maxHeight: .infinity)
+                    WelcomeSplash(unavailableMessage: viewModel.uiState.terminalFallbackMessage).frame(maxHeight: .infinity)
                 } else if !listMessages.isEmpty || viewModel.uiState.isAgentTyping {
                     ScrollViewReader { proxy in
                         ScrollView {
