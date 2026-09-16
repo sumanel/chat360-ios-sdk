@@ -54,6 +54,7 @@ public final class ChatRepository {
     private var onSessionResumed: (Bool, AssignedAgent?) -> Void = { _, _ in }
     private var onBotSettingsLoaded: ([String: String], [SessionLanguage]) -> Void = { _, _ in }
     private var onSessionTimeReceived: (Date) -> Void = { _ in }
+    private var onTerminalClose: (String) -> Void = { _ in }
     private var shouldAskFeedback = false
 
     private lazy var heartbeat = HeartbeatManager(
@@ -104,7 +105,8 @@ public final class ChatRepository {
         onSessionResumed: @escaping (Bool, AssignedAgent?) -> Void = { _, _ in },
         onFeedbackRequested: @escaping () -> Void = {},
         onBotSettingsLoaded: @escaping ([String: String], [SessionLanguage]) -> Void = { _, _ in },
-        onSessionTimeReceived: @escaping (Date) -> Void = { _ in }
+        onSessionTimeReceived: @escaping (Date) -> Void = { _ in },
+        onTerminalClose: @escaping (String) -> Void = { _ in }
     ) async {
         self.onEvent = onEvent
         self.onConnected = onConnected
@@ -119,6 +121,7 @@ public final class ChatRepository {
         self.onSessionResumed = onSessionResumed
         self.onBotSettingsLoaded = onBotSettingsLoaded
         self.onSessionTimeReceived = onSessionTimeReceived
+        self.onTerminalClose = onTerminalClose
 
         // Every open of the bot starts a fresh conversation rather than silently resuming
         // whatever room was last active - the previous conversation is still reachable from
@@ -428,8 +431,9 @@ public final class ChatRepository {
             ackTracker.acknowledge(chatMsgId: chatMsgId)
         case .echoedUserMessage(let chatMsgId, _, _):
             ackTracker.acknowledge(chatMsgId: chatMsgId)
-        case .closeConnection(let suppress):
+        case .closeConnection(let suppress, let terminalMessage):
             if suppress { suppressReconnect = true }
+            if let terminalMessage { handleTerminalClose(message: terminalMessage) }
         case .liveChatEnded:
             if !shouldAskFeedback { disconnect() } else { onFeedbackRequested() }
         default:
@@ -792,6 +796,23 @@ public final class ChatRepository {
         ackTracker.cancelAll()
         wsClient.close()
         WindowEventBridge.shared.unregisterSession()
+    }
+
+    // Dealer/SE deactivated from the dashboard, or maintenance mode activated - both server-side
+    // states end this session for good, but unlike `disconnect()` they're not the user's own
+    // choice to leave, so this stays recoverable: it stops the heartbeat/reconnect backoff and
+    // closes the socket, same as `disconnect()`, but deliberately skips
+    // `WindowEventBridge.shared.unregisterSession()` and leaves ownerId/roomId/sessionId intact,
+    // so `reconnectNow()` -> `openSocket()` (foreground, or a manual retry) can still open a
+    // fresh socket on the same session later.
+    private func handleTerminalClose(message: String) {
+        NSLog("[Chat360WS] Terminal close_connection received (room=%@): %@", roomId ?? "nil", message)
+        manuallyDisconnected = true
+        heartbeat.stop()
+        reconnectManager.cancel()
+        ackTracker.cancelAll()
+        wsClient.close()
+        onTerminalClose(message)
     }
 
     private func nowMs() -> Int64 {

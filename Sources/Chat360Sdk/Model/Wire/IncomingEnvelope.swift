@@ -10,7 +10,11 @@ public struct RawSocketEnvelope: Codable, Equatable {
     public var chat_msg_id: String?
     public var status: String?
     public var targetId: String?
-    public var error: String?
+    // Normally a plain string (e.g. "CONNECTION_CLOSE"), but a terminal close_connection frame
+    // (dealer/SE deactivated, or maintenance mode) sends it as a nested {"message": "..."} object
+    // instead - JSONValue's own polymorphic decoding (object/array/string/bool/number) already
+    // handles either shape without a dedicated wrapper type.
+    public var error: JSONValue?
     public var stream_id: String?
     public var end_stream: Bool?
     public var update_status: Bool?
@@ -21,7 +25,7 @@ public struct RawSocketEnvelope: Codable, Equatable {
 
     public init(
         user: String? = nil, type: String? = nil, data: JSONValue? = nil, message: JSONValue? = nil,
-        chat_msg_id: String? = nil, status: String? = nil, targetId: String? = nil, error: String? = nil,
+        chat_msg_id: String? = nil, status: String? = nil, targetId: String? = nil, error: JSONValue? = nil,
         stream_id: String? = nil, end_stream: Bool? = nil, update_status: Bool? = nil, auto_archival: Bool? = nil,
         time: String? = nil, timestamp_int: String? = nil, room_id: String? = nil
     ) {
@@ -37,7 +41,10 @@ public struct RawSocketEnvelope: Codable, Equatable {
 
 public enum IncomingSocketEvent: Equatable {
     case pong
-    case closeConnection(suppressReconnect: Bool)
+    // `terminalMessage` is set only for a dealer/SE-deactivation or maintenance-mode close (the
+    // nested {"message": ...} error shape) - nil for every other close_connection reason (e.g.
+    // the plain-string "CONNECTION_CLOSE" duplicate-tab case).
+    case closeConnection(suppressReconnect: Bool, terminalMessage: String?)
     case ack(chatMsgId: String?)
     case echoedUserMessage(chatMsgId: String?, text: String?, timestampMs: Int64?)
     case typingStatus(isTyping: Bool)
@@ -56,8 +63,9 @@ extension RawSocketEnvelope {
 
         if type == "close_connection" {
             let messageText = message?.contentOrNull ?? ""
-            let suppress = error == "CONNECTION_CLOSE" || messageText.lowercased().contains("other window or tab")
-            return .closeConnection(suppressReconnect: suppress)
+            let terminalMessage = error?.objectValue?["message"]?.contentOrNull
+            let suppress = error?.contentOrNull == "CONNECTION_CLOSE" || messageText.lowercased().contains("other window or tab")
+            return .closeConnection(suppressReconnect: suppress, terminalMessage: terminalMessage)
         }
 
         if type == "ack" && status == "sent" {

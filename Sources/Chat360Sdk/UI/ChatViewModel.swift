@@ -101,7 +101,7 @@ public final class ChatViewModel: ObservableObject {
                     Task { @MainActor [weak self] in self?.handleEvent(event) }
                 },
                 onConnected: { [weak self] in
-                    Task { @MainActor [weak self] in self?.update { $0.isConnected = true; $0.error = nil } }
+                    Task { @MainActor [weak self] in self?.update { $0.isConnected = true; $0.error = nil; $0.terminalFallbackMessage = nil } }
                 },
                 onError: { [weak self] error in
                     NSLog("[Chat360] Chat connection failed: %@", error.localizedDescription)
@@ -147,6 +147,9 @@ public final class ChatViewModel: ObservableObject {
                 },
                 onSessionTimeReceived: { [weak self] createdAt in
                     Task { @MainActor [weak self] in self?.handleSessionTimeReceived(createdAt) }
+                },
+                onTerminalClose: { [weak self] message in
+                    Task { @MainActor [weak self] in self?.handleTerminalClose(message: message) }
                 }
             )
         }
@@ -564,6 +567,26 @@ public final class ChatViewModel: ObservableObject {
         sessionTimerExpiresAtByConversation[conversationId] = correctedExpiresAt
         if activeConversationId == conversationId {
             update { $0.sessionTimerExpiresAt = correctedExpiresAt }
+        }
+    }
+
+    // Dealer/SE deactivated, or maintenance mode - a persistent fallback banner replaces the
+    // input area (see ChatScreen), so nothing further should be interactable: stop the typing
+    // indicator and the session countdown display, and disable every message's nudges/quick
+    // replies the same way a new send already does (`repliesEnabled`, see `appendMessageNow`).
+    // History stays visible. `terminalFallbackMessage` is cleared automatically wherever
+    // `isConnected` flips back to true (the shared `onConnected` callback), whether that
+    // reconnect was triggered by app-foreground or a manual retry.
+    private func handleTerminalClose(message: String) {
+        update { state in
+            state.terminalFallbackMessage = message
+            state.isConnected = false
+            state.isAgentTyping = false
+            state.messages = state.messages.map { m in
+                var updated = m
+                updated.repliesEnabled = false
+                return updated
+            }
         }
     }
 

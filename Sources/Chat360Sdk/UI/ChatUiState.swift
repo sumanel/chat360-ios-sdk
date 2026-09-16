@@ -154,6 +154,12 @@ public struct ChatUiState: Equatable {
     public var isSlowConnection: Bool = false
     public var inputText: String = ""
     public var error: String?
+    // Set only by a terminal close_connection frame (dealer/SE deactivated, or maintenance mode
+    // activated) - distinct from `error` above, which drives the dismissible connection-error
+    // banner with a Retry action. This instead replaces the whole input area with a persistent,
+    // non-dismissible banner (see ChatScreen) and is cleared automatically the next time
+    // `isConnected` flips back to true.
+    public var terminalFallbackMessage: String?
     public var colorOverrides: Chat360ColorOverrides?
     public var logoOverride: Chat360Logo?
     public var botTitleOverride: String?
@@ -190,6 +196,7 @@ public struct ChatUiState: Equatable {
             lhs.isSlowConnection == rhs.isSlowConnection &&
             lhs.inputText == rhs.inputText &&
             lhs.error == rhs.error &&
+            lhs.terminalFallbackMessage == rhs.terminalFallbackMessage &&
             lhs.logoOverride == rhs.logoOverride &&
             lhs.botTitleOverride == rhs.botTitleOverride &&
             lhs.pendingUrlToOpen == rhs.pendingUrlToOpen &&

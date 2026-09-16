@@ -1,6 +1,19 @@
 import SwiftUI
 
 @available(iOS 16.0, *)
+private enum ChatListItem: Identifiable {
+    case dateHeader(id: String, label: String)
+    case message(ChatMessage)
+
+    var id: String {
+        switch self {
+        case .dateHeader(let id, _): return id
+        case .message(let message): return message.id
+        }
+    }
+}
+
+@available(iOS 16.0, *)
 public struct ChatScreen: View {
     @ObservedObject private var viewModel: ChatViewModel
     @Environment(\.chat360Colors) private var baseColors
@@ -46,6 +59,35 @@ public struct ChatScreen: View {
         pinnedWelcomeMessage != nil ? Array(viewModel.uiState.messages.dropLast()) : viewModel.uiState.messages
     }
 
+    // WhatsApp-style day headers, derived purely from each message's own `timestampMs` - no
+    // separate persisted state. A message with no timestamp (e.g. one appended locally before a
+    // server echo backfills it) doesn't start a new group of its own; it just renders under
+    // whichever day header already came before it.
+    private var dateSeparatedListItems: [ChatListItem] {
+        var items: [ChatListItem] = []
+        var lastDay: Date?
+        let calendar = Calendar.current
+        for message in listMessages {
+            if let timestampMs = message.timestampMs {
+                let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(timestampMs) / 1000))
+                if day != lastDay {
+                    items.append(.dateHeader(id: "date_\(day.timeIntervalSince1970)", label: dateSeparatorLabel(for: day, calendar: calendar)))
+                    lastDay = day
+                }
+            }
+            items.append(.message(message))
+        }
+        return items
+    }
+
+    private func dateSeparatorLabel(for day: Date, calendar: Calendar) -> String {
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: day)
+    }
+
     private func pickAttachment(url: URL) {
         guard let payload = readAttachment(url: url) else { return }
         viewModel.sendFile(bytes: payload.bytes, fileName: payload.fileName, mimeType: payload.mimeType)
@@ -76,7 +118,7 @@ public struct ChatScreen: View {
                         onShortcutSelected: { targetId, label in viewModel.selectShortcut(targetId: targetId, label: label) },
                         onRefreshClick: { viewModel.refreshConnection() },
                         onCloseClick: features.showClose ? { Chat360Bot.shared.closeChatBot() } : nil,
-                        sessionTimerExpiresAt: viewModel.uiState.sessionTimerExpiresAt
+                        sessionTimerExpiresAt: viewModel.uiState.terminalFallbackMessage == nil ? viewModel.uiState.sessionTimerExpiresAt : nil
                     )
                 }
 
@@ -109,15 +151,22 @@ public struct ChatScreen: View {
                                     .id("loading_more_history")
                                     .onAppear { viewModel.loadMoreHistory() }
                                 }
-                                ForEach(listMessages) { message in
-                                    Group {
-                                        if message.fromUser {
-                                            UserMessageRow(message: message, onRetry: { viewModel.retryFailedMessage(messageId: message.id) })
-                                        } else {
-                                            BotMessageItem(message: message, viewModel: viewModel, pickAttachment: { showAttachmentPicker = true }, captureFromCamera: { showCameraCapture = true }, isLiveChat: viewModel.uiState.isLiveChat, assignedAgent: viewModel.uiState.assignedAgent)
+                                ForEach(dateSeparatedListItems) { item in
+                                    switch item {
+                                    case .dateHeader(_, let label):
+                                        DateSeparatorRow(label: label)
+                                            .padding(.vertical, 4)
+                                            .id(item.id)
+                                    case .message(let message):
+                                        Group {
+                                            if message.fromUser {
+                                                UserMessageRow(message: message, onRetry: { viewModel.retryFailedMessage(messageId: message.id) })
+                                            } else {
+                                                BotMessageItem(message: message, viewModel: viewModel, pickAttachment: { showAttachmentPicker = true }, captureFromCamera: { showCameraCapture = true }, isLiveChat: viewModel.uiState.isLiveChat, assignedAgent: viewModel.uiState.assignedAgent)
+                                            }
                                         }
+                                        .id(message.id)
                                     }
-                                    .id(message.id)
                                 }
                                 if viewModel.uiState.isAgentTyping && features.showTypingIndicator {
                                     TypingIndicatorRow().id("typing_indicator")
@@ -159,7 +208,9 @@ public struct ChatScreen: View {
                     Spacer()
                 }
 
-                if viewModel.uiState.isArchived {
+                if let terminalMessage = viewModel.uiState.terminalFallbackMessage {
+                    StatusBanner(text: terminalMessage, emphasized: true)
+                } else if viewModel.uiState.isArchived {
                     StatusBanner(text: "This conversation has been archived due to inactivity.", emphasized: false)
                 } else if voiceRecorder.isRecording || viewModel.uiState.voiceDraft != nil {
                     VoiceRecorderBar(
