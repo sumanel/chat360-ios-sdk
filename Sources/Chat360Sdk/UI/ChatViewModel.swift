@@ -1441,7 +1441,12 @@ public final class ChatViewModel: ObservableObject {
         // Reconnect the live socket to this room right away rather than waiting for the user's
         // next send - otherwise the socket stays bound to the previously-viewed room until then,
         // so a reply typed immediately after switching could still land in the wrong room's
-        // history for the brief window before it resumes.
+        // history for the brief window before it resumes. Skipped while the maintenance/dealer
+        // fallback banner is up: `repository.connect()` is never called in that state (see the
+        // maintenance gate ahead of it), so none of its callbacks are wired - reconnecting here
+        // would silently open a live socket/session nothing is listening to instead of leaving
+        // the fallback state alone.
+        guard uiState.terminalFallbackMessage == nil else { return }
         Task { [weak self] in
             await self?.switchToActiveRoomIfResumable()
         }
