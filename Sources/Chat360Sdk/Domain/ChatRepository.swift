@@ -3,6 +3,13 @@ import Foundation
 @available(iOS 13.0, *)
 public final class ChatRepository {
     private static let duplicateNodeWindowMs: Int64 = 2_000
+    // Max time a room switch/new chat will wait for an in-flight bot reply to finish before
+    // tearing down the old socket anyway - see awaitPendingReplyBeforeTeardown().
+    private static let pendingReplyAwaitTimeoutMs: Int64 = 10_000
+    // How fresh a resumed session's created_at can be before it's treated as synthetic (the
+    // backend minting a brand new one for this very query) rather than its true start time - see
+    // awaitingImmediateSessionTimeCheck.
+    private static let freshlyCreatedSessionWindowSeconds: TimeInterval = 15
 
     private let baseUrl: String
     private let botId: String
@@ -41,6 +48,52 @@ public final class ChatRepository {
     // stale after its network call returns, instead of overwriting newer state or opening a
     // second, wrong socket - same idea as Chat360WebSocketClient's own generation guard.
     private var sessionGeneration: Int = 0
+    // Serializes connect()/startNewSession()/switchToRoom() end to end (teardown through
+    // openSocket()) - without this, two of them can interleave at a suspension point (e.g. both
+    // awaiting apiService.getSession()) and race on ownerId/roomId/sessionId/etc below, so
+    // whichever HTTP response lands last wins even if it was requested first - the exact
+    // "switching rooms during bot loading" corruption this class exists to prevent for live-frame
+    // routing. A second caller simply waits for the first to fully finish instead.
+    private let sessionMutex = AsyncMutex()
+    // True whenever the bot's reply to the most recently sent user message hasn't fully arrived
+    // yet - checked by awaitPendingReplyBeforeTeardown so switching rooms/starting a new chat
+    // never closes the socket out from under a reply still being generated server-side for the
+    // room being left.
+    private var hasPendingReply = false
+    // True once this room has ever had a session_time worth trusting server-side - either it was
+    // resumed with existing history (set by establishSession) or its first live bot reply has
+    // already come in on some earlier connection (set by the botMessage branch below). Reset only
+    // when the room itself changes (see teardownForResession) - a reconnect of the same still-live
+    // room keeps it set, so every reconnect can immediately ask and trust the answer.
+    private var sessionEverStarted = false
+    // Set every time a new socket connection opens for a room with no trustworthy session_time
+    // yet (!sessionEverStarted) - cleared the moment a bot reply actually arrives live on that
+    // connection, at which point requestSessionTime() is sent for the first time. A genuinely new
+    // room has no session_time to ask about until the user sends something and the bot replies.
+    private var awaitingFirstBotReplySessionTime = false
+    // Set right before awaitingFirstBotReplySessionTime fires its requestSessionTime() call - the
+    // very first live bot reply this room has ever had. Consumed on the matching session-time
+    // reply to substitute "now" for the server's created_at, so a brand new conversation's timer
+    // always starts counting down from a clean 59:59 rather than whatever the server's
+    // created_at/round-trip latency would otherwise show.
+    private var overrideNextSessionTimeWithNow = false
+    // Set right before openSocket's onOpen asks immediately because sessionEverStarted is already
+    // true (a resumed room, or a reconnect of a room already past its first reply). Consumed on
+    // the matching session-time reply: a created_at within the last freshlyCreatedSessionWindow
+    // means the backend just minted a brand new one for this very query (an expired/stale session
+    // gets silently renewed, not returned as its true old start time) - not trustworthy yet, so
+    // the reply is held back instead (see pendingSessionResetOnNextBotMessage).
+    private var awaitingImmediateSessionTimeCheck = false
+    // Set right before each requestSessionTime() call, cleared the moment any session-time frame
+    // arrives. Lets handleSessionTimeReceived tell a reply to our own request apart from a
+    // session-time frame the backend pushes unprompted.
+    private var awaitingSessionTimeResponse = false
+    // Set when a session-time reply shouldn't be shown to the UI the moment it arrives - either an
+    // unprompted push (the backend rolls the current session over to a fresh one once its hour
+    // window lapses) or a resumed session whose real elapsed time was already found to be
+    // synthetic. Either way the reset should only become visible once the bot's next reply
+    // actually comes in, same as overrideNextSessionTimeWithNow's first message.
+    private var pendingSessionResetOnNextBotMessage = false
 
     private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
     private var onConnected: () -> Void = {}
@@ -126,29 +179,48 @@ public final class ChatRepository {
         // Every open of the bot starts a fresh conversation rather than silently resuming
         // whatever room was last active - the previous conversation is still reachable from
         // the history drawer, this just controls what greets the user on open.
+        await sessionMutex.lock()
         await establishSession(onConversationStarted: onConversationStarted)
+        await sessionMutex.unlock()
     }
 
     public func startNewSession(onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async {
+        await sessionMutex.lock()
         NSLog("[Chat360WS] Starting new session (user-initiated) - tearing down room=%@", roomId ?? "nil")
+        await awaitPendingReplyBeforeTeardown()
         teardownForResession()
         await establishSession(onConversationStarted: onConversationStarted)
+        await sessionMutex.unlock()
     }
 
+    // There's no way to resume a room without its session token - room id alone is silently
+    // ignored by the server and a fresh room gets allocated instead - so this is a no-op (returns
+    // false) for any room this device never actually connected to itself (e.g. one only ever seen
+    // in another device's history). Callers should fall back to whatever they'd otherwise do when
+    // this returns false, same as a resumable switch's caller would on a resumedRoomId mismatch.
     public func switchToRoom(targetRoomId: String, onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async -> Bool {
-        // No local session token doesn't mean the room can't be resumed - it just means this
-        // device never had a live socket session in it (e.g. it only exists because it was
-        // synced down from the server's room list). Try resuming by room id alone in that case
-        // rather than giving up: `getSession` already accepts room id and token as independent,
-        // separately-optional values, so the server can still attach to the existing room
-        // without one. If it can't, the resumedRoomId mismatch check in the caller already
-        // reconciles to whatever room the server allocates instead - this can't route worse
-        // than silently sending into an unrelated room the way giving up early did.
-        let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId)
+        guard let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId) else { return false }
+        await sessionMutex.lock()
         NSLog("[Chat360WS] Switching to room=%@ (tearing down room=%@)", targetRoomId, roomId ?? "nil")
+        await awaitPendingReplyBeforeTeardown()
         teardownForResession()
-        await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: targetRoomId, resumeSessionToken: persisted?.sessionToken)
+        await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: targetRoomId, resumeSessionToken: persisted.sessionToken)
+        await sessionMutex.unlock()
         return true
+    }
+
+    // Waits (briefly) for an in-flight bot reply to the last message sent on the room about to be
+    // torn down to fully arrive, before teardownForResession() closes the socket out from under
+    // it. Bounded by pendingReplyAwaitTimeoutMs so a slow/stuck bot can never block a room switch
+    // or new chat indefinitely; a no-op when nothing is outstanding.
+    private func awaitPendingReplyBeforeTeardown() async {
+        guard hasPendingReply else { return }
+        NSLog("[Chat360WS] Waiting up to %dms for in-flight bot reply before switching rooms (room=%@)", Self.pendingReplyAwaitTimeoutMs, roomId ?? "nil")
+        let deadline = Date().addingTimeInterval(Double(Self.pendingReplyAwaitTimeoutMs) / 1000)
+        while hasPendingReply && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        hasPendingReply = false
     }
 
     private func teardownForResession() {
@@ -165,6 +237,13 @@ public final class ChatRepository {
         lastBotNode = nil
         pendingInitJumpTargetId = nil
         shouldAskFeedback = false
+        hasPendingReply = false
+        sessionEverStarted = false
+        awaitingFirstBotReplySessionTime = false
+        overrideNextSessionTimeWithNow = false
+        awaitingImmediateSessionTimeCheck = false
+        awaitingSessionTimeResponse = false
+        pendingSessionResetOnNextBotMessage = false
     }
 
     private func establishSession(onConversationStarted: @escaping (String) async -> Bool, resumeRoomId: String? = nil, resumeSessionToken: String? = nil) async {
@@ -236,6 +315,11 @@ public final class ChatRepository {
             } else if await loadConversationStarter() {
                 pendingInitJumpTargetId = nil
             }
+            // A resumed room's session already exists server-side - openSocket's onOpen can ask
+            // for its session_time right away instead of waiting on a bot reply that reopening a
+            // past conversation never provokes on its own. A genuinely new room has nothing to
+            // ask about yet, so this stays false until its own first live reply sets it.
+            sessionEverStarted = hadHistory
             guard myGeneration == sessionGeneration else { return }
             openSocket()
         } catch {
@@ -319,6 +403,16 @@ public final class ChatRepository {
     private func openSocket() {
         guard let oId = ownerId, let rId = roomId else { return }
         manuallyDisconnected = false
+        // A prior socket's own requestSessionTime() may still be in flight when that socket gets
+        // torn down (e.g. the app is backgrounded right after the first bot reply, killing the
+        // connection before its session_time round trip completes) - its response then simply
+        // never arrives, leaving these correlation flags stuck set. Left uncleared, the *next*
+        // socket's legitimate session_time response would wrongly be treated as the answer to
+        // that dead request. Clearing them here means every new socket starts clean; onOpen below
+        // sets whichever of these it actually needs.
+        awaitingSessionTimeResponse = false
+        overrideNextSessionTimeWithNow = false
+        awaitingImmediateSessionTimeCheck = false
         let wsScheme = baseUrl.hasPrefix("https") ? "wss" : "ws"
         let host = hostComponent(of: baseUrl)
         let wsUrl = "\(wsScheme)://\(host)/ws/chat_updated/\(oId)/\(rId)"
@@ -334,12 +428,23 @@ public final class ChatRepository {
                 self.heartbeat.start()
                 self.reconnectManager.onConnected()
                 self.onConnected()
+                if self.sessionEverStarted {
+                    // A resumed room, or a reconnect of a room already past its first reply - its
+                    // session_time is safe to ask about right away. handleSessionTimeReceived
+                    // decides whether the answer is fresh enough to show immediately or stale
+                    // enough to hold back - see awaitingImmediateSessionTimeCheck.
+                    self.awaitingImmediateSessionTimeCheck = true
+                    self.requestSessionTime()
+                } else {
+                    // A genuinely new room has no session_time to ask about yet - the timer must
+                    // stay hidden/not-running until the user sends something new and a bot reply
+                    // actually arrives live on this connection (see the botMessage case below,
+                    // which fires the request once this is consumed).
+                    self.awaitingFirstBotReplySessionTime = true
+                }
                 if let targetId = self.pendingInitJumpTargetId {
                     self.pendingInitJumpTargetId = nil
                     self.sendSystemJump(targetId: targetId)
-                }
-                if let data = try? self.encoder.encode(SessionTimeRequest(room_id: rId)), let text = String(data: data, encoding: .utf8) {
-                    self.wsClient.send(text)
                 }
             },
             onMessage: { [weak self] raw in self?.handleIncoming(raw) },
@@ -384,8 +489,9 @@ public final class ChatRepository {
                let response = try? decoder.decode(SessionTimeResponse.self, from: data),
                let createdAtRaw = response.session?.created_at,
                let createdAt = Self.parseSessionTimestamp(createdAtRaw) {
-                onSessionTimeReceived(createdAt)
+                handleSessionTimeReceived(createdAt)
             }
+            return
         }
         guard let data = raw.data(using: .utf8), let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) else { return }
         if let envelopeRoomId = envelope.room_id, envelopeRoomId != roomId {
@@ -413,6 +519,24 @@ public final class ChatRepository {
             if !isErrorNode(node) {
                 lastBotNode = node
                 currentTargetId = node.targetId ?? currentTargetId
+            }
+            // Only a complete reply clears the pending-reply gate - a streaming (chatgpt_message)
+            // answer must keep the socket open across every chunk, not just its first one, so
+            // awaitPendingReplyBeforeTeardown waits for streamEnded.
+            if node.streamId == nil || node.streamEnded {
+                hasPendingReply = false
+            }
+            if awaitingFirstBotReplySessionTime {
+                awaitingFirstBotReplySessionTime = false
+                sessionEverStarted = true
+                overrideNextSessionTimeWithNow = true
+                NSLog("[Chat360WS] First live bot reply on this connection - requesting session time, countdown will start at 59:59 (room=%@)", roomId ?? "nil")
+                requestSessionTime()
+            }
+            if pendingSessionResetOnNextBotMessage {
+                pendingSessionResetOnNextBotMessage = false
+                NSLog("[Chat360WS] Applying deferred session time reset on this bot reply - countdown restarts at 59:59 (room=%@)", roomId ?? "nil")
+                onSessionTimeReceived(Date())
             }
             handleWindowEventNode(node.content)
             if let endUrlMessage = node.endUrlMessage { onOpenUrl(endUrlMessage) }
@@ -444,6 +568,49 @@ public final class ChatRepository {
 
     private func isErrorNode(_ node: BotNode) -> Bool {
         node.nodeType == "validation_error"
+    }
+
+    // Requests the Hyundai-specific server-tracked session duration for the current room.
+    // Standalone frame, not ack-tracked (same pattern as sendSystemJump/the heartbeat ping).
+    private func requestSessionTime() {
+        awaitingSessionTimeResponse = true
+        guard let rId = roomId, let data = try? encoder.encode(SessionTimeRequest(room_id: rId)), let text = String(data: data, encoding: .utf8) else { return }
+        wsClient.send(text)
+    }
+
+    // Decides whether an incoming session_time_hyundai reply is trustworthy enough to show right
+    // away, or must be held back until the bot's next reply confirms the flow is actually still
+    // alive - see awaitingImmediateSessionTimeCheck/pendingSessionResetOnNextBotMessage's own docs.
+    private func handleSessionTimeReceived(_ createdAt: Date) {
+        guard awaitingSessionTimeResponse else {
+            // Unprompted - the backend pushes one of these on its own when the current session's
+            // hour window lapses and rolls over to a fresh one. Held back until the bot's next
+            // reply actually arrives instead of snapping the countdown to 59:59 the instant this
+            // frame lands with no bot activity behind it.
+            NSLog("[Chat360WS] Unsolicited session time reset received - deferring to next bot reply (room=%@)", roomId ?? "nil")
+            pendingSessionResetOnNextBotMessage = true
+            return
+        }
+        awaitingSessionTimeResponse = false
+        if overrideNextSessionTimeWithNow {
+            overrideNextSessionTimeWithNow = false
+            onSessionTimeReceived(Date())
+            return
+        }
+        if awaitingImmediateSessionTimeCheck {
+            awaitingImmediateSessionTimeCheck = false
+            let elapsedSeconds = Date().timeIntervalSince(createdAt)
+            if elapsedSeconds < Self.freshlyCreatedSessionWindowSeconds {
+                // A created_at this close to "now" means the backend just minted it for this very
+                // query (an expired/stale session gets silently renewed rather than returning its
+                // true old start time) - not a real value worth trusting yet.
+                NSLog("[Chat360WS] Resumed session's created_at is only %.0fs old - deferring to next bot reply (room=%@)", elapsedSeconds, roomId ?? "nil")
+                pendingSessionResetOnNextBotMessage = true
+                return
+            }
+            // Genuinely old enough to trust - show the real remaining time immediately.
+        }
+        onSessionTimeReceived(createdAt)
     }
 
     /// Non-WindowEvent nodes leave the gate untouched: the host's response to a window event is
@@ -779,6 +946,10 @@ public final class ChatRepository {
     @discardableResult
     private func sendTracked(_ outgoing: OutgoingMessage) -> String {
         NSLog("[Chat360WS] User message sent: chat_msg_id=%@ nodeType=%@ targetId=%@", outgoing.chat_msg_id, outgoing.nodeType ?? "nil", outgoing.targetId ?? "nil")
+        // Marks a bot reply as outstanding for this room - see awaitPendingReplyBeforeTeardown,
+        // which keeps the socket open long enough for it to actually arrive if the user switches
+        // rooms/starts a new chat before it does.
+        hasPendingReply = true
         guard let data = try? encoder.encode(outgoing), let payload = String(data: data, encoding: .utf8) else { return outgoing.chat_msg_id }
         if !wsClient.send(payload) { ensureReconnecting() }
         ackTracker.trackSend(chatMsgId: outgoing.chat_msg_id) { [weak self] in
@@ -795,6 +966,7 @@ public final class ChatRepository {
         reconnectManager.cancel()
         ackTracker.cancelAll()
         wsClient.close()
+        hasPendingReply = false
         WindowEventBridge.shared.unregisterSession()
     }
 
@@ -812,6 +984,7 @@ public final class ChatRepository {
         reconnectManager.cancel()
         ackTracker.cancelAll()
         wsClient.close()
+        hasPendingReply = false
         onTerminalClose(message)
     }
 
@@ -858,4 +1031,30 @@ private struct SessionTimeResponse: Codable {
 public enum Chat360RepositoryError: Error {
     case notConnected
     case uploadFailed
+}
+
+// A minimal FIFO async lock - serializes ChatRepository's connect()/startNewSession()/
+// switchToRoom() end to end (see sessionMutex's own doc). Not reentrant: a second lock() call
+// from the same logical caller before unlock() would deadlock, but nothing in this file ever
+// does that.
+@available(iOS 13.0, *)
+private actor AsyncMutex {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func lock() async {
+        if !isLocked {
+            isLocked = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func unlock() {
+        if waiters.isEmpty {
+            isLocked = false
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
 }

@@ -1438,6 +1438,13 @@ public final class ChatViewModel: ObservableObject {
             guard let self else { return }
             await self.restoreConversation(conversationId: conversationId, roomId: roomId)
         }
+        // Reconnect the live socket to this room right away rather than waiting for the user's
+        // next send - otherwise the socket stays bound to the previously-viewed room until then,
+        // so a reply typed immediately after switching could still land in the wrong room's
+        // history for the brief window before it resumes.
+        Task { [weak self] in
+            await self?.switchToActiveRoomIfResumable()
+        }
     }
 
     private func restoreConversation(conversationId: String, roomId: String?) async {
