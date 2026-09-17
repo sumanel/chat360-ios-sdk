@@ -63,8 +63,16 @@ extension RawSocketEnvelope {
 
         if type == "close_connection" {
             let messageText = message?.contentOrNull ?? ""
-            let terminalMessage = error?.objectValue?["message"]?.contentOrNull
-            let suppress = error?.contentOrNull == "CONNECTION_CLOSE" || messageText.lowercased().contains("other window or tab")
+            // Dealer/SE deactivation and maintenance-mode activation both send this same frame
+            // type, but in two different wire shapes: `error` as a nested {"message": "..."}
+            // object (originally specified), or - what staging actually sends - `error` as a
+            // plain string plus the user-facing text at the top-level `message` field instead.
+            // Prefer the nested shape when present; fall back to the top-level message otherwise.
+            let nestedErrorMessage = error?.objectValue?["message"]?.contentOrNull
+            let terminalMessage = nestedErrorMessage.flatMap { $0.isBlank ? nil : $0 } ?? (messageText.isBlank ? nil : messageText)
+            let suppress = error?.contentOrNull == "CONNECTION_CLOSE" ||
+                messageText.lowercased().contains("other window or tab") ||
+                nestedErrorMessage != nil
             return .closeConnection(suppressReconnect: suppress, terminalMessage: terminalMessage)
         }
 

@@ -99,6 +99,9 @@ public struct ChatDrawer: View {
                     .foregroundColor(colors.accent)
                 }
                 Spacer()
+                Text("v\(Constants.sdkVersion)")
+                    .font(typography.textFamily.font(size: 12))
+                    .foregroundColor(colors.textSecondary)
             }
             .padding(.horizontal, 20)
             .frame(height: 60)

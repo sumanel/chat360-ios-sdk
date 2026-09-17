@@ -178,4 +178,60 @@ final class IncomingEnvelopeTests: XCTestCase {
         }
         XCTAssertNil(node.timestampMs)
     }
+
+    // MARK: - close_connection (dealer/SE deactivation & maintenance mode)
+
+    /// The shape confirmed live on staging today: `error` is a plain string and the user-facing
+    /// text sits at the top-level `message` field instead of nested under `error`. `suppress`
+    /// isn't asserted here - ChatRepository's terminal-close path (triggered by a non-nil
+    /// `terminalMessage`) already stops the socket/heartbeat/reconnect on its own regardless of
+    /// this flag; `suppress` only governs *automatic* reconnect scheduling on an unexpected drop.
+    func testCloseConnectionWithFlatErrorStringFallsBackToTopLevelMessage() {
+        let envelope = RawSocketEnvelope(
+            type: "close_connection",
+            message: .string("You do not have access to the bot. Please contact your dealership manager"),
+            error: .string("Sales Exective is INACTIVE")
+        )
+        guard case .closeConnection(_, let terminalMessage) = envelope.toIncomingEvent() else {
+            return XCTFail("expected closeConnection")
+        }
+        XCTAssertEqual(terminalMessage, "You do not have access to the bot. Please contact your dealership manager")
+    }
+
+    /// The originally-specified shape: `error` is a nested {"message": "..."} object.
+    func testCloseConnectionWithNestedErrorObjectUsesItsMessage() {
+        let envelope = RawSocketEnvelope(
+            type: "close_connection",
+            error: .object(["message": .string("Maintenance mode is active")])
+        )
+        guard case .closeConnection(let suppress, let terminalMessage) = envelope.toIncomingEvent() else {
+            return XCTFail("expected closeConnection")
+        }
+        XCTAssertEqual(terminalMessage, "Maintenance mode is active")
+        XCTAssertTrue(suppress)
+    }
+
+    /// When both shapes are present, the nested `error.message` wins over the top-level `message`.
+    func testCloseConnectionPrefersNestedErrorMessageOverTopLevelMessageWhenBothPresent() {
+        let envelope = RawSocketEnvelope(
+            type: "close_connection",
+            message: .string("top-level fallback text"),
+            error: .object(["message": .string("nested wins")])
+        )
+        guard case .closeConnection(_, let terminalMessage) = envelope.toIncomingEvent() else {
+            return XCTFail("expected closeConnection")
+        }
+        XCTAssertEqual(terminalMessage, "nested wins")
+    }
+
+    /// A plain duplicate-tab close (`error == "CONNECTION_CLOSE"`, no message) suppresses
+    /// reconnect but must not surface a terminal banner - there's no user-facing text to show.
+    func testCloseConnectionDuplicateTabWithNoMessageSuppressesButHasNoTerminalMessage() {
+        let envelope = RawSocketEnvelope(type: "close_connection", error: .string("CONNECTION_CLOSE"))
+        guard case .closeConnection(let suppress, let terminalMessage) = envelope.toIncomingEvent() else {
+            return XCTFail("expected closeConnection")
+        }
+        XCTAssertTrue(suppress)
+        XCTAssertNil(terminalMessage)
+    }
 }

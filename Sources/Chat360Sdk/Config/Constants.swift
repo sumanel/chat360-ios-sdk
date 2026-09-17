@@ -5,6 +5,9 @@ import Network
 public enum Constants {
     public static var unreadMessageCount: Int = 0
 
+    /// Keep in sync with `spec.version` in Chat360Sdk.podspec.
+    public static let sdkVersion: String = "3.6.1"
+
     public static func isNetworkAvailable(_ completion: @escaping (Bool) -> Void) {
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { path in
