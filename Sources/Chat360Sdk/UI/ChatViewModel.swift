@@ -1284,7 +1284,34 @@ public final class ChatViewModel: ObservableObject {
             // to find out whether the reply already arrived (live, mid-fetch) or needs recovering.
             update { $0.isAgentTyping = true }
         }
-        await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending, generation: generation)
+        let resolved = await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending, generation: generation)
+        if !resolved { pollForMissedReply(conversationId: conversationId, roomId: roomId, generation: generation) }
+    }
+
+    // How often to look again for a reply that wasn't there on the first check.
+    static var missedReplyPollIntervalNs: UInt64 = 3_000_000_000
+
+    // The reply to a message sent just before switching rooms (or leaving the screen) is generated
+    // server-side anyway - the server stores it in history about 14s after the send whether or not any
+    // socket is connected - but it is only *pushed* to a socket that is connected to that room at that
+    // moment. Coming back sooner than that, the one check above finds nothing yet, the reconnect
+    // delivers nothing (the reply was generated while this device was on another room), and nothing
+    // ever looked again: the room sat at "connected" with the reply missing until it was reopened.
+    //
+    // So keep checking, quietly in the background, until the reply is found, a live frame delivers it
+    // (which clears the pending record), this load is superseded, or the message goes stale
+    // (`staleReplyThresholdMs`, which `backfillMissingReplies` turns into a "not delivered" mark).
+    // Detached from the caller on purpose: it is awaited from `establishSession` while opening the
+    // socket, which must not wait up to 90s on this.
+    private func pollForMissedReply(conversationId: String, roomId: String, generation: Int) {
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: Self.missedReplyPollIntervalNs)
+                guard let self, self.isCurrentLoad(generation),
+                      let pending = await self.cache.replyPending(conversationId: conversationId) else { return }
+                if await self.backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending, generation: generation) { return }
+            }
+        }
     }
 
     private func setMessageFailed(chatMsgId: String?, failed: Bool) {
@@ -1309,20 +1336,23 @@ public final class ChatViewModel: ObservableObject {
     // existing list the way `refreshConversationHistory` does, since that would also discard
     // locally-known user sends (e.g. nudge/quick-reply selections) that the server's own history
     // doesn't always echo back as readable text.
-    private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity, generation: Int) async {
+    /// Returns true once there is nothing left to wait for - the reply was found, the message went stale, or
+    /// this load was superseded - and false while the reply is still owed and worth checking for again.
+    @discardableResult
+    private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity, generation: Int) async -> Bool {
         NSLog(
             "[Chat360] Fetching from SERVER (backfill): room=%@ pending chatMsgId=%@ createdAt=%lld",
             roomId, pending.chatMsgId ?? "nil", pending.createdAt
         )
         guard let response = try? await repository.fetchHistory(roomId: roomId) else {
             NSLog("[Chat360] SERVER fetch (backfill) failed for room=%@", roomId)
-            return
+            return false
         }
         NSLog("[Chat360] SERVER returned %d history rows for room=%@", response.history.count, roomId)
-        guard isCurrentLoad(generation) else { return }
+        guard isCurrentLoad(generation) else { return true }
         let earliestUserTimestamp = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
         let suppressedOpener = await cache.suppressedOpenerNodeId(conversationId: conversationId)
-        guard isCurrentLoad(generation) else { return }
+        guard isCurrentLoad(generation) else { return true }
         cachedEarliestUserTimestampMs = earliestUserTimestamp
         cachedSuppressedOpenerNodeId = suppressedOpener
         var sawBotReply = false
@@ -1356,7 +1386,7 @@ public final class ChatViewModel: ObservableObject {
         for raw in rawsToCache {
             await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
         }
-        guard isCurrentLoad(generation) else { return }
+        guard isCurrentLoad(generation) else { return true }
         if sawBotReply {
             // Don't assume `handleEvent` already cleared this - it no-ops (see the node id dedup
             // check at the top of its `.botMessage` case) whenever the reply it's looking at turns
@@ -1367,11 +1397,14 @@ public final class ChatViewModel: ObservableObject {
             // slightly later than the stale threshold assumed.
             setMessageFailed(chatMsgId: pending.chatMsgId, failed: false)
             await cache.clearReplyPending(conversationId: conversationId)
+            return true
         } else if nowMs() - pending.createdAt > Self.staleReplyThresholdMs {
             setMessageFailed(chatMsgId: pending.chatMsgId, failed: true)
             update { $0.isAgentTyping = false }
             await cache.clearReplyPending(conversationId: conversationId)
+            return true
         }
+        return false
     }
 
     @discardableResult
@@ -1736,6 +1769,7 @@ public final class ChatViewModel: ObservableObject {
     }
 
     public func onCleared() {
+        _ = beginLoad() // ends any background reply polling
         conversationsObservationTask?.cancel()
         repository.disconnect()
     }

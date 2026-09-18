@@ -16,8 +16,22 @@ final class GhostRoomTests: XCTestCase {
         static let lock = NSLock()
         static var sessionRequests: [String?] = []
         static var roomCounter = 0
+        /// History fetches per room, and how many of the room under test's fetches see no bot reply yet.
+        static var historyRequestsByRoom: [String: Int] = [:]
+        static var historyWithoutReply = 0
+        /// The room whose history the reply tests are about; every other room's history never has a reply.
+        static let roomUnderTest = "room-a"
 
-        static func reset() { lock.lock(); sessionRequests = []; roomCounter = 0; lock.unlock() }
+        static func reset() { lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0; lock.unlock() }
+        static var historyFetches: Int { lock.lock(); defer { lock.unlock() }; return historyRequestsByRoom[roomUnderTest] ?? 0 }
+
+        /// A history page: the user's message, plus the bot's reply once enough fetches have gone by.
+        static func historyBody(includeReply: Bool) -> Data {
+            let user = RawSocketEnvelope(user: "end_user", message: .string("Tell me about Hyundai Venue features"), chat_msg_id: "user-1")
+            let bot = RawSocketEnvelope(user: "bot", data: .object(["nodeType": .string("TEXT"), "id": .string("reply-1"), "questionText": .string("Venue features reply")]), timestamp_int: String(Int(Date().timeIntervalSince1970)))
+            let rows = ([user] + (includeReply ? [bot] : [])).compactMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) }
+            return Data(#"{"history":[\#(rows.joined(separator: ","))],"previous_cursor":null}"#.utf8)
+        }
         static var requests: [String?] { lock.lock(); defer { lock.unlock() }; return sessionRequests }
 
         override class func canInit(with request: URLRequest) -> Bool { true }
@@ -28,7 +42,15 @@ final class GhostRoomTests: XCTestCase {
             let url = request.url!
             var status = 404
             var body = Data()
-            if url.path.contains("/session/") {
+            if url.path.contains("/chatbox/messages/") {
+                let room = url.lastPathComponent
+                Self.lock.lock()
+                Self.historyRequestsByRoom[room, default: 0] += 1
+                let includeReply = room == Self.roomUnderTest && Self.historyRequestsByRoom[room, default: 0] > Self.historyWithoutReply
+                Self.lock.unlock()
+                status = 200
+                body = Self.historyBody(includeReply: includeReply)
+            } else if url.path.contains("/session/") {
                 let requested = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "room_id" }?.value
                 Self.lock.lock()
                 Self.sessionRequests.append(requested)
@@ -201,5 +223,102 @@ final class GhostRoomTests: XCTestCase {
 
         XCTAssertEqual(transcript(), ["c1", "c2", "c3"])
         XCTAssertEqual(viewModel.uiState.activeConversationId, "conv-c")
+    }
+
+    // MARK: - A reply generated while away
+
+    /// The server stores a reply ~14s after the send whether or not a socket is connected, but only pushes
+    /// it to a socket connected to that room at that moment. Returning sooner found nothing on the one
+    /// history check and nothing ever looked again.
+    private func seedPendingConversation(_ id: String, roomId: String, pendingSinceMsAgo: Int64 = 0) async {
+        await seedCachedConversation(id, roomId: roomId, texts: ["Tell me about Hyundai Venue features"])
+        await dao.markReplyPending(conversationId: id, chatMsgId: "user-1", createdAt: Int64(Date().timeIntervalSince1970 * 1000) - pendingSinceMsAgo)
+    }
+
+    func testAReplyStoredAfterTheFirstCheckOnReturnStillAppears() async {
+        ChatViewModel.missedReplyPollIntervalNs = 50_000_000
+        defer { ChatViewModel.missedReplyPollIntervalNs = 3_000_000_000 }
+        StubServer.historyWithoutReply = 2 // the first two checks find only the user's message
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedPendingConversation("conv-a", roomId: "room-a")
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } }
+
+        viewModel.openConversation("conv-a")
+
+        await awaitUntil("the reply to appear") { self.transcript().contains("Venue features reply") }
+        XCTAssertGreaterThanOrEqual(StubServer.historyFetches, 3, "it never looked again after the first check")
+        XCTAssertFalse(viewModel.uiState.isAgentTyping, "the typing indicator was left on after the reply arrived")
+    }
+
+    func testPollingStopsOnceTheReplyHasBeenFound() async {
+        ChatViewModel.missedReplyPollIntervalNs = 50_000_000
+        defer { ChatViewModel.missedReplyPollIntervalNs = 3_000_000_000 }
+        StubServer.historyWithoutReply = 1
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedPendingConversation("conv-a", roomId: "room-a")
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } }
+
+        viewModel.openConversation("conv-a")
+        await awaitUntil("the reply to appear") { self.transcript().contains("Venue features reply") }
+        await settle()
+        let fetchesOnceFound = StubServer.historyFetches
+        await settle()
+
+        XCTAssertEqual(StubServer.historyFetches, fetchesOnceFound, "kept polling after the reply was found")
+    }
+
+    func testAMessageThatIsAlreadyStaleIsMarkedUndeliveredAndNotPolledForever() async {
+        ChatViewModel.missedReplyPollIntervalNs = 50_000_000
+        defer { ChatViewModel.missedReplyPollIntervalNs = 3_000_000_000 }
+        StubServer.historyWithoutReply = 1_000_000 // the reply never shows up
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedPendingConversation("conv-a", roomId: "room-a", pendingSinceMsAgo: 200_000) // older than the 90s give-up point
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } }
+
+        viewModel.openConversation("conv-a")
+        await settle()
+        let fetches = StubServer.historyFetches
+        await settle()
+
+        XCTAssertEqual(StubServer.historyFetches, fetches, "polled forever for a reply that was given up on")
+        XCTAssertFalse(viewModel.uiState.isAgentTyping)
+    }
+
+    func testPollingStopsWhenTheUserMovesToAnotherRoom() async {
+        ChatViewModel.missedReplyPollIntervalNs = 50_000_000
+        defer { ChatViewModel.missedReplyPollIntervalNs = 3_000_000_000 }
+        StubServer.historyWithoutReply = 1_000_000
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedPendingConversation("conv-a", roomId: "room-a")
+        await seedCachedConversation("conv-b", roomId: "room-b", texts: ["b1"])
+        await awaitUntil("conversations listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } && self.viewModel.conversations.contains { $0.id == "conv-b" } }
+
+        viewModel.openConversation("conv-a")
+        await awaitUntil("polling under way") { StubServer.historyFetches >= 3 }
+        viewModel.openConversation("conv-b")
+        await settle()
+        let fetches = StubServer.historyFetches
+        await settle()
+
+        XCTAssertEqual(StubServer.historyFetches, fetches, "kept polling room A after the user left it")
+        XCTAssertEqual(transcript(), ["b1"])
+    }
+
+    func testAReplyThatArrivesLiveEndsThePolling() async {
+        ChatViewModel.missedReplyPollIntervalNs = 50_000_000
+        defer { ChatViewModel.missedReplyPollIntervalNs = 3_000_000_000 }
+        StubServer.historyWithoutReply = 1_000_000
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedPendingConversation("conv-a", roomId: "room-a")
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } }
+
+        viewModel.openConversation("conv-a")
+        await awaitUntil("polling under way") { StubServer.historyFetches >= 3 }
+        await dao.clearReplyPending(conversationId: "conv-a") // what a live frame delivering the reply does
+        await settle()
+        let fetches = StubServer.historyFetches
+        await settle()
+
+        XCTAssertEqual(StubServer.historyFetches, fetches, "kept polling after a live reply cleared the pending record")
     }
 }

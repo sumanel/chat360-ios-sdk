@@ -27,16 +27,47 @@ public final class ChatHistoryRepository {
 
     public func refreshRooms() async -> [CachedConversationEntity]? {
         do {
-            let response = try await withAuthRetry { token in
-                try await self.apiService.fetchRoomsList(clientId: self.clientId, bearerToken: token, agentId: self.endUserId)
-            }
-            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: response.rooms)
+            // Every page or nothing: the sync below deletes cached rooms that are missing from what it
+            // is given, so a fetch that got only the first pages must fail outright rather than hand
+            // over a partial list that would wipe the rooms on the pages that never loaded.
+            let rooms = try await fetchAllRooms()
+            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: rooms)
             await cache.syncAgentRooms(botId: botId, conversations: conversations)
             return conversations
         } catch {
             NSLog("[Chat360] third-party-tasks rooms/list failed: %@", error.localizedDescription)
             return nil
         }
+    }
+
+    static let roomsPageSize = 100
+    static let roomsMaxPages = 50
+
+    // Walks `rooms/list` page by page until the server reports no more. Called with no `limit` the
+    // server returns only its default page (20 rooms) and says `has_more`; the list is newest-first
+    // and soft-deleted rooms count toward the page, so as deleted and abandoned rooms piled up the
+    // real, older chats fell off the end of the history list.
+    //
+    // The next offset is the number of rooms the server actually returned, not `roomsPageSize`, in
+    // case it caps a page lower than asked. Stops early on a page that adds nothing new, so a server
+    // that ignores `offset` and repeats one page can't loop forever, and after `roomsMaxPages` as a
+    // hard ceiling.
+    private func fetchAllRooms() async throws -> [RoomDto] {
+        var rooms: [RoomDto] = []
+        var seen = Set<String>()
+        var offset = 0
+        for _ in 0..<Self.roomsMaxPages {
+            let currentOffset = offset
+            let page = try await withAuthRetry { token in
+                try await self.apiService.fetchRoomsList(clientId: self.clientId, bearerToken: token, agentId: self.endUserId, limit: Self.roomsPageSize, offset: currentOffset)
+            }
+            let fresh = page.rooms.filter { seen.insert($0.roomId).inserted }
+            rooms += fresh
+            if !page.hasMore || fresh.isEmpty { return rooms }
+            offset += page.rooms.count
+        }
+        NSLog("[Chat360] third-party-tasks rooms/list hit the %d-page ceiling with more still available", Self.roomsMaxPages)
+        return rooms
     }
 
     public func renameRoom(roomId: String, roomName: String) async {
