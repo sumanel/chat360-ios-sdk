@@ -137,7 +137,12 @@ public struct ChatScreen: View {
 
                 if viewModel.uiState.messages.isEmpty {
                     WelcomeSplash(unavailableMessage: viewModel.uiState.terminalFallbackMessage).frame(maxHeight: .infinity)
-                } else if !listMessages.isEmpty || viewModel.uiState.isAgentTyping {
+                } else if !listMessages.isEmpty || viewModel.uiState.isAgentTyping || pinnedWelcomeMessage != nil {
+                    // pinnedWelcomeMessage != nil covers reopening a room whose only cached
+                    // history is that pinned bot bubble (already rendered above, at line ~132):
+                    // messages.isEmpty is false so the splash above is skipped, but listMessages
+                    // is empty and nothing is typing yet, so without this the whole middle of the
+                    // screen used to render nothing at all until the first live reply arrived.
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 14) {

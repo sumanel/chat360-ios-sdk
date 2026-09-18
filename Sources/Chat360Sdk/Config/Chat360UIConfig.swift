@@ -77,10 +77,15 @@ public struct Chat360FeatureConfig {
     // Defaults true: ChatController presents fullScreen, which doesn't support swipe-to-dismiss,
     // so a host that turns this off must provide its own way to close the chat screen.
     public var showClose: Bool = true
-    // The mandatory "how's it going so far?" prompt that fires every random 3-5 live bot replies
-    // (see `ChatViewModel.registerLiveBotReplyForFeedbackPrompt`) - separate from `showFeedback`
+    // The mandatory "how's it going so far?" prompt that fires every random N live bot replies,
+    // N drawn from `periodicFeedbackPromptInterval` below (see
+    // `ChatViewModel.registerLiveBotReplyForFeedbackPrompt`) - separate from `showFeedback`
     // above, which is the end-of-conversation rating dialog.
     public var showPeriodicFeedbackPrompt: Bool = true
+    // How many live bot replies elapse between periodic feedback prompts, re-rolled within this
+    // range each time. Widened from the original 3...5 (which read as "every 3-4 chats") to a
+    // less intrusive default; clients can override to tune frequency without an SDK code change.
+    public var periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12
 
     public init(
         showMenu: Bool = false, showHistorySidebar: Bool = true, showNewChat: Bool = false, showFeedback: Bool = true,
@@ -88,7 +93,7 @@ public struct Chat360FeatureConfig {
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
         showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true,
-        showPeriodicFeedbackPrompt: Bool = true
+        showPeriodicFeedbackPrompt: Bool = true, periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12
     ) {
         self.showMenu = showMenu
         self.showHistorySidebar = showHistorySidebar
@@ -99,6 +104,7 @@ public struct Chat360FeatureConfig {
         self.showLike = showLike
         self.showDislike = showDislike
         self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
+        self.periodicFeedbackPromptInterval = periodicFeedbackPromptInterval
         self.showEmoji = showEmoji
         self.showAttachment = showAttachment
         self.showVoiceInput = showVoiceInput

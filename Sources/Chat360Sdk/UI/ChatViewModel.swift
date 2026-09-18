@@ -9,6 +9,7 @@ public final class ChatViewModel: ObservableObject {
     private let chatHistoryRepository: ChatHistoryRepository?
     private let suppressInitialBotMessages: Bool
     private let showPeriodicFeedbackPrompt: Bool
+    private let periodicFeedbackPromptInterval: ClosedRange<Int>
     private let maintenanceApi: ThirdPartyTasksApiService?
 
     @Published public private(set) var uiState = ChatUiState()
@@ -51,8 +52,9 @@ public final class ChatViewModel: ObservableObject {
     // `ensureSessionTimerStarted`; a conversation with no entry here just falls back to the old
     // client-side guess (e.g. the request hasn't answered yet, or this bot doesn't support it).
     private var serverSessionCreatedAtByConversation: [String: Date] = [:]
-    // Periodic "how's it going" feedback prompt - fires every random 3-5 live bot replies, scoped
-    // per conversation. Was originally a single pair of counters shared across every conversation
+    // Periodic "how's it going" feedback prompt - fires every random N live bot replies (N drawn
+    // from `periodicFeedbackPromptInterval`), scoped per conversation. Was originally a single
+    // pair of counters shared across every conversation
     // in the ViewModel's lifetime, which meant switching to (or starting) a different conversation
     // silently carried over progress from whatever you were doing before - e.g. 2 replies in room
     // A plus 1 in a brand new room B would fire on room B's very first reply.
@@ -66,6 +68,7 @@ public final class ChatViewModel: ObservableObject {
         chatHistoryRepository: ChatHistoryRepository? = nil,
         suppressInitialBotMessages: Bool = false,
         showPeriodicFeedbackPrompt: Bool = true,
+        periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12,
         maintenanceApi: ThirdPartyTasksApiService? = nil
     ) {
         self.repository = repository
@@ -74,6 +77,7 @@ public final class ChatViewModel: ObservableObject {
         self.chatHistoryRepository = chatHistoryRepository
         self.suppressInitialBotMessages = suppressInitialBotMessages
         self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
+        self.periodicFeedbackPromptInterval = periodicFeedbackPromptInterval
         self.maintenanceApi = maintenanceApi
 
         conversationsObservationTask = Task { [weak self] in
@@ -983,7 +987,7 @@ public final class ChatViewModel: ObservableObject {
         guard showPeriodicFeedbackPrompt else { return }
         guard let conversationId = activeConversationId else { return }
         if nextFeedbackPromptThresholdByConversation[conversationId] == nil {
-            nextFeedbackPromptThresholdByConversation[conversationId] = Int.random(in: 3...5)
+            nextFeedbackPromptThresholdByConversation[conversationId] = Int.random(in: periodicFeedbackPromptInterval)
         }
         let threshold = nextFeedbackPromptThresholdByConversation[conversationId]!
         let count = (botRepliesSinceLastFeedbackPromptByConversation[conversationId] ?? 0) + 1
@@ -991,7 +995,7 @@ public final class ChatViewModel: ObservableObject {
         NSLog("[Chat360] Feedback-prompt count: %d/%d (conversation=%@)", count, threshold, conversationId)
         guard count >= threshold else { return }
         botRepliesSinceLastFeedbackPromptByConversation[conversationId] = 0
-        let nextThreshold = Int.random(in: 3...5)
+        let nextThreshold = Int.random(in: periodicFeedbackPromptInterval)
         nextFeedbackPromptThresholdByConversation[conversationId] = nextThreshold
         NSLog("[Chat360] Showing periodic feedback prompt - next threshold=%d (conversation=%@)", nextThreshold, conversationId)
         update { $0.showPeriodicFeedbackPrompt = true }
@@ -1515,8 +1519,24 @@ public final class ChatViewModel: ObservableObject {
     private func sendAfterResumingRoom(_ body: @escaping (ChatViewModel) -> Void) {
         Task { [weak self] in
             guard let self else { return }
-            await self.switchToActiveRoomIfResumable()
+            await self.resumeActiveRoomWithTimeout()
             body(self)
+        }
+    }
+
+    // Bounds switchToActiveRoomIfResumable() by a hard timeout so a slow/stuck resume (e.g. the
+    // getSession round trip taking unusually long right after reopening an old room) can never
+    // leave a tapped quick reply/nudge/prompt stuck behind an indefinite loader with the reply
+    // never actually sent or appended as a bubble. `body` still runs afterward either way - same
+    // tolerance sendFreeText already has for sending while not (yet) reconnected, where
+    // AckTracker retries the send instead of the caller blocking on connectivity.
+    private static let resumeRoomTimeoutNs: UInt64 = 10_000_000_000
+    private func resumeActiveRoomWithTimeout() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.switchToActiveRoomIfResumable() }
+            group.addTask { try? await Task.sleep(nanoseconds: Self.resumeRoomTimeoutNs) }
+            await group.next()
+            group.cancelAll()
         }
     }
 
