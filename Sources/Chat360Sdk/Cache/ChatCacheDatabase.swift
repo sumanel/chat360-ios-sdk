@@ -237,7 +237,9 @@ public final class ChatCacheDao {
         await withCheckedContinuation { continuation in
             queue.async {
                 let rows = self.query(
-                    "SELECT * FROM chat_conversations WHERE botId = ? AND roomId = ? LIMIT 1",
+                    // A room can briefly have both a local row and a synced `agent-room:` one (see
+                    // replaceAgentRoomConversations) - the local one owns the cached messages, so it wins.
+                    "SELECT * FROM chat_conversations WHERE botId = ? AND roomId = ? ORDER BY (id LIKE 'agent-room:%') ASC LIMIT 1",
                     params: [botId, roomId]
                 )
                 continuation.resume(returning: rows.first.map { self.conversation(from: $0) })
@@ -339,7 +341,7 @@ public final class ChatCacheDao {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {
                 self.exec(
-                    "UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = ? WHERE id = ?",
+                    "UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = MAX(updatedAt, ?) WHERE id = ?",
                     params: [roomId, title, updatedAt, conversationId]
                 )
                 self.notifyConversationsChanged(botId: botId)
@@ -356,12 +358,28 @@ public final class ChatCacheDao {
                     self.exec("DELETE FROM chat_conversations WHERE id = ?", params: [id])
                 }
                 for conversation in conversations {
+                    // Never a second row for a room this device already has one for: a synced
+                    // `agent-room:` row next to the local one used to show the same chat twice (the
+                    // second as a placeholder with no messages), let a room lookup land on the
+                    // empty twin - so the real chat's history seemed to vanish - and, stamped with
+                    // "now", reshuffle the list. A known room only has its recency raised; a stale
+                    // twin left over from before is deleted.
+                    if let roomId = conversation.roomId, !roomId.isEmpty,
+                       let knownId = self.query(
+                           "SELECT id FROM chat_conversations WHERE botId = ? AND roomId = ? AND id != ? ORDER BY (id LIKE 'agent-room:%') ASC LIMIT 1",
+                           params: [botId, roomId, conversation.id]
+                       ).first?["id"] as? String {
+                        self.exec("UPDATE chat_conversations SET updatedAt = MAX(updatedAt, ?) WHERE id = ?", params: [conversation.updatedAt, knownId])
+                        self.exec("DELETE FROM chat_conversations WHERE id = ?", params: [conversation.id])
+                        self.exec("DELETE FROM chat_messages WHERE conversationId = ?", params: [conversation.id])
+                        continue
+                    }
                     self.exec(
                         "INSERT OR IGNORE INTO chat_conversations (id, botId, roomId, title, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
                         params: [conversation.id, conversation.botId, conversation.roomId, conversation.title, conversation.createdAt, conversation.updatedAt]
                     )
                     self.exec(
-                        "UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = ? WHERE id = ?",
+                        "UPDATE chat_conversations SET roomId = ?, title = ?, updatedAt = MAX(updatedAt, ?) WHERE id = ?",
                         params: [conversation.roomId ?? "", conversation.title, conversation.updatedAt, conversation.id]
                     )
                 }

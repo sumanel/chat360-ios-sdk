@@ -37,4 +37,16 @@ final class ReconnectManagerTests: XCTestCase {
         manager.scheduleReconnect(suppress: true)
         XCTAssertTrue(scheduler.scheduled.isEmpty)
     }
+
+    func testSchedulingAgainReplacesThePendingReconnectInsteadOfStackingASecondOne() {
+        let scheduler = FakeScheduler()
+        var reconnectCount = 0
+        let manager = ReconnectManager(scheduler: scheduler, baseDelayMs: 5_000, reconnect: { reconnectCount += 1 })
+
+        manager.scheduleReconnect(suppress: false)
+        manager.scheduleReconnect(suppress: false)
+        scheduler.fireAll()
+
+        XCTAssertEqual(reconnectCount, 1, "two timers fired two reconnects")
+    }
 }

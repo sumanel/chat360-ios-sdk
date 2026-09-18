@@ -27,27 +27,36 @@ public final class ChatRepository {
     private let dealerId: String?
     private let empId: String?
 
+    // Guards the check-then-act sequences over the socket/session state above (`Locked` only makes
+    // each single access atomic): ensureReconnecting's "is a reconnect already underway? -> start
+    // one", the close-then-reopen in reconnectNow/teardown, the reset-and-connect in openSocket,
+    // and everything a socket callback does. Recursive because those sequences call each other, and
+    // `wsClient.close()` reports back synchronously into `handleClosed`. Never held across an
+    // `await`, and lock order is always stateLock -> a `Locked` property or the socket client's own
+    // lock (never the reverse), so it can't deadlock.
+    private let stateLock = NSRecursiveLock()
+
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
     private let scheduler = DispatchQueueScheduler(queue: DispatchQueue(label: "com.chat360.sdk.repository"))
 
-    private var ownerId: String?
-    private var roomId: String?
-    private var sessionId: String?
-    private var currentTargetId: String?
-    private var lastBotNode: BotNode?
-    private var pendingInitJumpTargetId: String?
-    private var suppressReconnect = false
-    private var manuallyDisconnected = false
-    private var isSocketOpen = false
-    private var reconnectPending = false
-    private var lastDispatchedNode: BotNode?
-    private var lastDispatchedAt: Int64 = 0
+    @Locked private var ownerId: String?
+    @Locked private var roomId: String?
+    @Locked private var sessionId: String?
+    @Locked private var currentTargetId: String?
+    @Locked private var lastBotNode: BotNode?
+    @Locked private var pendingInitJumpTargetId: String?
+    @Locked private var suppressReconnect = false
+    @Locked private var manuallyDisconnected = false
+    @Locked private var isSocketOpen = false
+    @Locked private var reconnectPending = false
+    @Locked private var lastDispatchedNode: BotNode?
+    @Locked private var lastDispatchedAt: Int64 = 0
     // Bumped on every establishSession() call so a slower, superseded attempt (e.g. the app's
     // own cold-start connect racing a switchToRoom triggered by an early tap) can tell it's
     // stale after its network call returns, instead of overwriting newer state or opening a
     // second, wrong socket - same idea as Chat360WebSocketClient's own generation guard.
-    private var sessionGeneration: Int = 0
+    @Locked private var sessionGeneration: Int = 0
     // Serializes connect()/startNewSession()/switchToRoom() end to end (teardown through
     // openSocket()) - without this, two of them can interleave at a suspension point (e.g. both
     // awaiting apiService.getSession()) and race on ownerId/roomId/sessionId/etc below, so
@@ -59,69 +68,62 @@ public final class ChatRepository {
     // yet - checked by awaitPendingReplyBeforeTeardown so switching rooms/starting a new chat
     // never closes the socket out from under a reply still being generated server-side for the
     // room being left.
-    private var hasPendingReply = false
+    @Locked private var hasPendingReply = false
     // True once this room has ever had a session_time worth trusting server-side - either it was
     // resumed with existing history (set by establishSession) or its first live bot reply has
     // already come in on some earlier connection (set by the botMessage branch below). Reset only
     // when the room itself changes (see teardownForResession) - a reconnect of the same still-live
     // room keeps it set, so every reconnect can immediately ask and trust the answer.
-    private var sessionEverStarted = false
+    @Locked private var sessionEverStarted = false
     // Set every time a new socket connection opens for a room with no trustworthy session_time
     // yet (!sessionEverStarted) - cleared the moment a bot reply actually arrives live on that
     // connection, at which point requestSessionTime() is sent for the first time. A genuinely new
     // room has no session_time to ask about until the user sends something and the bot replies.
-    private var awaitingFirstBotReplySessionTime = false
+    @Locked private var awaitingFirstBotReplySessionTime = false
     // Set right before awaitingFirstBotReplySessionTime fires its requestSessionTime() call - the
     // very first live bot reply this room has ever had. Consumed on the matching session-time
     // reply to substitute "now" for the server's created_at, so a brand new conversation's timer
     // always starts counting down from a clean 59:59 rather than whatever the server's
     // created_at/round-trip latency would otherwise show.
-    private var overrideNextSessionTimeWithNow = false
+    @Locked private var overrideNextSessionTimeWithNow = false
     // Set right before openSocket's onOpen asks immediately because sessionEverStarted is already
     // true (a resumed room, or a reconnect of a room already past its first reply). Consumed on
     // the matching session-time reply: a created_at within the last freshlyCreatedSessionWindow
     // means the backend just minted a brand new one for this very query (an expired/stale session
     // gets silently renewed, not returned as its true old start time) - not trustworthy yet, so
     // the reply is held back instead (see pendingSessionResetOnNextBotMessage).
-    private var awaitingImmediateSessionTimeCheck = false
+    @Locked private var awaitingImmediateSessionTimeCheck = false
     // Set right before each requestSessionTime() call, cleared the moment any session-time frame
     // arrives. Lets handleSessionTimeReceived tell a reply to our own request apart from a
     // session-time frame the backend pushes unprompted.
-    private var awaitingSessionTimeResponse = false
+    @Locked private var awaitingSessionTimeResponse = false
     // Set when a session-time reply shouldn't be shown to the UI the moment it arrives - either an
     // unprompted push (the backend rolls the current session over to a fresh one once its hour
     // window lapses) or a resumed session whose real elapsed time was already found to be
     // synthetic. Either way the reset should only become visible once the bot's next reply
     // actually comes in, same as overrideNextSessionTimeWithNow's first message.
-    private var pendingSessionResetOnNextBotMessage = false
+    @Locked private var pendingSessionResetOnNextBotMessage = false
 
-    private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
-    private var onConnected: () -> Void = {}
-    private var onError: (Error) -> Void = { _ in }
-    private var onSlowConnectionChanged: (Bool) -> Void = { _ in }
-    private var onMessageTimedOut: (String) -> Void = { _ in }
-    private var onOpenUrl: (String) -> Void = { _ in }
-    private var onFeedbackRequested: () -> Void = {}
-    private var onRawIncoming: (String) -> Void = { _ in }
-    private var onAppearanceLoaded: (BotAppearanceDetails?, String?) -> Void = { _, _ in }
-    private var onSessionResumed: (Bool, AssignedAgent?) -> Void = { _, _ in }
-    private var onBotSettingsLoaded: ([String: String], [SessionLanguage]) -> Void = { _, _ in }
-    private var onSessionTimeReceived: (Date) -> Void = { _ in }
-    private var onTerminalClose: (String) -> Void = { _ in }
-    private var shouldAskFeedback = false
+    @Locked private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
+    @Locked private var onConnected: () -> Void = {}
+    @Locked private var onError: (Error) -> Void = { _ in }
+    @Locked private var onSlowConnectionChanged: (Bool) -> Void = { _ in }
+    @Locked private var onMessageTimedOut: (String) -> Void = { _ in }
+    @Locked private var onOpenUrl: (String) -> Void = { _ in }
+    @Locked private var onFeedbackRequested: () -> Void = {}
+    @Locked private var onRawIncoming: (String) -> Void = { _ in }
+    @Locked private var onAppearanceLoaded: (BotAppearanceDetails?, String?) -> Void = { _, _ in }
+    @Locked private var onSessionResumed: (Bool, AssignedAgent?) -> Void = { _, _ in }
+    @Locked private var onBotSettingsLoaded: ([String: String], [SessionLanguage]) -> Void = { _, _ in }
+    @Locked private var onSessionTimeReceived: (Date) -> Void = { _ in }
+    @Locked private var onTerminalClose: (String) -> Void = { _ in }
+    @Locked private var shouldAskFeedback = false
 
-    private lazy var heartbeat = HeartbeatManager(
-        scheduler: scheduler,
-        sendPing: { [weak self] in
-            guard let self else { return }
-            if let data = try? self.encoder.encode(PingMessage(timestamp_int: self.nowMs())), let text = String(data: data, encoding: .utf8) {
-                self.wsClient.send(text)
-            }
-        },
-        onSlowConnectionChanged: { [weak self] slow in self?.onSlowConnectionChanged(slow) }
-    )
-    private lazy var reconnectManager = ReconnectManager(scheduler: scheduler, reconnect: { [weak self] in self?.openSocket() })
-    private lazy var ackTracker = AckTracker(scheduler: scheduler, onTimeout: { [weak self] chatMsgId in self?.onMessageTimedOut(chatMsgId) })
+    // Built once in `init` rather than `lazy`: a lazy property's first access is not thread-safe,
+    // and these are first touched from whichever thread gets there first.
+    private var heartbeat: HeartbeatManager!
+    private var reconnectManager: ReconnectManager!
+    private var ackTracker: AckTracker!
 
     public init(
         baseUrl: String,
@@ -143,6 +145,18 @@ public final class ChatRepository {
         self.meta = meta
         self.dealerId = dealerId
         self.empId = empId
+        heartbeat = HeartbeatManager(
+            scheduler: scheduler,
+            sendPing: { [weak self] in
+                guard let self else { return }
+                if let data = try? self.encoder.encode(PingMessage(timestamp_int: self.nowMs())), let text = String(data: data, encoding: .utf8) {
+                    self.wsClient.send(text)
+                }
+            },
+            onSlowConnectionChanged: { [weak self] slow in self?.onSlowConnectionChanged(slow) }
+        )
+        reconnectManager = ReconnectManager(scheduler: scheduler, reconnect: { [weak self] in self?.openSocket() })
+        ackTracker = AckTracker(scheduler: scheduler, onTimeout: { [weak self] chatMsgId in self?.onMessageTimedOut(chatMsgId) })
     }
 
     public func connect(
@@ -159,7 +173,10 @@ public final class ChatRepository {
         onFeedbackRequested: @escaping () -> Void = {},
         onBotSettingsLoaded: @escaping ([String: String], [SessionLanguage]) -> Void = { _, _ in },
         onSessionTimeReceived: @escaping (Date) -> Void = { _ in },
-        onTerminalClose: @escaping (String) -> Void = { _ in }
+        onTerminalClose: @escaping (String) -> Void = { _ in },
+        // An untouched room to go back to instead of allocating a new one (see BlankRoomRegistry);
+        // ignored when this device has no saved session for it.
+        resumeBlankRoomId: String? = nil
     ) async {
         self.onEvent = onEvent
         self.onConnected = onConnected
@@ -179,8 +196,9 @@ public final class ChatRepository {
         // Every open of the bot starts a fresh conversation rather than silently resuming
         // whatever room was last active - the previous conversation is still reachable from
         // the history drawer, this just controls what greets the user on open.
+        let blankSession = resumeBlankRoomId.flatMap { sessionStore?.loadForRoom(botId: botId, roomId: $0) }
         await sessionMutex.lock()
-        await establishSession(onConversationStarted: onConversationStarted)
+        await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: blankSession?.roomId, resumeSessionToken: blankSession?.sessionToken)
         await sessionMutex.unlock()
     }
 
@@ -224,6 +242,8 @@ public final class ChatRepository {
     }
 
     private func teardownForResession() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         manuallyDisconnected = true
         heartbeat.stop()
         reconnectManager.cancel()
@@ -246,9 +266,14 @@ public final class ChatRepository {
         pendingSessionResetOnNextBotMessage = false
     }
 
+    private func withState<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
+    }
+
     private func establishSession(onConversationStarted: @escaping (String) async -> Bool, resumeRoomId: String? = nil, resumeSessionToken: String? = nil) async {
-        sessionGeneration += 1
-        let myGeneration = sessionGeneration
+        let myGeneration = _sessionGeneration.mutate { $0 += 1; return $0 }
         do {
             let host = hostComponent(of: baseUrl)
             let session = try await apiService.getSession(
@@ -265,13 +290,17 @@ public final class ChatRepository {
                 NSLog("[Chat360WS] Discarding superseded session establish (room=%@)", session.room_id)
                 return
             }
-            ownerId = session.owner_id
-            roomId = session.room_id
-            // Falls back to room_id when the bot's own session init doesn't return a distinct
-            // session_id (seen in practice - it's an optional field) - confirmed acceptable
-            // rather than blocking the feedback API on a value that isn't always present.
-            sessionId = session.session_id ?? session.room_id
-            currentTargetId = session.targetId
+            // Assigned together: openSocket() reads owner and room as a pair, and a reconnect timer
+            // firing between two separate writes would connect to a mismatched owner/room.
+            withState {
+                ownerId = session.owner_id
+                roomId = session.room_id
+                // Falls back to room_id when the bot's own session init doesn't return a distinct
+                // session_id (seen in practice - it's an optional field) - confirmed acceptable
+                // rather than blocking the feedback API on a value that isn't always present.
+                sessionId = session.session_id ?? session.room_id
+                currentTargetId = session.targetId
+            }
             NSLog("[Chat360WS] Session established: owner=%@ room=%@", session.owner_id, session.room_id)
             sessionStore?.save(botId: botId, session: PersistedSession(roomId: session.room_id, sessionToken: session.session_token, ownerId: session.owner_id))
             shouldAskFeedback = session.configs?.should_ask_feedback ?? false
@@ -299,9 +328,11 @@ public final class ChatRepository {
             onBotSettingsLoaded(shortcuts, languages)
 
             await fetchAppearance(host: host)
+            guard myGeneration == sessionGeneration else { return }
             let hadHistory = await onConversationStarted(session.room_id)
+            guard myGeneration == sessionGeneration else { return }
             if hadHistory {
-                pendingInitJumpTargetId = nil
+                withState { pendingInitJumpTargetId = nil }
                 // The replay above only updates the ViewModel's local cache/UI, never this
                 // class's own currentTargetId/lastBotNode (those stay whatever teardownForResession
                 // just reset them to) - and session.targetId can't be trusted to fill that gap on
@@ -311,17 +342,21 @@ public final class ChatRepository {
                 // and the flow can't route it. Folding through the room's recent history the same
                 // way a live bot message would (see handleIncoming) recovers the last real
                 // targetId before the user can send anything.
-                await seedTargetContextFromHistory(roomId: session.room_id)
-            } else if await loadConversationStarter() {
-                pendingInitJumpTargetId = nil
+                await seedTargetContextFromHistory(roomId: session.room_id, generation: myGeneration)
+            } else if await loadConversationStarter(generation: myGeneration) {
+                withState { pendingInitJumpTargetId = nil }
             }
             // A resumed room's session already exists server-side - openSocket's onOpen can ask
             // for its session_time right away instead of waiting on a bot reply that reopening a
             // past conversation never provokes on its own. A genuinely new room has nothing to
             // ask about yet, so this stays false until its own first live reply sets it.
-            sessionEverStarted = hadHistory
-            guard myGeneration == sessionGeneration else { return }
-            openSocket()
+            withState {
+                sessionEverStarted = hadHistory
+                // Checked and acted on under one hold, so a newer establishSession can't slip in
+                // between "still current" and opening the socket.
+                guard myGeneration == sessionGeneration else { return }
+                openSocket()
+            }
         } catch {
             guard myGeneration == sessionGeneration else { return }
             onError(error)
@@ -338,17 +373,22 @@ public final class ChatRepository {
         return try await apiService.getHistory(roomId: roomId, taskType: "PREVIOUS", taskValue: cursor)
     }
 
-    private func loadConversationStarter() async -> Bool {
+    private func loadConversationStarter(generation: Int) async -> Bool {
         do {
             let items = try await apiService.getFirstMessages(botId: botId)
+            // Awaited above: this session may have been superseded or disconnected meanwhile, and
+            // its starter bubbles/target context must not land in whatever room is current now.
+            guard generation == sessionGeneration else { return false }
             for item in items {
                 if let data = try? encoder.encode(item), let text = String(data: data, encoding: .utf8) {
                     onRawIncoming(text)
                 }
                 let event = item.toIncomingEvent()
                 if case .botMessage(let node) = event, !isErrorNode(node) {
-                    lastBotNode = node
-                    currentTargetId = node.targetId ?? currentTargetId
+                    withState {
+                        lastBotNode = node
+                        currentTargetId = node.targetId ?? currentTargetId
+                    }
                 }
                 onEvent(event)
             }
@@ -363,13 +403,18 @@ public final class ChatRepository {
     /// wins, and error nodes (see `isErrorNode`) never overwrite a real targetId already found.
     /// Best-effort like `loadConversationStarter`/`fetchAppearance`: a failed fetch just leaves
     /// whatever session-init already provided, never blocks connecting.
-    private func seedTargetContextFromHistory(roomId: String) async {
+    private func seedTargetContextFromHistory(roomId: String, generation: Int) async {
         guard historyEnabled else { return }
         guard let response = try? await apiService.getHistory(roomId: roomId) else { return }
-        for item in response.history {
-            if case .botMessage(let node) = item.toIncomingEvent(), !isErrorNode(node) {
-                lastBotNode = node
-                currentTargetId = node.targetId ?? currentTargetId
+        // Applied atomically and only if this session is still the current one: it was fetched for
+        // `roomId`, and writing it after a switch would give the new room the old room's position.
+        withState {
+            guard generation == sessionGeneration else { return }
+            for item in response.history {
+                if case .botMessage(let node) = item.toIncomingEvent(), !isErrorNode(node) {
+                    lastBotNode = node
+                    currentTargetId = node.targetId ?? currentTargetId
+                }
             }
         }
     }
@@ -392,6 +437,8 @@ public final class ChatRepository {
     }
 
     public func reconnectNow() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard ownerId != nil, roomId != nil else { return }
         NSLog("[Chat360WS] Manual reconnect requested (room=%@)", roomId ?? "nil")
         manuallyDisconnected = true
@@ -401,6 +448,8 @@ public final class ChatRepository {
     }
 
     private func openSocket() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard let oId = ownerId, let rId = roomId else { return }
         manuallyDisconnected = false
         // A prior socket's own requestSessionTime() may still be in flight when that socket gets
@@ -422,6 +471,8 @@ public final class ChatRepository {
             wsUrl: wsUrl,
             onOpen: { [weak self] in
                 guard let self else { return }
+                self.stateLock.lock()
+                defer { self.stateLock.unlock() }
                 NSLog("[Chat360WS] Connected (owner=%@ room=%@)", oId, rId)
                 self.isSocketOpen = true
                 self.reconnectPending = false
@@ -457,6 +508,8 @@ public final class ChatRepository {
     }
 
     private func handleClosed(code: Int?, reason: String?) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         isSocketOpen = false
         reconnectPending = false
         heartbeat.stop()
@@ -469,6 +522,8 @@ public final class ChatRepository {
     }
 
     private func ensureReconnecting() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         if isSocketOpen || reconnectPending { return }
         guard ownerId != nil, roomId != nil else { return }
         reconnectPending = true
@@ -480,6 +535,8 @@ public final class ChatRepository {
     }
 
     private func handleIncoming(_ raw: String) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         // The response shape for this one isn't part of the normal message protocol
         // (`RawSocketEnvelope` only decodes the fields it knows about, silently dropping anything
         // else), so it's parsed separately here rather than added as a proper `IncomingSocketEvent`.
@@ -960,7 +1017,13 @@ public final class ChatRepository {
     }
 
     public func disconnect() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         NSLog("[Chat360WS] Disconnecting (manual, final) - room=%@", roomId ?? "nil")
+        // An establishSession still awaiting the network would otherwise finish later and
+        // openSocket() a live socket for a repository nobody is listening to any more (openSocket
+        // even clears `manuallyDisconnected`). Bumping the generation makes it discard itself.
+        _sessionGeneration.mutate { $0 += 1 }
         manuallyDisconnected = true
         heartbeat.stop()
         reconnectManager.cancel()

@@ -27,6 +27,9 @@ public final class ReconnectManager {
         let delayMs = baseDelayMs * Int64(intervalCount)
         intervalCount *= 2
         NSLog("[Chat360WS] Reconnect scheduled in %dms (nextBackoffMultiplier=%d)", delayMs, intervalCount)
+        // Replaces, never stacks: two live timers both fired a reconnect, each opening a socket
+        // the other never knew about.
+        timer?.cancel()
         timer = scheduler.schedule(afterMs: delayMs) { [weak self] in
             NSLog("[Chat360WS] Reconnecting now")
             self?.reconnect()

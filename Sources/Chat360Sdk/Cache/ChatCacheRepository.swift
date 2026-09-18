@@ -72,16 +72,51 @@ public final class ChatCacheRepository {
             // the user actually sending something should keep a room in history.
             guard await dao.hasUserMessage(botId: botId, roomId: room.roomId) else { continue }
             let title = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+            // The server's own timestamps drive the sidebar order - the response position is only
+            // a fallback for a room that carries none, so order never depends on API ordering.
+            let positional = fetchedAt - Int64(index)
+            let created = Self.parseServerTimestampMs(room.createdAt)
+            let updated = Self.parseServerTimestampMs(room.updatedAt) ?? created
             result.append(CachedConversationEntity(
                 id: "agent-room:\(room.roomId)",
                 botId: botId,
                 roomId: room.roomId,
                 title: title.isEmpty ? "Conversation" : title,
-                createdAt: fetchedAt - Int64(index),
-                updatedAt: fetchedAt - Int64(index)
+                createdAt: created ?? positional,
+                updatedAt: updated ?? positional
             ))
         }
-        return result
+        // Newest first regardless of the order the server returned the rooms in.
+        return result.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Parses a `rooms/list` timestamp - epoch seconds/millis or ISO-8601 (with or without
+    /// fractional seconds / zone) - to epoch millis; nil when absent or unrecognised.
+    static func parseServerTimestampMs(_ raw: String?) -> Int64? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        if let number = Double(value) {
+            // Below ~1e11 it can only be seconds (that's year 5138 in millis).
+            return number < 1e11 ? Int64(number * 1000) : Int64(number)
+        }
+        // Trim fractional seconds to millis and make the zone `+HHmm` so one pattern set fits all.
+        var normalized = value.replacingOccurrences(of: "(\\.\\d{3})\\d+", with: "$1", options: .regularExpression)
+        normalized = normalized.replacingOccurrences(of: "Z$", with: "+0000", options: .regularExpression)
+        normalized = normalized.replacingOccurrences(of: "([+-]\\d{2}):(\\d{2})$", with: "$1$2", options: .regularExpression)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        // Zone-less values are treated as UTC, the usual server default.
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let patterns = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd HH:mm:ss.SSSZ", "yyyy-MM-dd HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss",
+        ]
+        for pattern in patterns {
+            formatter.dateFormat = pattern
+            if let date = formatter.date(from: normalized) { return Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+        }
+        return nil
     }
 
     public func replaceRawHistory(conversationId: String, history: [RawSocketEnvelope]) async {

@@ -5,6 +5,19 @@ struct ParsedHTMLTable: Equatable {
     let rows: [[String]]
 }
 
+/// A message split around its first table. `beforeHTML` / `afterHTML` are the surrounding markup
+/// left as HTML (a wrapping `<p>`, a closing paragraph, bold, links, lists...) so the caller can
+/// render it through `RichTextParser` and keep its formatting; `before` / `after` are the same text
+/// with every tag stripped, for callers that only want the words.
+struct HTMLTableSplit: Equatable {
+    let beforeHTML: String
+    let table: ParsedHTMLTable
+    let afterHTML: String
+
+    var before: String { beforeHTML.strippedHtml() }
+    var after: String { afterHTML.strippedHtml() }
+}
+
 // `RichTextParser` treats any tag it doesn't recognize (including <table>/<tr>/<td>) as an
 // invisible wrapper - it still emits the cell text, just with no row/column separation at all,
 // which is why a bot response containing a table currently renders as one jumbled run-on
@@ -34,19 +47,19 @@ enum HTMLTableExtractor {
 
     // Only the first <table> in the text is handled - a bot response with more than one is an
     // edge case not seen in practice, and everything after the first table's closing tag is
-    // still shown, just as plain trailing text.
-    static func extractFirstTable(from text: String) -> (before: String, table: ParsedHTMLTable, after: String)? {
+    // still shown, just as trailing text.
+    static func extractFirstTable(from text: String) -> HTMLTableSplit? {
         let nsText = text as NSString
         guard let match = tableRegex.firstMatch(in: text, range: NSRange(location: 0, length: nsText.length)) else { return nil }
         let fullRange = match.range(at: 0)
         let innerHTML = nsText.substring(with: match.range(at: 1))
-        let before = nsText.substring(to: fullRange.location).strippedHtml()
-        let after = nsText.substring(from: fullRange.location + fullRange.length).strippedHtml()
+        let beforeHTML = nsText.substring(to: fullRange.location).trimmingCharacters(in: .whitespacesAndNewlines)
+        let afterHTML = nsText.substring(from: fullRange.location + fullRange.length).trimmingCharacters(in: .whitespacesAndNewlines)
 
         let rawRows = parseRawRows(from: innerHTML)
         let grid = resolveSpans(rawRows)
         guard let headerRow = grid.first else { return nil }
-        return (before, ParsedHTMLTable(headers: headerRow, rows: Array(grid.dropFirst())), after)
+        return HTMLTableSplit(beforeHTML: beforeHTML, table: ParsedHTMLTable(headers: headerRow, rows: Array(grid.dropFirst())), afterHTML: afterHTML)
     }
 
     private static func parseRawRows(from innerHTML: String) -> [[RawCell]] {

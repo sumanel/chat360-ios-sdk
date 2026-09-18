@@ -8,6 +8,18 @@ extension String {
 }
 
 @available(iOS 15.0, *)
+extension AttributedString {
+    /// Drops newlines from both ends. `RichTextParser` turns a closing `</p>` into a line break, so a
+    /// paragraph that ends the markup would otherwise render with an empty line under it.
+    func trimmingEdgeNewlines() -> AttributedString {
+        var result = self
+        while let first = result.characters.first, first.isNewline { result.characters.removeFirst() }
+        while let last = result.characters.last, last.isNewline { result.characters.removeLast() }
+        return result
+    }
+}
+
+@available(iOS 15.0, *)
 extension RichText {
     fileprivate func toAttributedString(linkColor: Color) -> AttributedString {
         var result = AttributedString()

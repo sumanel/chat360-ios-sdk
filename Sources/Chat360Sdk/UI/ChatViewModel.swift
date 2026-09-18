@@ -18,10 +18,36 @@ public final class ChatViewModel: ObservableObject {
     @Published public private(set) var languages: [SessionLanguage] = []
 
     private var activeConversationId: String?
+    // Bumped by every new room-switch/history-load attempt (opening a conversation, connecting,
+    // starting or re-showing a new chat, snapping back to the connected room to send). A load
+    // captures the value it started under and re-checks it after every `await` (a cache read, a
+    // history fetch) before touching `uiState` or the shared vars below: if a newer attempt began
+    // meanwhile it bails instead of clobbering what that one already wrote. The old
+    // `activeConversationId == conversationId` check isn't enough - an A -> B -> A switch makes it
+    // true again for a stale first visit to A, and two overlapping replays each cleared the
+    // transcript then both appended, mixing two conversations into one. Everything here runs on the
+    // main actor, so the suspension points are the only place a load can be overtaken.
+    private var loadGeneration = 0
+    private func beginLoad() -> Int {
+        loadGeneration += 1
+        return loadGeneration
+    }
+    private func isCurrentLoad(_ generation: Int) -> Bool { generation == loadGeneration }
     private var connectedConversationId: String?
     private var connectedRoomId: String?
     private var conversationPersisted = false
     private var pendingRawEnvelopes: [String] = []
+    // A room the server already created for this user that has never received a user message
+    // (see `conversationPersisted`) and that the socket has since moved away from - stashed so
+    // "New chat" can go back to it instead of asking the server for yet another room, which used
+    // to leave one empty ghost room behind per tap. `envelopes` is its buffered opener
+    // (`pendingRawEnvelopes` at the time it was left). Cleared once the user sends anything in it.
+    private struct BlankRoom {
+        let conversationId: String
+        let roomId: String
+        let envelopes: [String]
+    }
+    private var blankRoom: BlankRoom?
     private var restoringFromCache = false
     // The timestamp of the earliest real user message in whatever batch is about to be replayed/
     // refreshed/backfilled, set once up front - nil if there isn't one. See the comment at its
@@ -107,6 +133,7 @@ public final class ChatViewModel: ObservableObject {
                 self.handleTerminalClose(message: maintenanceMessage)
                 return
             }
+            let generation = self.beginLoad()
             await self.repository.connect(
                 onEvent: { [weak self] event in
                     Task { @MainActor [weak self] in self?.handleEvent(event) }
@@ -136,7 +163,7 @@ public final class ChatViewModel: ObservableObject {
                 },
                 onConversationStarted: { [weak self] roomId in
                     guard let self else { return false }
-                    return await self.activateConversation(roomId: roomId)
+                    return await self.activateConversation(roomId: roomId, generation: generation)
                 },
                 onRawIncoming: { [weak self] raw in
                     Task { @MainActor [weak self] in self?.cacheIncomingEnvelope(raw) }
@@ -161,7 +188,8 @@ public final class ChatViewModel: ObservableObject {
                 },
                 onTerminalClose: { [weak self] message in
                     Task { @MainActor [weak self] in self?.handleTerminalClose(message: message) }
-                }
+                },
+                resumeBlankRoomId: BlankRoomRegistry.roomId(botId: botId)
             )
         }
     }
@@ -170,7 +198,17 @@ public final class ChatViewModel: ObservableObject {
         transform(&uiState)
     }
 
+    // Unsent input text per conversation id - see `setActiveConversationId`.
+    private var drafts: [String: String] = [:]
+
     private func setActiveConversationId(_ id: String?) {
+        let previous = activeConversationId
+        // Unsent text belongs to the room it was typed in: parked under that room when leaving it
+        // and restored on return, instead of the one shared input box carrying it into whichever
+        // room is opened next. The very first activation (no previous room yet) is left alone so
+        // text typed while the first connection was still coming up isn't wiped.
+        let switching = previous != nil && previous != id
+        if switching, let previous { drafts[previous] = uiState.inputText }
         activeConversationId = id
         // Restores whatever's already running for this specific conversation (if anything) -
         // switching to a conversation with time left resumes that countdown rather than hiding
@@ -178,7 +216,12 @@ public final class ChatViewModel: ObservableObject {
         // message is actually sent in it. If nothing's running in memory yet (e.g. right after a
         // cold launch), `refreshSessionTimerFromPersisted` below checks disk for the same thing.
         let expiresAt = id.flatMap { sessionTimerExpiresAtByConversation[$0] }
-        update { $0.activeConversationId = id; $0.sessionTimerExpiresAt = expiresAt }
+        let restoredDraft = switching ? (id.flatMap { drafts[$0] } ?? "") : nil
+        update {
+            $0.activeConversationId = id
+            $0.sessionTimerExpiresAt = expiresAt
+            if let restoredDraft { $0.inputText = restoredDraft }
+        }
         Task { [weak self] in
             await self?.refreshPendingFeedback(conversationId: id)
             await self?.refreshMessageReactions(conversationId: id)
@@ -505,9 +548,10 @@ public final class ChatViewModel: ObservableObject {
         if message.fromUser, !restoringFromCache, let target, activeConversationId != target {
             setActiveConversationId(target)
             pendingSnapBackChatMsgId = message.chatMsgId
+            let generation = beginLoad()
             Task { [weak self] in
                 guard let self else { return }
-                await self.restoreConversation(conversationId: target, roomId: self.connectedRoomId)
+                await self.restoreConversation(conversationId: target, roomId: self.connectedRoomId, generation: generation)
                 self.pendingSnapBackChatMsgId = nil
                 self.appendMessageNow(message, cacheUserMessage: shouldCache)
             }
@@ -860,7 +904,7 @@ public final class ChatViewModel: ObservableObject {
             // "switched away" from this room. If we still owe this conversation a reply, go check
             // the server for it directly rather than assuming nothing happened while we were away.
             guard isActiveConversationConnected, let conversationId, let roomId else { return }
-            await self.backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
+            await self.backfillIfReplyPending(conversationId: conversationId, roomId: roomId, generation: self.loadGeneration)
         }
     }
 
@@ -1056,28 +1100,102 @@ public final class ChatViewModel: ObservableObject {
                 self.handleTerminalClose(message: maintenanceMessage)
                 return
             }
-            let conversationId = UUID().uuidString
-            self.connectedConversationId = conversationId
-            self.connectedRoomId = nil
+            if await self.reuseBlankRoom() { return }
+            await self.createNewRoom()
+        }
+    }
+
+    // "New chat" while an untouched room already exists: shows that room again instead of
+    // creating another. Returns false when there isn't one (or it can no longer be resumed), so
+    // the caller creates a real new room as usual.
+    //
+    // Two shapes: the socket is still on the blank room (only the display had wandered off to a
+    // browsed conversation, or the room is still being created), so nothing has to reconnect; or
+    // the socket moved on to another room and the blank one is resumed via its saved session,
+    // exactly like opening any older conversation.
+    private func reuseBlankRoom() async -> Bool {
+        if let connectedId = connectedConversationId, !conversationPersisted {
+            showBlankRoom(conversationId: connectedId, envelopes: pendingRawEnvelopes)
+            return true
+        }
+        guard let blank = blankRoom else { return false }
+        showBlankRoom(conversationId: blank.conversationId, envelopes: blank.envelopes)
+        update { $0.isConnected = false }
+        let switched = await repository.switchToRoom(targetRoomId: blank.roomId) { [weak self] resumedRoomId in
+            guard let self else { return false }
+            self.connectedConversationId = blank.conversationId
+            self.connectedRoomId = resumedRoomId
             self.conversationPersisted = false
             self.pendingRawEnvelopes.removeAll()
-            self.setActiveConversationId(conversationId)
-            self.streamRawText.removeAll()
-            self.update {
-                $0.messages = []
-                $0.inputText = ""
-                $0.isAgentTyping = false
-                $0.isConnected = false
-                $0.isLiveChat = false
-                $0.assignedAgent = nil
-                $0.isArchived = false
-                $0.voiceDraft = nil
-                $0.showFeedbackPrompt = false
-                $0.pendingUrlToOpen = nil
-                $0.hasMoreHistory = false
+            self.blankRoom = nil
+            if resumedRoomId == blank.roomId {
+                self.pendingRawEnvelopes = blank.envelopes
+                // The opener is already on screen from the stash; reporting history keeps the
+                // repository from re-jumping to the first node and duplicating it.
+                return !blank.envelopes.isEmpty
             }
-            await self.repository.startNewSession(onConversationStarted: { roomId in await self.activateConversation(roomId: roomId) })
+            // The server handed back a different room (the saved one was gone): the stashed
+            // opener belongs to a room that no longer exists, so let this fresh room render its own.
+            self.update { $0.messages = [] }
+            return false
         }
+        if !switched {
+            blankRoom = nil
+            await createNewRoom()
+        }
+        return true
+    }
+
+    private func showBlankRoom(conversationId: String, envelopes: [String]) {
+        _ = beginLoad()
+        setActiveConversationId(conversationId)
+        previousHistoryCursor = nil
+        streamRawText.removeAll()
+        update {
+            $0.messages = []
+            $0.isAgentTyping = false
+            $0.isLiveChat = false
+            $0.assignedAgent = nil
+            $0.isArchived = false
+            $0.voiceDraft = nil
+            $0.showFeedbackPrompt = false
+            $0.pendingUrlToOpen = nil
+            $0.hasMoreHistory = false
+        }
+        // A brand-new room has no recorded opener or user turn yet - replay exactly like it.
+        cachedEarliestUserTimestampMs = nil
+        cachedSuppressedOpenerNodeId = nil
+        restoringFromCache = true
+        for raw in envelopes {
+            guard let data = raw.data(using: .utf8), let envelope = try? decoder.decode(RawSocketEnvelope.self, from: data) else { continue }
+            handleEvent(envelope.toIncomingEvent())
+        }
+        restoringFromCache = false
+    }
+
+    private func createNewRoom() async {
+        let generation = beginLoad()
+        let conversationId = UUID().uuidString
+        self.connectedConversationId = conversationId
+        self.connectedRoomId = nil
+        self.conversationPersisted = false
+        self.pendingRawEnvelopes.removeAll()
+        self.setActiveConversationId(conversationId)
+        self.streamRawText.removeAll()
+        self.update {
+            $0.messages = []
+            $0.inputText = ""
+            $0.isAgentTyping = false
+            $0.isConnected = false
+            $0.isLiveChat = false
+            $0.assignedAgent = nil
+            $0.isArchived = false
+            $0.voiceDraft = nil
+            $0.showFeedbackPrompt = false
+            $0.pendingUrlToOpen = nil
+            $0.hasMoreHistory = false
+        }
+        await repository.startNewSession(onConversationStarted: { [weak self] roomId in await self?.activateConversation(roomId: roomId, generation: generation) ?? false })
     }
 
     public func renameConversation(conversationId: String, title: String) {
@@ -1119,20 +1237,29 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func activateConversation(roomId: String) async -> Bool {
+    private func activateConversation(roomId: String, generation: Int) async -> Bool {
         let (conversationId, hasCachedMessages) = await cache.activateForRoom(botId: botId, roomId: roomId, pendingId: connectedConversationId)
         connectedConversationId = conversationId
         connectedRoomId = roomId
         conversationPersisted = hasCachedMessages
-        if !hasCachedMessages { pendingRawEnvelopes.removeAll() }
+        if hasCachedMessages {
+            BlankRoomRegistry.clear(botId: botId, roomId: roomId)
+        } else {
+            pendingRawEnvelopes.removeAll()
+            BlankRoomRegistry.set(botId: botId, roomId: roomId)
+        }
+        // The repository's live socket is already bound to this room (the bookkeeping above is
+        // committed unconditionally, or a frame for it would be cached under the wrong
+        // conversation); only what's *rendered* is allowed to bail on being overtaken.
+        guard isCurrentLoad(generation) else { return hasCachedMessages }
         setActiveConversationId(conversationId)
         previousHistoryCursor = nil
         if hasCachedMessages {
-            _ = await replayFromCache(conversationId: conversationId)
-            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
+            _ = await replayFromCache(conversationId: conversationId, generation: generation)
+            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId, generation: generation)
             return true
         }
-        return await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+        return await refreshConversationHistory(conversationId: conversationId, roomId: roomId, generation: generation)
     }
 
     // A room this device still owes a reply to (see `ReplyPendingEntity`) can't be trusted to the
@@ -1142,8 +1269,8 @@ public final class ChatViewModel: ObservableObject {
     // arrived while we weren't watching, without touching whatever's already correctly loaded -
     // notably, our own locally-cached sends (nudges included) are always trusted over the
     // server's echo of them, which isn't reliable for every send type.
-    private func backfillIfReplyPending(conversationId: String, roomId: String) async {
-        guard let pending = await cache.replyPending(conversationId: conversationId) else { return }
+    private func backfillIfReplyPending(conversationId: String, roomId: String, generation: Int) async {
+        guard let pending = await cache.replyPending(conversationId: conversationId), isCurrentLoad(generation) else { return }
         // Derives "this is overdue" from the persisted pending record itself, before ever asking
         // the network - a restart wipes the in-memory `failed` flag along with everything else,
         // so without this a message that's genuinely long overdue would show as neither answered
@@ -1157,7 +1284,7 @@ public final class ChatViewModel: ObservableObject {
             // to find out whether the reply already arrived (live, mid-fetch) or needs recovering.
             update { $0.isAgentTyping = true }
         }
-        await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending)
+        await backfillMissingReplies(conversationId: conversationId, roomId: roomId, pending: pending, generation: generation)
     }
 
     private func setMessageFailed(chatMsgId: String?, failed: Bool) {
@@ -1182,7 +1309,7 @@ public final class ChatViewModel: ObservableObject {
     // existing list the way `refreshConversationHistory` does, since that would also discard
     // locally-known user sends (e.g. nudge/quick-reply selections) that the server's own history
     // doesn't always echo back as readable text.
-    private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity) async {
+    private func backfillMissingReplies(conversationId: String, roomId: String, pending: ReplyPendingEntity, generation: Int) async {
         NSLog(
             "[Chat360] Fetching from SERVER (backfill): room=%@ pending chatMsgId=%@ createdAt=%lld",
             roomId, pending.chatMsgId ?? "nil", pending.createdAt
@@ -1192,10 +1319,17 @@ public final class ChatViewModel: ObservableObject {
             return
         }
         NSLog("[Chat360] SERVER returned %d history rows for room=%@", response.history.count, roomId)
-        guard activeConversationId == conversationId else { return }
-        cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
-        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        guard isCurrentLoad(generation) else { return }
+        let earliestUserTimestamp = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
+        let suppressedOpener = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        guard isCurrentLoad(generation) else { return }
+        cachedEarliestUserTimestampMs = earliestUserTimestamp
+        cachedSuppressedOpenerNodeId = suppressedOpener
         var sawBotReply = false
+        // Rows to persist once the replay below is done: writing them inside the loop awaited with
+        // `restoringFromCache` still true, and that flag lets a live frame for the connected room
+        // render into whichever conversation is on screen (see handleEvent's top guard).
+        var rawsToCache: [String] = []
         restoringFromCache = true
         for item in response.history {
             let event = item.toIncomingEvent()
@@ -1215,10 +1349,14 @@ public final class ChatViewModel: ObservableObject {
             NSLog("[Chat360]   SERVER row accepted as new reply: %@", describeEvent(event))
             handleEvent(event)
             if let data = try? encoder.encode(item), let raw = String(data: data, encoding: .utf8) {
-                await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
+                rawsToCache.append(raw)
             }
         }
         restoringFromCache = false
+        for raw in rawsToCache {
+            await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
+        }
+        guard isCurrentLoad(generation) else { return }
         if sawBotReply {
             // Don't assume `handleEvent` already cleared this - it no-ops (see the node id dedup
             // check at the top of its `.botMessage` case) whenever the reply it's looking at turns
@@ -1237,7 +1375,8 @@ public final class ChatViewModel: ObservableObject {
     }
 
     @discardableResult
-    private func replayFromCache(conversationId: String) async -> Bool {
+    private func replayFromCache(conversationId: String, generation: Int) async -> Bool {
+        guard isCurrentLoad(generation) else { return false }
         streamRawText.removeAll()
         update { $0.messages = []; $0.hasMoreHistory = false }
         let cachedMessages = await cache.messages(conversationId: conversationId)
@@ -1246,8 +1385,13 @@ public final class ChatViewModel: ObservableObject {
             conversationId, cachedMessages.count,
             cachedMessages.filter { $0.kind == "USER" }.count, cachedMessages.filter { $0.kind == "RAW" }.count
         )
-        cachedEarliestUserTimestampMs = cachedMessages.filter { $0.kind == "USER" }.map { $0.createdAt }.min()
-        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        let earliestUserTimestamp = cachedMessages.filter { $0.kind == "USER" }.map { $0.createdAt }.min()
+        let suppressedOpener = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        // Both awaits above are where a newer load can overtake this one - bail before appending
+        // anything, or two replays each append into the same transcript.
+        guard isCurrentLoad(generation) else { return false }
+        cachedEarliestUserTimestampMs = earliestUserTimestamp
+        cachedSuppressedOpenerNodeId = suppressedOpener
         restoringFromCache = true
         var hasCachedMessages = false
         for cached in cachedMessages {
@@ -1304,7 +1448,7 @@ public final class ChatViewModel: ObservableObject {
     private static let staleReplyThresholdMs: Int64 = 90_000
 
     @discardableResult
-    private func refreshConversationHistory(conversationId: String, roomId: String) async -> Bool {
+    private func refreshConversationHistory(conversationId: String, roomId: String, generation: Int) async -> Bool {
         NSLog("[Chat360] Fetching from SERVER (full refresh): room=%@", roomId)
         guard let response = try? await repository.fetchHistory(roomId: roomId) else {
             NSLog("[Chat360] SERVER fetch (full refresh) failed for room=%@", roomId)
@@ -1312,11 +1456,16 @@ public final class ChatViewModel: ObservableObject {
         }
         let history = response.history
         NSLog("[Chat360] SERVER returned %d history rows for room=%@ (full refresh)", history.count, roomId)
-        if activeConversationId != conversationId { return !history.isEmpty }
+        guard isCurrentLoad(generation) else { return !history.isEmpty }
+        let earliestUserTimestamp = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: history)
+        let suppressedOpener = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        // Awaited above - a newer load may have taken over. Checked before anything is cleared, so
+        // this stale one leaves the newer one's transcript alone.
+        guard isCurrentLoad(generation) else { return !history.isEmpty }
         streamRawText.removeAll()
         update { $0.messages = []; $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil }
-        cachedEarliestUserTimestampMs = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: history)
-        cachedSuppressedOpenerNodeId = await cache.suppressedOpenerNodeId(conversationId: conversationId)
+        cachedEarliestUserTimestampMs = earliestUserTimestamp
+        cachedSuppressedOpenerNodeId = suppressedOpener
         restoringFromCache = true
         var sawBotReply = false
         for item in history {
@@ -1334,6 +1483,7 @@ public final class ChatViewModel: ObservableObject {
             setMessageFailed(chatMsgId: pending.chatMsgId, failed: true)
             await cache.clearReplyPending(conversationId: conversationId)
         }
+        guard isCurrentLoad(generation) else { return !history.isEmpty }
         previousHistoryCursor = response.previous_cursor
         update { $0.hasMoreHistory = response.previous_cursor != nil }
         return !history.isEmpty
@@ -1365,15 +1515,24 @@ public final class ChatViewModel: ObservableObject {
               let cursor = previousHistoryCursor,
               !uiState.isLoadingMoreHistory else { return }
         update { $0.isLoadingMoreHistory = true }
+        // Paging within the conversation already on screen, not a new load - but it must still notice
+        // that a switch (even one that comes back to this same conversation) happened while it awaited.
+        let generation = loadGeneration
         Task { [weak self] in
             guard let self else { return }
-            guard let response = try? await self.repository.fetchMoreHistory(roomId: roomId, cursor: cursor), self.activeConversationId == conversationId else {
+            guard let response = try? await self.repository.fetchMoreHistory(roomId: roomId, cursor: cursor), self.activeConversationId == conversationId, self.isCurrentLoad(generation) else {
+                self.update { $0.isLoadingMoreHistory = false }
+                return
+            }
+            let earliestUserTimestamp = await self.earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
+            let suppressedOpener = await self.cache.suppressedOpenerNodeId(conversationId: conversationId)
+            guard self.isCurrentLoad(generation) else {
                 self.update { $0.isLoadingMoreHistory = false }
                 return
             }
             let sizeBefore = self.uiState.messages.count
-            self.cachedEarliestUserTimestampMs = await self.earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: response.history)
-            self.cachedSuppressedOpenerNodeId = await self.cache.suppressedOpenerNodeId(conversationId: conversationId)
+            self.cachedEarliestUserTimestampMs = earliestUserTimestamp
+            self.cachedSuppressedOpenerNodeId = suppressedOpener
             self.restoringFromCache = true
             for item in response.history { self.handleEvent(item.toIncomingEvent()) }
             self.restoringFromCache = false
@@ -1426,6 +1585,8 @@ public final class ChatViewModel: ObservableObject {
         if conversationPersisted { return }
         await cache.ensureConversationPersisted(botId: botId, conversationId: conversationId, roomId: roomId)
         conversationPersisted = true
+        if blankRoom?.conversationId == conversationId { blankRoom = nil }
+        BlankRoomRegistry.clear(botId: botId, roomId: connectedRoomId)
         for raw in pendingRawEnvelopes {
             await cache.cacheRaw(conversationId: conversationId, rawEnvelope: raw, botId: botId)
         }
@@ -1434,13 +1595,14 @@ public final class ChatViewModel: ObservableObject {
 
     public func openConversation(_ conversationId: String) {
         guard conversationId != activeConversationId else { return }
+        let generation = beginLoad()
         setActiveConversationId(conversationId)
         previousHistoryCursor = nil
         update { $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil; $0.isAgentTyping = false }
         let roomId = conversations.first { $0.id == conversationId }?.roomId
         Task { [weak self] in
             guard let self else { return }
-            await self.restoreConversation(conversationId: conversationId, roomId: roomId)
+            await self.restoreConversation(conversationId: conversationId, roomId: roomId, generation: generation)
         }
         // Reconnect the live socket to this room right away rather than waiting for the user's
         // next send - otherwise the socket stays bound to the previously-viewed room until then,
@@ -1452,14 +1614,15 @@ public final class ChatViewModel: ObservableObject {
         // the fallback state alone.
         guard uiState.terminalFallbackMessage == nil else { return }
         Task { [weak self] in
-            await self?.switchToActiveRoomIfResumable()
+            await self?.switchToActiveRoomIfResumable(generation: generation)
         }
     }
 
-    private func restoreConversation(conversationId: String, roomId: String?) async {
-        let hasCachedMessages = await replayFromCache(conversationId: conversationId)
+    private func restoreConversation(conversationId: String, roomId: String?, generation: Int) async {
+        let hasCachedMessages = await replayFromCache(conversationId: conversationId, generation: generation)
+        guard isCurrentLoad(generation) else { return }
         if !hasCachedMessages, let roomId {
-            _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId)
+            _ = await refreshConversationHistory(conversationId: conversationId, roomId: roomId, generation: generation)
             return
         }
         // Same reasoning as `activateConversation` - a conversation still owed a reply is never
@@ -1468,7 +1631,7 @@ public final class ChatViewModel: ObservableObject {
         // of a full refetch keeps whatever's already correctly loaded (e.g. a nudge/quick-reply
         // selection the server's own history doesn't echo back the same way typed text does).
         if let roomId {
-            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId)
+            await backfillIfReplyPending(conversationId: conversationId, roomId: roomId, generation: generation)
         }
     }
 
@@ -1540,9 +1703,17 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func switchToActiveRoomIfResumable() async {
+    private func switchToActiveRoomIfResumable(generation: Int? = nil) async {
+        // Callers that just began a load pass its generation; the resume-before-send path isn't a
+        // new load, so it takes whatever is current now (captured before the first await below).
+        let generation = generation ?? loadGeneration
         guard let active = activeConversationId, active != connectedConversationId else { return }
         guard let targetRoomId = conversations.first(where: { $0.id == active })?.roomId else { return }
+        // Leaving a room nobody has typed in: remember it so "New chat" can come back to it
+        // rather than creating another empty room (see `blankRoom`).
+        if let leavingId = connectedConversationId, let leavingRoomId = connectedRoomId, !conversationPersisted {
+            blankRoom = BlankRoom(conversationId: leavingId, roomId: leavingRoomId, envelopes: pendingRawEnvelopes)
+        }
         update { $0.isConnected = false }
         let switched = await repository.switchToRoom(targetRoomId: targetRoomId) { [weak self] resumedRoomId in
             guard let self else { return false }
@@ -1554,14 +1725,14 @@ public final class ChatViewModel: ObservableObject {
                 // user was browsing - otherwise outgoing messages would be stamped into
                 // resumedRoomId while the UI still appended them to active's thread, silently
                 // splitting the conversation.
-                return await self.activateConversation(roomId: resumedRoomId)
+                return await self.activateConversation(roomId: resumedRoomId, generation: generation)
             }
             self.connectedConversationId = active
             self.connectedRoomId = resumedRoomId
             self.conversationPersisted = true
             return true
         }
-        if !switched { update { $0.isConnected = true } }
+        if !switched, isCurrentLoad(generation) { update { $0.isConnected = true } }
     }
 
     public func onCleared() {

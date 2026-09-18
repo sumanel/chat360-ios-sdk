@@ -15,13 +15,23 @@ public final class Chat360WebSocketClient: NSObject {
         delegate: self,
         delegateQueue: nil
     )
-    private var task: URLSessionWebSocketTask?
+    // `task`, `callbacks` and `generation` are read and written from the caller's thread and from
+    // URLSession's delegate queue (receive/send completions, open/close delegate calls), so every
+    // access goes through `lock`. Callbacks are always invoked outside it.
+    private let lock = NSLock()
+    private(set) var task: URLSessionWebSocketTask?
     private var callbacks: Callbacks?
 
     /// Bumped on every connect()/close() so callbacks from a superseded
     /// connection (in-flight receive/send completions from an old task)
     /// are dropped instead of firing into the current connection's state.
     private var generation: Int = 0
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
 
     public init(session: URLSession = URLSession(configuration: .default)) {
         self.configuration = session.configuration
@@ -40,13 +50,18 @@ public final class Chat360WebSocketClient: NSObject {
             onFailure(URLError(.badURL))
             return
         }
-        generation += 1
-        let myGeneration = generation
-        callbacks = Callbacks(onOpen: onOpen, onMessage: onMessage, onClosed: onClosed, onFailure: onFailure)
-
         let request = URLRequest(url: url)
         let newTask = session.webSocketTask(with: request)
-        task = newTask
+        let (previous, myGeneration): (URLSessionWebSocketTask?, Int) = locked {
+            let previous = task
+            generation += 1
+            callbacks = Callbacks(onOpen: onOpen, onMessage: onMessage, onClosed: onClosed, onFailure: onFailure)
+            task = newTask
+            return (previous, generation)
+        }
+        // Never leave the previous socket running underneath the new one - its callbacks are
+        // already ignored (generation), so an uncancelled one would just sit open, unseen.
+        previous?.cancel(with: .goingAway, reason: "replaced".data(using: .utf8))
         newTask.resume()
         listen(generation: myGeneration)
     }
@@ -56,7 +71,7 @@ public final class Chat360WebSocketClient: NSObject {
         webSocketTask: URLSessionWebSocketTask,
         didOpenWithProtocol protocol: String?
     ) {
-        guard task === webSocketTask, let callbacks else { return }
+        guard let callbacks = locked({ task === webSocketTask ? self.callbacks : nil }) else { return }
         NSLog("[Chat360WS] Socket OPEN")
         callbacks.onOpen()
     }
@@ -70,19 +85,22 @@ public final class Chat360WebSocketClient: NSObject {
         // Consume (clear) callbacks so the outstanding receive() in listen(),
         // which also completes with an error once the socket closes, can't
         // additionally fire onFailure for this same close event.
-        guard task === webSocketTask, let callbacks else { return }
-        self.callbacks = nil
+        guard let callbacks = locked({ () -> Callbacks? in
+            guard task === webSocketTask, let current = self.callbacks else { return nil }
+            self.callbacks = nil
+            return current
+        }) else { return }
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         NSLog("[Chat360WS] Socket CLOSED by server: %d %@", closeCode.rawValue, reasonText)
         callbacks.onClosed(closeCode.rawValue, reasonText)
     }
 
     private func listen(generation myGeneration: Int) {
-        task?.receive { [weak self] result in
+        locked({ task })?.receive { [weak self] result in
             guard let self else { return }
             // A newer connect()/close() has superseded this one; let this
             // receive chain die instead of touching the current connection.
-            guard myGeneration == self.generation, let callbacks = self.callbacks else { return }
+            guard let callbacks = self.locked({ myGeneration == self.generation ? self.callbacks : nil }) else { return }
             switch result {
             case .success(let message):
                 switch message {
@@ -101,7 +119,7 @@ public final class Chat360WebSocketClient: NSObject {
                 // Consumed here first if didCloseWith hasn't fired yet for this
                 // close/failure; clearing prevents a subsequent didCloseWith
                 // (or another in-flight receive) from double-notifying.
-                self.callbacks = nil
+                self.locked { self.callbacks = nil }
                 NSLog("[Chat360WS] Socket FAILURE: %@", error.localizedDescription)
                 callbacks.onFailure(error)
             }
@@ -110,16 +128,16 @@ public final class Chat360WebSocketClient: NSObject {
 
     @discardableResult
     public func send(_ text: String) -> Bool {
-        guard let task, task.state == .running else {
+        let (currentTask, myGeneration) = locked { (task, generation) }
+        guard let currentTask, currentTask.state == .running else {
             Chat360WebSocketClient.logFull("[Chat360WS] >> SEND FAILED (socket not open)", text)
             return false
         }
-        let myGeneration = generation
-        task.send(.string(text)) { [weak self] error in
+        currentTask.send(.string(text)) { [weak self] error in
             guard let self, let error else { return }
-            guard myGeneration == self.generation else { return }
+            guard let callbacks = self.locked({ myGeneration == self.generation ? self.callbacks : nil }) else { return }
             NSLog("[Chat360WS] >> SEND FAILED: %@", error.localizedDescription)
-            self.callbacks?.onFailure(error)
+            callbacks.onFailure(error)
         }
         Chat360WebSocketClient.logFull("[Chat360WS] >> SENT", text)
         return true
@@ -127,11 +145,14 @@ public final class Chat360WebSocketClient: NSObject {
 
     public func close() {
         NSLog("[Chat360WS] Closing socket (client requested)")
-        generation += 1
-        let closedCallbacks = callbacks
-        task?.cancel(with: .normalClosure, reason: "client closed".data(using: .utf8))
-        task = nil
-        callbacks = nil
+        let (closedTask, closedCallbacks): (URLSessionWebSocketTask?, Callbacks?) = locked {
+            generation += 1
+            let result = (task, callbacks)
+            task = nil
+            callbacks = nil
+            return result
+        }
+        closedTask?.cancel(with: .normalClosure, reason: "client closed".data(using: .utf8))
         closedCallbacks?.onClosed(1000, "client closed")
     }
 
