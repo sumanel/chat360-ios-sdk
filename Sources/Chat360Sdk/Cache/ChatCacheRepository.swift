@@ -61,16 +61,40 @@ public final class ChatCacheRepository {
         await dao.replaceAgentRoomConversations(botId: botId, conversations: conversations)
     }
 
+    /// Applies what the server says about rooms this device already has a local conversation for:
+    /// a room the server marks inactive (deleted elsewhere) is removed here too, and a name the
+    /// server holds replaces a differing local title. Without this the local row - which owns the
+    /// room and so shields it from the `agent-room:` sync - never changed after it was created.
+    /// Call only with a complete rooms list.
+    public func syncLocalConversations(botId: String, rooms: [RoomDto]) async {
+        guard Self.enabled else { return }
+        for room in rooms {
+            guard let local = await dao.findConversation(botId: botId, roomId: room.roomId),
+                  !local.id.hasPrefix("agent-room:") else { continue }
+            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame {
+                await dao.deleteMessages(conversationId: local.id)
+                await dao.deleteConversation(conversationId: local.id, botId: botId)
+                continue
+            }
+            let name = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty && name != local.title {
+                await dao.updateTitle(conversationId: local.id, title: name, botId: botId)
+            }
+        }
+    }
+
     public func thirdPartyRoomConversations(botId: String, rooms: [RoomDto]) async -> [CachedConversationEntity] {
         guard Self.enabled else { return [] }
         let fetchedAt = nowMs()
         var result: [CachedConversationEntity] = []
         for (index, room) in rooms.enumerated() {
             if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { continue }
-            // Don't trust `session_count` here - it can already read 1 from the bot's own
-            // opening message, sent before the user ever replies. Only a real local record of
-            // the user actually sending something should keep a room in history.
-            guard await dao.hasUserMessage(botId: botId, roomId: room.roomId) else { continue }
+            // Nobody typed in it: a server session_count of 0 is an empty room. A room the server gives
+            // neither a name nor a count for is treated the same (an abandoned one). An unnamed room
+            // that does have sessions is a real chat and is listed as "Conversation". Checked against
+            // the live rooms list: count > 0 held for exactly the rooms holding a user message.
+            if room.sessionCount == 0 { continue }
+            if room.sessionCount == nil && room.roomName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
             let title = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
             // The server's own timestamps drive the sidebar order - the response position is only
             // a fallback for a room that carries none, so order never depends on API ordering.

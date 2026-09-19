@@ -59,6 +59,66 @@ public final class ThirdPartyTasksApiService {
         return value
     }
 
+    /// `GET third-party-tasks/welcome-text`, identified by a `Client-Id` header (no bearer token). The hyphenated spelling is the one the server
+    /// reads - `client_id` with an underscore is rejected with a 400, so the request would silently fall back
+    /// to the defaults. Returns the
+    /// configured heading/text, or nil when neither is set. Accepts the fields at the top level, in a
+    /// `data` object, or in a `data` list of such objects. Throws
+    /// on any non-2xx (a 404 while the endpoint isn't deployed) or an unreadable body - the caller treats
+    /// every failure the same way, by keeping what it already has.
+    public func fetchWelcomeText(clientId: String) async throws -> WelcomeText? {
+        var request = URLRequest(url: URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/welcome-text")!)
+        request.setValue(clientId, forHTTPHeaderField: "Client-Id")
+        let data = try await execute(request)
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw ThirdPartyMalformedResponseException(endpoint: "welcome-text")
+        }
+        // `data` is either the welcome object itself or a list of them (an empty list when nothing is set).
+        // Fields at the top level also work. With a list, the first entry that actually has a heading or text wins.
+        let candidates: [[String: Any]]
+        if let object = root["data"] as? [String: Any] {
+            candidates = [object]
+        } else if let list = root["data"] as? [Any] {
+            candidates = list.compactMap { $0 as? [String: Any] }
+        } else {
+            candidates = [root]
+        }
+        for entry in candidates {
+            func field(_ name: String) -> String? {
+                (entry[name] as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+            }
+            let value = WelcomeText(heading: field("heading"), text: field("text"))
+            if !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    /// `POST third-party-tasks/sales-exectives` (the misspelling is the server's real route), identified by a
+    /// `Client-Id` header. `details` goes out as the JSON body exactly as given. It must be sent as
+    /// `application/json` - without that content type the server ignores the body and answers that both
+    /// `dealer_code` and `emp_code` are required.
+    ///
+    /// Throws on any non-2xx (the server answers 400 with `{"success":false,...}` for validation errors and an
+    /// unconfigured client) or an unreadable body; `SalesExecutiveGate` treats every failure as "let them through".
+    public func checkSalesExecutive(clientId: String, details: [String: String], timeout: TimeInterval = 10) async throws -> SalesExecutiveResult {
+        var request = URLRequest(url: URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/sales-exectives")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue(clientId, forHTTPHeaderField: "Client-Id")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: details)
+        let data = try await execute(request)
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw ThirdPartyMalformedResponseException(endpoint: "sales-exectives")
+        }
+        let executive = root["sales_executive"] as? [String: Any]
+        return SalesExecutiveResult(
+            success: (root["success"] as? Bool) ?? false,
+            message: root["message"] as? String,
+            status: executive?["status"] as? String
+        )
+    }
+
     public func updateRoom(roomId: String, clientId: String, roomName: String, bearerToken: String) async throws -> RoomUpdateResponse {
         let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/room/update")!
         var request = URLRequest(url: url)

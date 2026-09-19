@@ -61,7 +61,8 @@ public struct RoomDto: Codable {
     public var createdAt: String?
     public var updatedAt: String?
     public var sessionIds: [String] = []
-    public var sessionCount: Int = 0
+    /// How many sessions (chats with a user message) the room has; nil when the server omits it. 0 means an empty, never-used room.
+    public var sessionCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case roomId = "room_id"
@@ -76,7 +77,7 @@ public struct RoomDto: Codable {
 
     public init(
         roomId: String, roomName: String = "", agentId: String? = nil, status: String? = nil,
-        createdAt: String? = nil, updatedAt: String? = nil, sessionIds: [String] = [], sessionCount: Int = 0
+        createdAt: String? = nil, updatedAt: String? = nil, sessionIds: [String] = [], sessionCount: Int? = nil
     ) {
         self.roomId = roomId
         self.roomName = roomName
@@ -97,6 +98,6 @@ public struct RoomDto: Codable {
         createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
         updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
         sessionIds = try container.decode([String].self, forKey: .sessionIds, default: [])
-        sessionCount = try container.decode(Int.self, forKey: .sessionCount, default: 0)
+        sessionCount = try? container.decodeIfPresent(Int.self, forKey: .sessionCount)
     }
 }

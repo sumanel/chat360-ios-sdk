@@ -22,6 +22,12 @@ public class Chat360Config : NSObject {
 
     public var historyEnabled: Bool = true
     public var clientId: String?
+    /// The sales executive using the chat, as key/value pairs sent as the JSON body of
+    /// `third-party-tasks/sales-exectives`: `dealer_code` and `emp_code` are required, `name` and anything else the
+    /// server accepts is optional. When set (together with `clientId`) and the server reports this executive
+    /// INACTIVE, the chat is closed with the server's message, the same way maintenance mode closes it. A check that
+    /// fails for any reason never blocks the chat. Leave nil to skip the check.
+    public var salesExecutive: [String: String]?
     public var apiKey: String?
     public var endUserId: String?
 

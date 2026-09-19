@@ -51,3 +51,16 @@ extension EnvironmentValues {
         set { self[Chat360BrandingKey.self] = newValue }
     }
 }
+
+@available(iOS 13.0, *)
+extension Chat360Branding {
+    /// Puts the server-configured welcome copy over this branding's welcome heading and subtitle. The order
+    /// is server value, then whatever this branding already resolved to (the host app's `welcomeTitle` /
+    /// `welcomeSubtitle`, then the theme default). A missing or blank server field leaves that line alone.
+    public func withWelcome(_ welcome: WelcomeText?) -> Chat360Branding {
+        var result = self
+        if let heading = welcome?.heading, !heading.isBlank { result.welcomeHeading = heading }
+        if let text = welcome?.text, !text.isBlank { result.disclaimerText = text }
+        return result
+    }
+}

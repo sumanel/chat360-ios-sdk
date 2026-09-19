@@ -11,6 +11,7 @@ public final class ChatViewModel: ObservableObject {
     private let showPeriodicFeedbackPrompt: Bool
     private let periodicFeedbackPromptInterval: ClosedRange<Int>
     private let maintenanceApi: ThirdPartyTasksApiService?
+    private let salesExecutiveGate: SalesExecutiveGate?
 
     @Published public private(set) var uiState = ChatUiState()
     @Published public private(set) var conversations: [CachedConversationEntity] = []
@@ -28,6 +29,8 @@ public final class ChatViewModel: ObservableObject {
     // transcript then both appended, mixing two conversations into one. Everything here runs on the
     // main actor, so the suspension points are the only place a load can be overtaken.
     private var loadGeneration = 0
+    /// How long a send from an unresumable old room waits for its fresh session to connect.
+    static var newSessionSendTimeout: TimeInterval = 20
     private func beginLoad() -> Int {
         loadGeneration += 1
         return loadGeneration
@@ -95,7 +98,9 @@ public final class ChatViewModel: ObservableObject {
         suppressInitialBotMessages: Bool = false,
         showPeriodicFeedbackPrompt: Bool = true,
         periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12,
-        maintenanceApi: ThirdPartyTasksApiService? = nil
+        maintenanceApi: ThirdPartyTasksApiService? = nil,
+        welcomeTextRepository: WelcomeTextRepository? = nil,
+        salesExecutiveGate: SalesExecutiveGate? = nil
     ) {
         self.repository = repository
         self.botId = botId
@@ -105,6 +110,9 @@ public final class ChatViewModel: ObservableObject {
         self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
         self.periodicFeedbackPromptInterval = periodicFeedbackPromptInterval
         self.maintenanceApi = maintenanceApi
+        self.salesExecutiveGate = salesExecutiveGate
+
+        loadWelcomeText(welcomeTextRepository)
 
         conversationsObservationTask = Task { [weak self] in
             guard let self else { return }
@@ -129,68 +137,11 @@ public final class ChatViewModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            if let maintenanceMessage = await self.checkMaintenanceMode() {
-                self.handleTerminalClose(message: maintenanceMessage)
+            if self.applyAccess(await self.checkAccess()) {
+                self.neverConnected = true
                 return
             }
-            let generation = self.beginLoad()
-            await self.repository.connect(
-                onEvent: { [weak self] event in
-                    Task { @MainActor [weak self] in self?.handleEvent(event) }
-                },
-                onConnected: { [weak self] in
-                    Task { @MainActor [weak self] in self?.update { $0.isConnected = true; $0.error = nil; $0.terminalFallbackMessage = nil } }
-                },
-                onError: { [weak self] error in
-                    NSLog("[Chat360] Chat connection failed: %@", error.localizedDescription)
-                    Task { @MainActor [weak self] in self?.update { $0.isConnected = false; $0.isAgentTyping = false } }
-                },
-                onSlowConnectionChanged: { [weak self] slow in
-                    Task { @MainActor [weak self] in self?.update { $0.isSlowConnection = slow } }
-                },
-                onMessageTimedOut: { [weak self] chatMsgId in
-                    Task { @MainActor [weak self] in self?.handleMessageTimedOut(chatMsgId) }
-                },
-                onAppearanceLoaded: { [weak self] details, chatboxName in
-                    Task { @MainActor [weak self] in
-                        self?.update {
-                            $0.colorOverrides = details?.toColorOverrides()
-                            $0.logoOverride = details?.toLogoOverride()
-                            $0.botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
-                            $0.feedbackConfig = details?.feedback_config ?? $0.feedbackConfig
-                        }
-                    }
-                },
-                onConversationStarted: { [weak self] roomId in
-                    guard let self else { return false }
-                    return await self.activateConversation(roomId: roomId, generation: generation)
-                },
-                onRawIncoming: { [weak self] raw in
-                    Task { @MainActor [weak self] in self?.cacheIncomingEnvelope(raw) }
-                },
-                onOpenUrl: { [weak self] url in
-                    Task { @MainActor [weak self] in self?.update { $0.pendingUrlToOpen = url } }
-                },
-                onSessionResumed: { [weak self] takeover, agent in
-                    Task { @MainActor [weak self] in self?.update { $0.isLiveChat = takeover; $0.assignedAgent = agent ?? $0.assignedAgent } }
-                },
-                onFeedbackRequested: { [weak self] in
-                    Task { @MainActor [weak self] in self?.update { $0.showFeedbackPrompt = true } }
-                },
-                onBotSettingsLoaded: { [weak self] shortcuts, languages in
-                    Task { @MainActor [weak self] in
-                        self?.shortcuts = shortcuts
-                        self?.languages = languages
-                    }
-                },
-                onSessionTimeReceived: { [weak self] createdAt in
-                    Task { @MainActor [weak self] in self?.handleSessionTimeReceived(createdAt) }
-                },
-                onTerminalClose: { [weak self] message in
-                    Task { @MainActor [weak self] in self?.handleTerminalClose(message: message) }
-                },
-                resumeBlankRoomId: BlankRoomRegistry.roomId(botId: botId)
-            )
+            await self.connectFirstTime()
         }
     }
 
@@ -627,6 +578,110 @@ public final class ChatViewModel: ObservableObject {
 
     // Best-effort: a failed or unavailable check should never block the chat from starting, so
     // any error (network, decoding, no API configured) is treated the same as "not in maintenance".
+    // True while the chat was closed at startup (maintenance, or the sales executive being inactive), so no socket
+    // has ever been opened and no callbacks registered. Clearing the block must then do the first connect, not a
+    // reconnect - `reconnectNow` has no room to reconnect to, and `startNewSession` would open a socket with
+    // nothing listening.
+    private var neverConnected = false
+
+    // Whether the chat is closed right now, and why: the shared maintenance flag, or the sales executive being
+    // INACTIVE. The two checks run side by side so the extra one adds no start-up latency, and maintenance wins
+    // when both apply. Both fail open. Shown through the same fallback state maintenance uses.
+    private func checkAccess() async -> String? {
+        async let maintenance = checkMaintenanceMode()
+        async let executive = executiveBlockMessage()
+        let maintenanceMessage = await maintenance
+        let executiveMessage = await executive
+        return maintenanceMessage ?? executiveMessage
+    }
+
+    // The message currently on screen because of `checkAccess`, so that once the check passes it - and only it - is
+    // taken down again straight away. Left to `onConnected`, a block that has cleared would keep showing until the
+    // socket actually opens, and forever if that connect fails. A terminal close from the server (dealer or
+    // executive deactivated mid-chat) is deliberately not touched here.
+    private var accessBlockMessage: String?
+
+    // Applies a `checkAccess` result to the screen. Returns true when the chat is closed.
+    private func applyAccess(_ blocked: String?) -> Bool {
+        if let blocked {
+            accessBlockMessage = blocked
+            handleTerminalClose(message: blocked)
+            return true
+        }
+        if let shown = accessBlockMessage, uiState.terminalFallbackMessage == shown {
+            update { $0.terminalFallbackMessage = nil }
+        }
+        accessBlockMessage = nil
+        return false
+    }
+
+    private func executiveBlockMessage() async -> String? {
+        guard let salesExecutiveGate else { return nil }
+        return await salesExecutiveGate.blockedMessage()
+    }
+
+    // Opens the very first connection of this view model - see `neverConnected`.
+    private func connectFirstTime() async {
+        let generation = self.beginLoad()
+        await self.repository.connect(
+            onEvent: { [weak self] event in
+                Task { @MainActor [weak self] in self?.handleEvent(event) }
+            },
+            onConnected: { [weak self] in
+                Task { @MainActor [weak self] in self?.update { $0.isConnected = true; $0.error = nil; $0.terminalFallbackMessage = nil } }
+            },
+            onError: { [weak self] error in
+                NSLog("[Chat360] Chat connection failed: %@", error.localizedDescription)
+                Task { @MainActor [weak self] in self?.update { $0.isConnected = false; $0.isAgentTyping = false } }
+            },
+            onSlowConnectionChanged: { [weak self] slow in
+                Task { @MainActor [weak self] in self?.update { $0.isSlowConnection = slow } }
+            },
+            onMessageTimedOut: { [weak self] chatMsgId in
+                Task { @MainActor [weak self] in self?.handleMessageTimedOut(chatMsgId) }
+            },
+            onAppearanceLoaded: { [weak self] details, chatboxName in
+                Task { @MainActor [weak self] in
+                    self?.update {
+                        $0.colorOverrides = details?.toColorOverrides()
+                        $0.logoOverride = details?.toLogoOverride()
+                        $0.botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
+                        $0.feedbackConfig = details?.feedback_config ?? $0.feedbackConfig
+                    }
+                }
+            },
+            onConversationStarted: { [weak self] roomId in
+                guard let self else { return false }
+                return await self.activateConversation(roomId: roomId, generation: generation)
+            },
+            onRawIncoming: { [weak self] raw in
+                Task { @MainActor [weak self] in self?.cacheIncomingEnvelope(raw) }
+            },
+            onOpenUrl: { [weak self] url in
+                Task { @MainActor [weak self] in self?.update { $0.pendingUrlToOpen = url } }
+            },
+            onSessionResumed: { [weak self] takeover, agent in
+                Task { @MainActor [weak self] in self?.update { $0.isLiveChat = takeover; $0.assignedAgent = agent ?? $0.assignedAgent } }
+            },
+            onFeedbackRequested: { [weak self] in
+                Task { @MainActor [weak self] in self?.update { $0.showFeedbackPrompt = true } }
+            },
+            onBotSettingsLoaded: { [weak self] shortcuts, languages in
+                Task { @MainActor [weak self] in
+                    self?.shortcuts = shortcuts
+                    self?.languages = languages
+                }
+            },
+            onSessionTimeReceived: { [weak self] createdAt in
+                Task { @MainActor [weak self] in self?.handleSessionTimeReceived(createdAt) }
+            },
+            onTerminalClose: { [weak self] message in
+                Task { @MainActor [weak self] in self?.handleTerminalClose(message: message) }
+            },
+            resumeBlankRoomId: BlankRoomRegistry.roomId(botId: botId)
+        )
+    }
+
     private func checkMaintenanceMode() async -> String? {
         guard let maintenanceApi else { return nil }
         guard let status = try? await maintenanceApi.fetchMaintenanceStatus(), status.isActive else { return nil }
@@ -871,6 +926,7 @@ public final class ChatViewModel: ObservableObject {
             $0.isLiveChat = false
             $0.assignedAgent = nil
             $0.isArchived = false
+            $0.needsNewSession = false
             $0.showFeedbackPrompt = false
         }
         repository.jumpToNode(targetId: targetId)
@@ -879,11 +935,13 @@ public final class ChatViewModel: ObservableObject {
     public func refreshConnection() {
         Task { [weak self] in
             guard let self else { return }
-            if let maintenanceMessage = await self.checkMaintenanceMode() {
-                self.handleTerminalClose(message: maintenanceMessage)
-                return
+            if self.applyAccess(await self.checkAccess()) { return }
+            if self.neverConnected {
+                self.neverConnected = false
+                await self.connectFirstTime()
+            } else {
+                self.repository.reconnectNow()
             }
-            self.repository.reconnectNow()
         }
     }
 
@@ -893,11 +951,13 @@ public final class ChatViewModel: ObservableObject {
         let isActiveConversationConnected = conversationId != nil && conversationId == connectedConversationId
         Task { [weak self] in
             guard let self else { return }
-            if let maintenanceMessage = await self.checkMaintenanceMode() {
-                self.handleTerminalClose(message: maintenanceMessage)
-                return
+            if self.applyAccess(await self.checkAccess()) { return }
+            if self.neverConnected {
+                self.neverConnected = false
+                await self.connectFirstTime()
+            } else if !self.uiState.isConnected {
+                self.repository.reconnectNow()
             }
-            if !self.uiState.isConnected { self.repository.reconnectNow() }
             // The socket can be silently suspended by iOS for the whole time the app was
             // backgrounded (with or without a formal disconnect ever being reported), so a reply
             // generated during that window can be missed even though we never technically
@@ -1086,6 +1146,17 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
+    // Shows the last known server-configured welcome copy straight away, then refreshes it in the
+    // background. Runs beside the connect and never gates it; any failure just leaves the welcome screen on
+    // the host app's own text (or the theme default).
+    private func loadWelcomeText(_ repository: WelcomeTextRepository?) {
+        guard let repository else { return }
+        if let cached = repository.cached() { uiState.welcomeOverride = cached }
+        Task { [weak self] in
+            if case .success(let fresh) = await repository.refresh() { self?.update { $0.welcomeOverride = fresh } }
+        }
+    }
+
     public func onInputChange(_ text: String) {
         update { $0.inputText = text }
     }
@@ -1096,8 +1167,10 @@ public final class ChatViewModel: ObservableObject {
             // Blocked: leave whatever conversation/history is currently on screen untouched
             // rather than wiping it into a dead new chat - just surface why via the same banner
             // used elsewhere for maintenance mode.
-            if let maintenanceMessage = await self.checkMaintenanceMode() {
-                self.handleTerminalClose(message: maintenanceMessage)
+            if self.applyAccess(await self.checkAccess()) { return }
+            if self.neverConnected {
+                self.neverConnected = false
+                await self.connectFirstTime()
                 return
             }
             if await self.reuseBlankRoom() { return }
@@ -1157,6 +1230,7 @@ public final class ChatViewModel: ObservableObject {
             $0.isLiveChat = false
             $0.assignedAgent = nil
             $0.isArchived = false
+            $0.needsNewSession = false
             $0.voiceDraft = nil
             $0.showFeedbackPrompt = false
             $0.pendingUrlToOpen = nil
@@ -1190,6 +1264,7 @@ public final class ChatViewModel: ObservableObject {
             $0.isLiveChat = false
             $0.assignedAgent = nil
             $0.isArchived = false
+            $0.needsNewSession = false
             $0.voiceDraft = nil
             $0.showFeedbackPrompt = false
             $0.pendingUrlToOpen = nil
@@ -1631,7 +1706,7 @@ public final class ChatViewModel: ObservableObject {
         let generation = beginLoad()
         setActiveConversationId(conversationId)
         previousHistoryCursor = nil
-        update { $0.isArchived = false; $0.isLiveChat = false; $0.assignedAgent = nil; $0.isAgentTyping = false }
+        update { $0.isArchived = false; $0.needsNewSession = false; $0.isLiveChat = false; $0.assignedAgent = nil; $0.isAgentTyping = false }
         let roomId = conversations.first { $0.id == conversationId }?.roomId
         Task { [weak self] in
             guard let self else { return }
@@ -1670,12 +1745,33 @@ public final class ChatViewModel: ObservableObject {
 
     public func sendMessage() {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if uiState.needsNewSession {
+        }
         if text.isEmpty && !uiState.isLiveChat { return }
         update { $0.inputText = "" }
         sendAfterResumingRoom { vm in
             let chatMsgId = vm.repository.sendFreeText(text)
             vm.appendMessage(ChatMessage(chatMsgId: chatMsgId, text: text, fromUser: true))
             vm.update { if !$0.isLiveChat { $0.isAgentTyping = true } }
+        }
+    }
+
+    /// The user sent from an older room with no saved session. It can't be rejoined (the backend ignores a
+    /// bare `room_id` and allocates a fresh room), and sending into whichever room happens to be connected
+    /// would merge two chats - so start a new session, wait for it to connect, and send the text there.
+    private func sendInNewSession(_ text: String) {
+        guard !text.isEmpty else { return }
+        update { $0.inputText = "" }
+        Task { [weak self] in
+            guard let self else { return }
+            if await !self.reuseBlankRoom() { await self.createNewRoom() }
+            let generation = self.loadGeneration
+            let deadline = Date().addingTimeInterval(Self.newSessionSendTimeout)
+            while !self.uiState.isConnected && Date() < deadline { try? await Task.sleep(nanoseconds: 100_000_000) }
+            guard self.isCurrentLoad(generation) else { return }
+            // Put the text back either way: sent below on success, kept for the user to retry on failure.
+            self.update { $0.inputText = text }
+            if self.uiState.isConnected { self.sendMessage() }
         }
     }
 
@@ -1765,7 +1861,10 @@ public final class ChatViewModel: ObservableObject {
             self.conversationPersisted = true
             return true
         }
-        if !switched, isCurrentLoad(generation) { update { $0.isConnected = true } }
+        // No saved session for this room (e.g. a chat from another device): there is no way to rejoin it, and
+        // anything sent from here used to be routed into whichever room *is* connected - merging two chats into
+        // one. Sending instead starts a fresh session (see `sendMessage`), so the room stays a view of its history.
+        if !switched, isCurrentLoad(generation) { update { $0.isConnected = true; $0.needsNewSession = true } }
     }
 
     public func onCleared() {

@@ -29,8 +29,22 @@ public struct Chat360NativeChatScreen: View {
             suppressInitialBotMessages: botConfig.uiConfig?.behavior.suppressInitialBotMessages ?? false,
             showPeriodicFeedbackPrompt: botConfig.uiConfig?.features.showPeriodicFeedbackPrompt ?? true,
             periodicFeedbackPromptInterval: botConfig.uiConfig?.features.periodicFeedbackPromptInterval ?? (8...12),
-            maintenanceApi: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl)
+            maintenanceApi: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl),
+            // Needs only the client id (no api key / bearer token), so it works for hosts that never set up history.
+            welcomeTextRepository: botConfig.clientId
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 }
+                .map { WelcomeTextRepository(apiService: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl), clientId: $0, store: UserDefaultsWelcomeTextStore()) },
+            salesExecutiveGate: Chat360NativeChatScreen.buildSalesExecutiveGate(botConfig: botConfig, baseUrl: resolvedBaseUrl)
         ))
+    }
+
+    // Needs only the client id (like the welcome text) - no api key or bearer token - and both codes the server requires.
+    private static func buildSalesExecutiveGate(botConfig: Chat360Config, baseUrl: String) -> SalesExecutiveGate? {
+        guard let clientId = botConfig.clientId.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }), !clientId.isEmpty,
+              let details = botConfig.salesExecutive,
+              !(details["dealer_code"] ?? "").isBlank, !(details["emp_code"] ?? "").isBlank else { return nil }
+        return SalesExecutiveGate(apiService: ThirdPartyTasksApiService(baseUrl: baseUrl), clientId: clientId, details: details)
     }
 
     private static func buildChatHistoryRepository(botConfig: Chat360Config, baseUrl: String, botId: String, cache: ChatCacheRepository) -> ChatHistoryRepository? {

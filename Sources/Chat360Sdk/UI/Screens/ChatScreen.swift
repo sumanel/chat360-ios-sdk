@@ -44,7 +44,7 @@ public struct ChatScreen: View {
         var branding = baseBranding
         branding.botTitle = viewModel.uiState.botTitleOverride ?? baseBranding.botTitle
         branding.logo = viewModel.uiState.logoOverride ?? baseBranding.logo
-        return branding
+        return branding.withWelcome(viewModel.uiState.welcomeOverride)
     }
 
     private var features: Chat360FeatureConfig { sdkConfig.features }

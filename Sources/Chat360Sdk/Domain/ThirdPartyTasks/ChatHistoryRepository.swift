@@ -31,6 +31,7 @@ public final class ChatHistoryRepository {
             // is given, so a fetch that got only the first pages must fail outright rather than hand
             // over a partial list that would wipe the rooms on the pages that never loaded.
             let rooms = try await fetchAllRooms()
+            await cache.syncLocalConversations(botId: botId, rooms: rooms)
             let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: rooms)
             await cache.syncAgentRooms(botId: botId, conversations: conversations)
             return conversations

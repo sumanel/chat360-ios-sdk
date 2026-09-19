@@ -163,6 +163,8 @@ public struct ChatUiState: Equatable {
     public var colorOverrides: Chat360ColorOverrides?
     public var logoOverride: Chat360Logo?
     public var botTitleOverride: String?
+    /// The server-configured welcome copy, when there is one - applied over the host app's own.
+    public var welcomeOverride: WelcomeText?
     public var pendingUrlToOpen: String?
     public var isLiveChat: Bool = false
     public var assignedAgent: AssignedAgent?
@@ -170,6 +172,8 @@ public struct ChatUiState: Equatable {
     public var feedbackConfig: FeedbackConfig?
     public var showFeedbackPrompt: Bool = false
     public var isArchived: Bool = false
+    /// Set while browsing an older room this device has no saved session for, so it can't be rejoined: sending from it starts a fresh session (see ChatViewModel.sendMessage).
+    public var needsNewSession: Bool = false
     public var hasMoreHistory: Bool = false
     public var isLoadingMoreHistory: Bool = false
     public var isHistoryUnavailable: Bool = false
@@ -199,12 +203,14 @@ public struct ChatUiState: Equatable {
             lhs.terminalFallbackMessage == rhs.terminalFallbackMessage &&
             lhs.logoOverride == rhs.logoOverride &&
             lhs.botTitleOverride == rhs.botTitleOverride &&
+            lhs.welcomeOverride == rhs.welcomeOverride &&
             lhs.pendingUrlToOpen == rhs.pendingUrlToOpen &&
             lhs.isLiveChat == rhs.isLiveChat &&
             lhs.assignedAgent == rhs.assignedAgent &&
             lhs.voiceDraft == rhs.voiceDraft &&
             lhs.showFeedbackPrompt == rhs.showFeedbackPrompt &&
             lhs.isArchived == rhs.isArchived &&
+            lhs.needsNewSession == rhs.needsNewSession &&
             lhs.hasMoreHistory == rhs.hasMoreHistory &&
             lhs.isLoadingMoreHistory == rhs.isLoadingMoreHistory &&
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&

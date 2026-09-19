@@ -23,7 +23,7 @@ final class RoomOrderingTests: XCTestCase {
     }
 
     private func room(_ id: String, updatedAt: String?, createdAt: String? = nil) -> RoomDto {
-        RoomDto(roomId: id, roomName: id, agentId: nil, status: nil, createdAt: createdAt, updatedAt: updatedAt, sessionIds: [], sessionCount: 0)
+        RoomDto(roomId: id, roomName: id, agentId: nil, status: nil, createdAt: createdAt, updatedAt: updatedAt, sessionIds: [], sessionCount: 1)
     }
 
     func testRoomsAreOrderedNewestFirstRegardlessOfServerOrder() async {

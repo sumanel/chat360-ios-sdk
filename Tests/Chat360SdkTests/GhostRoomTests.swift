@@ -16,13 +16,36 @@ final class GhostRoomTests: XCTestCase {
         static let lock = NSLock()
         static var sessionRequests: [String?] = []
         static var roomCounter = 0
+        /// Server-configured welcome copy: what the stub returns, and the client_id header of every request.
+        static var welcomeStatus = 200
+        static var welcomeBody = #"{"heading":"Server heading","text":"Server subtitle","client_id":"client-1"}"#
+        static var welcomeDelay: TimeInterval = 0
+        static var welcomeClientIds: [String?] = []
+        static var welcomeRequests: [String?] { lock.lock(); defer { lock.unlock() }; return welcomeClientIds }
+
+        /// The sales-executive check and the maintenance flag: what each returns, and what the app sent.
+        static let activeExecutive = #"{"success":true,"message":"Sales Executive validated successfully.","is_new":false,"status_downgraded_to_inactive":false,"sales_executive":{"id":12,"emp_code":"EMP1101","name":"","role":"Trainer","dealer_code":"W4300","dealer_name":"Hindustan Hyundai","status":"ACTIVE"}}"#
+        static let inactiveExecutive = #"{"success":true,"message":"Sales Executive onboarded as INACTIVE.","is_new":true,"status_downgraded_to_inactive":false,"sales_executive":{"id":12,"emp_code":"EMP1101","name":"","role":null,"dealer_code":"W4300","dealer_name":"Hindustan Hyundai","status":"INACTIVE"}}"#
+        static var salesStatus = 200
+        static var salesBody = activeExecutive
+        static var salesDelay: TimeInterval = 0
+        static var salesClientIds: [String?] = []
+        static var salesBodies: [String] = []
+        static var salesRequestCount: Int { lock.lock(); defer { lock.unlock() }; return salesClientIds.count }
+        static var maintenanceBody = #"{"is_active":false}"#
+
         /// History fetches per room, and how many of the room under test's fetches see no bot reply yet.
         static var historyRequestsByRoom: [String: Int] = [:]
         static var historyWithoutReply = 0
         /// The room whose history the reply tests are about; every other room's history never has a reply.
         static let roomUnderTest = "room-a"
 
-        static func reset() { lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0; lock.unlock() }
+        static func reset() {
+            lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0
+            salesStatus = 200; salesBody = activeExecutive; salesDelay = 0; salesClientIds = []; salesBodies = []; maintenanceBody = #"{"is_active":false}"#
+            welcomeStatus = 200; welcomeBody = #"{"heading":"Server heading","text":"Server subtitle","client_id":"client-1"}"#; welcomeDelay = 0; welcomeClientIds = []
+            lock.unlock()
+        }
         static var historyFetches: Int { lock.lock(); defer { lock.unlock() }; return historyRequestsByRoom[roomUnderTest] ?? 0 }
 
         /// A history page: the user's message, plus the bot's reply once enough fetches have gone by.
@@ -42,7 +65,33 @@ final class GhostRoomTests: XCTestCase {
             let url = request.url!
             var status = 404
             var body = Data()
-            if url.path.contains("/chatbox/messages/") {
+            if url.path.hasSuffix("/api/third-party-tasks/sales-exectives") {
+                var sent = request.httpBody ?? Data()
+                if sent.isEmpty, let stream = request.httpBodyStream {
+                    stream.open(); defer { stream.close() }
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; sent.append(buffer, count: n) }
+                }
+                Self.lock.lock()
+                Self.salesClientIds.append(request.value(forHTTPHeaderField: "Client-Id"))
+                Self.salesBodies.append(String(decoding: sent, as: UTF8.self))
+                status = Self.salesStatus
+                body = Data(Self.salesBody.utf8)
+                let delay = Self.salesDelay
+                Self.lock.unlock()
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+            } else if url.path.hasSuffix("/api/third-party-tasks/maintainance") {
+                Self.lock.lock(); body = Data(Self.maintenanceBody.utf8); Self.lock.unlock()
+                status = 200
+            } else if url.path.hasSuffix("/api/third-party-tasks/welcome-text") {
+                Self.lock.lock()
+                Self.welcomeClientIds.append(request.value(forHTTPHeaderField: "Client-Id"))
+                status = Self.welcomeStatus
+                body = Data(Self.welcomeBody.utf8)
+                let delay = Self.welcomeDelay
+                Self.lock.unlock()
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+            } else if url.path.contains("/chatbox/messages/") {
                 let room = url.lastPathComponent
                 Self.lock.lock()
                 Self.historyRequestsByRoom[room, default: 0] += 1
@@ -90,7 +139,7 @@ final class GhostRoomTests: XCTestCase {
     }
 
     /// A fresh view model over the same cache/session store - what reopening the chat screen builds.
-    private func makeViewModel() -> ChatViewModel {
+    private func makeViewModel(welcome: WelcomeTextRepository? = nil, gate: SalesExecutiveGate? = nil, maintenanceApi: ThirdPartyTasksApiService? = nil) -> ChatViewModel {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubServer.self]
         let baseUrl = "https://ghost.test"
@@ -100,7 +149,7 @@ final class GhostRoomTests: XCTestCase {
             apiService: Chat360ApiService(baseUrl: baseUrl, session: URLSession(configuration: configuration)),
             sessionStore: sessionStore
         )
-        return ChatViewModel(repository: repository, botId: botId, cache: ChatCacheRepository(dao: dao))
+        return ChatViewModel(repository: repository, botId: botId, cache: ChatCacheRepository(dao: dao), maintenanceApi: maintenanceApi, welcomeTextRepository: welcome, salesExecutiveGate: gate)
     }
 
     override func tearDown() async throws {
@@ -177,6 +226,57 @@ final class GhostRoomTests: XCTestCase {
         viewModel.openConversation("conv-old")
         await settle()
         XCTAssertEqual(viewModel.uiState.inputText, "typed in the old room")
+    }
+
+    // MARK: - An older room this device can't reconnect to
+    // Sending from one used to be routed into whichever room was connected, so chats done in two different
+    // older rooms ended up together in a single room. It now starts a fresh session instead.
+
+    private func seedOtherDeviceRoom() async {
+        await dao.upsertConversation(CachedConversationEntity(id: "conv-other", botId: botId, roomId: "room-other", title: "From elsewhere", createdAt: 1, updatedAt: 1))
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-other" } }
+    }
+
+    // The stub server has no socket, so the fresh session never reports connected here: this checks the routing
+    // (nothing joins the old room, nothing lands in any transcript, the flag ends) and that the typed text is
+    // handed back for a retry rather than lost. Creating the session itself is covered on Android.
+    func testSendingFromARoomWithNoSavedSessionNeverGoesIntoTheConnectedRoom() async {
+        ChatViewModel.newSessionSendTimeout = 1
+        defer { ChatViewModel.newSessionSendTimeout = 20 }
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedOtherDeviceRoom()
+
+        viewModel.openConversation("conv-other")
+        await awaitUntil("marked as needing a new session") { self.viewModel.uiState.needsNewSession }
+
+        viewModel.onInputChange("hello from the old room")
+        viewModel.sendMessage()
+
+        await awaitUntil("the text to be handed back after the wait", timeout: 8) { self.viewModel.uiState.inputText == "hello from the old room" }
+        XCTAssertFalse(StubServer.requests.contains("room-other"), "the old room can't be rejoined by id: \(StubServer.requests)")
+        XCTAssertFalse(transcript().contains("hello from the old room"), "nothing is added to any transcript")
+        XCTAssertFalse(viewModel.uiState.needsNewSession)
+    }
+
+    func testNeedingANewSessionEndsWhenMovingToAResumableRoomOrANewChat() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedOtherDeviceRoom()
+        viewModel.openConversation("conv-other")
+        await awaitUntil("marked as needing a new session") { self.viewModel.uiState.needsNewSession }
+
+        sessionStore.save(botId: botId, session: PersistedSession(roomId: "room-old", sessionToken: "tok-room-old", ownerId: "owner-1"))
+        await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
+        await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
+        viewModel.openConversation("conv-old")
+        await awaitUntil("old room resumed") { StubServer.requests.contains("room-old") }
+        await settle()
+        XCTAssertFalse(viewModel.uiState.needsNewSession)
+
+        viewModel.openConversation("conv-other")
+        await awaitUntil("marked again") { self.viewModel.uiState.needsNewSession }
+        viewModel.startNewChat()
+        await settle()
+        XCTAssertFalse(viewModel.uiState.needsNewSession)
     }
 
     // MARK: - Overlapping room loads
@@ -320,5 +420,225 @@ final class GhostRoomTests: XCTestCase {
         await settle()
 
         XCTAssertEqual(StubServer.historyFetches, fetches, "kept polling after a live reply cleared the pending record")
+    }
+
+    // MARK: - Server-configured welcome text
+
+    private final class MemoryWelcomeStore: WelcomeTextStore {
+        var saved: WelcomeText?
+        init(_ saved: WelcomeText? = nil) { self.saved = saved }
+        func load(clientId: String) -> WelcomeText? { saved }
+        func save(clientId: String, welcomeText: WelcomeText?) { saved = welcomeText }
+    }
+
+    private func welcomeRepository(_ store: WelcomeTextStore = MemoryWelcomeStore()) -> WelcomeTextRepository {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubServer.self]
+        let api = ThirdPartyTasksApiService(baseUrl: "https://ghost.test", session: URLSession(configuration: configuration))
+        return WelcomeTextRepository(apiService: api, clientId: "client-1", store: store)
+    }
+
+    func testTheServersWelcomeTextReachesTheScreenStateAskedForWithTheClientId() async {
+        viewModel = makeViewModel(welcome: welcomeRepository())
+
+        await awaitUntil("the welcome text to load") { self.viewModel.uiState.welcomeOverride != nil }
+
+        XCTAssertEqual(viewModel.uiState.welcomeOverride, WelcomeText(heading: "Server heading", text: "Server subtitle"))
+        XCTAssertEqual(StubServer.welcomeRequests, ["client-1"])
+    }
+
+    func testTheCachedWelcomeTextIsThereImmediatelyBeforeTheServerHasAnswered() async {
+        StubServer.welcomeDelay = 1.5
+        viewModel = makeViewModel(welcome: welcomeRepository(MemoryWelcomeStore(WelcomeText(heading: "Cached heading", text: "Cached subtitle"))))
+
+        // No waiting: this is the very first paint.
+        XCTAssertEqual(viewModel.uiState.welcomeOverride, WelcomeText(heading: "Cached heading", text: "Cached subtitle"))
+
+        await awaitUntil("the fresh text to replace it") { self.viewModel.uiState.welcomeOverride?.heading == "Server heading" }
+    }
+
+    func testAnEndpointThatIsNotDeployedLeavesTheDefaultsAndDoesNotGetInTheChatsWay() async {
+        StubServer.welcomeStatus = 404
+        StubServer.welcomeBody = "<!DOCTYPE html><html>Page not found</html>"
+        viewModel = makeViewModel(welcome: welcomeRepository())
+
+        await awaitUntil("the welcome request") { !StubServer.welcomeRequests.isEmpty }
+        await settle()
+
+        XCTAssertNil(viewModel.uiState.welcomeOverride)
+        await awaitUntil("the chat to connect regardless") { StubServer.requests.count >= 2 && self.viewModel.uiState.activeConversationId != nil }
+    }
+
+    func testAFailureKeepsAPreviouslyCachedWelcomeTextOnScreen() async {
+        StubServer.welcomeStatus = 500
+        viewModel = makeViewModel(welcome: welcomeRepository(MemoryWelcomeStore(WelcomeText(heading: "Cached heading", text: "Cached subtitle"))))
+
+        await awaitUntil("the welcome request") { !StubServer.welcomeRequests.isEmpty }
+        await settle()
+
+        XCTAssertEqual(viewModel.uiState.welcomeOverride, WelcomeText(heading: "Cached heading", text: "Cached subtitle"))
+    }
+
+    func testTheServerClearingItsWelcomeTextRemovesTheOverride() async {
+        StubServer.welcomeBody = #"{"heading":"","text":""}"#
+        viewModel = makeViewModel(welcome: welcomeRepository(MemoryWelcomeStore(WelcomeText(heading: "Old heading", text: "Old subtitle"))))
+
+        await awaitUntil("the empty reply to clear it") { self.viewModel.uiState.welcomeOverride == nil }
+    }
+
+    func testAHostWithoutAClientIdNeverAsksTheServer() async {
+        viewModel = makeViewModel(welcome: nil)
+        await awaitUntil("the chat to connect") { self.viewModel.uiState.activeConversationId != nil }
+        await settle()
+
+        XCTAssertTrue(StubServer.welcomeRequests.isEmpty, "asked anyway: \(StubServer.welcomeRequests)")
+        XCTAssertNil(viewModel.uiState.welcomeOverride)
+    }
+
+    // MARK: - Sales-executive gate
+    // Closed like maintenance: no socket, the server's message in place of the input bar. Anything other than a
+    // clear INACTIVE lets the chat run untouched.
+
+    private func stubbedApi() -> ThirdPartyTasksApiService {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubServer.self]
+        return ThirdPartyTasksApiService(baseUrl: "https://ghost.test", session: URLSession(configuration: configuration))
+    }
+
+    private func gate(timeout: TimeInterval = 3) -> SalesExecutiveGate {
+        SalesExecutiveGate(apiService: stubbedApi(), clientId: "client-1", details: ["dealer_code": "W4300", "emp_code": "EMP1101"], timeout: timeout)
+    }
+
+    /// A view model started fresh with the gate, plus how many rooms had already been created before it.
+    private func startGated(_ gate: SalesExecutiveGate?, maintenanceApi: ThirdPartyTasksApiService? = nil) async -> Int {
+        await awaitUntil("the harness's own room") { StubServer.requests.count == 1 }
+        let before = StubServer.requests.count
+        viewModel = makeViewModel(gate: gate, maintenanceApi: maintenanceApi)
+        return before
+    }
+
+    func testAnInactiveExecutiveGetsTheServersMessageAndNoSocketIsEverOpened() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate())
+
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+        await settle()
+
+        XCTAssertEqual(viewModel.uiState.terminalFallbackMessage, "Sales Executive onboarded as INACTIVE.")
+        XCTAssertEqual(StubServer.requests.count, before, "a room was created for a blocked executive: \(StubServer.requests)")
+        XCTAssertEqual(StubServer.salesClientIds, ["client-1"])
+        XCTAssertTrue(StubServer.salesBodies.first?.contains("\"emp_code\":\"EMP1101\"") == true)
+    }
+
+    func testAnActiveExecutiveConnectsNormallyWithNoBlock() async {
+        let before = await startGated(gate())
+
+        await awaitUntil("the chat to connect") { StubServer.requests.count == before + 1 }
+
+        XCTAssertNil(viewModel.uiState.terminalFallbackMessage)
+    }
+
+    func testAFailingCheckNeverBlocksErrorsAnUndeployedEndpointAndAMalformedReplyAllLetTheChatConnect() async {
+        for (status, body) in [(500, ""), (404, "<html>Page not found</html>"), (400, #"{"success":false,"errors":{"emp_code":["This field is required."]}}"#), (200, "<html>proxy</html>")] {
+            StubServer.salesStatus = status
+            StubServer.salesBody = body
+            let before = max(StubServer.requests.count, 1)
+            viewModel = makeViewModel(gate: gate())
+
+            await awaitUntil("the chat to connect despite HTTP \(status)") { StubServer.requests.count > before }
+            XCTAssertNil(viewModel.uiState.terminalFallbackMessage, "blocked on HTTP \(status)")
+        }
+    }
+
+    func testASlowServerDoesNotHoldTheChatBack() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        StubServer.salesDelay = 4 // answers far too late
+        let before = await startGated(gate(timeout: 0.4))
+
+        await awaitUntil("the chat to connect without waiting for the check") { StubServer.requests.count == before + 1 }
+
+        XCTAssertNil(viewModel.uiState.terminalFallbackMessage)
+    }
+
+    func testOnceTheExecutiveIsActivatedReturningToTheAppStartsTheChatThatWasNeverOpened() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate())
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+        XCTAssertEqual(StubServer.requests.count, before)
+
+        StubServer.salesBody = StubServer.activeExecutive // an admin activates them
+        viewModel.onAppForegrounded()
+
+        await awaitUntil("the chat to start") { StubServer.requests.count == before + 1 }
+        await awaitUntil("the block to clear") { self.viewModel.uiState.terminalFallbackMessage == nil }
+    }
+
+    func testAManualRetryAfterBeingActivatedAlsoStartsTheChat() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate())
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+
+        StubServer.salesBody = StubServer.activeExecutive
+        viewModel.refreshConnection()
+
+        await awaitUntil("the chat to start") { StubServer.requests.count == before + 1 }
+    }
+
+    func testStartingANewChatAfterBeingBlockedAtStartupDoesTheFirstConnectProperly() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate())
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+
+        StubServer.salesBody = StubServer.activeExecutive
+        viewModel.startNewChat()
+
+        await awaitUntil("the chat to start") { StubServer.requests.count == before + 1 }
+        await awaitUntil("the room to be shown") { self.viewModel.uiState.activeConversationId != nil }
+        XCTAssertNil(viewModel.uiState.terminalFallbackMessage)
+    }
+
+    func testAnExecutiveWhoIsStillInactiveStaysBlockedWhenReturningToTheApp() async {
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate())
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+
+        viewModel.onAppForegrounded()
+        await settle()
+
+        XCTAssertEqual(viewModel.uiState.terminalFallbackMessage, "Sales Executive onboarded as INACTIVE.")
+        XCTAssertEqual(StubServer.requests.count, before)
+    }
+
+    func testOnceActiveTheCheckIsNotRepeatedWhenReturningToTheApp() async {
+        let before = await startGated(gate())
+        await awaitUntil("the chat to connect") { StubServer.requests.count == before + 1 }
+
+        viewModel.onAppForegrounded()
+        viewModel.onAppForegrounded()
+        await settle()
+
+        XCTAssertEqual(StubServer.salesRequestCount, 1, "re-checked on every foreground")
+    }
+
+    func testMaintenanceModeTakesPriorityOverAnInactiveExecutive() async {
+        await awaitUntil("the harness's own room") { StubServer.requests.count == 1 } // before maintenance flips on
+        StubServer.lock.lock(); StubServer.maintenanceBody = #"{"is_active":true,"message":"Down for maintenance"}"#; StubServer.lock.unlock()
+        StubServer.salesBody = StubServer.inactiveExecutive
+        let before = await startGated(gate(), maintenanceApi: stubbedApi())
+
+        await awaitUntil("the block to show") { self.viewModel.uiState.terminalFallbackMessage != nil }
+        await settle()
+
+        XCTAssertEqual(viewModel.uiState.terminalFallbackMessage, "Down for maintenance")
+        XCTAssertEqual(StubServer.requests.count, before)
+    }
+
+    func testAHostThatConfiguresNoSalesExecutiveNeverCallsTheEndpoint() async {
+        let before = await startGated(nil)
+
+        await awaitUntil("the chat to connect") { StubServer.requests.count == before + 1 }
+        await settle()
+
+        XCTAssertEqual(StubServer.salesRequestCount, 0, "asked anyway: \(StubServer.salesClientIds)")
     }
 }
