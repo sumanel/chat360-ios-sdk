@@ -211,20 +211,68 @@ public final class ChatRepository {
         await sessionMutex.unlock()
     }
 
-    // There's no way to resume a room without its session token - room id alone is silently
-    // ignored by the server and a fresh room gets allocated instead - so this is a no-op (returns
-    // false) for any room this device never actually connected to itself (e.g. one only ever seen
-    // in another device's history). Callers should fall back to whatever they'd otherwise do when
-    // this returns false, same as a resumable switch's caller would on a resumedRoomId mismatch.
+    // Switches the live socket to `targetRoomId`. A room this device has a saved session token for is
+    // resumed through the session endpoint. Any other room (one seen only in the rooms list - another
+    // device, a reinstall, an older room) can't be resumed that way: the session endpoint ignores a
+    // bare room id and allocates a different room. The web widget doesn't need a token to be in a room
+    // either - its socket is just `ws/chat_updated/{ownerId}/{roomId}` - so that's what is used here:
+    // the socket joins the same room and the flow starts again from the bot's opening node, which
+    // begins a new session inside the room and keeps its history. Returns false only when there is no
+    // owner id to connect with (no session has ever been established), so the caller can fall back.
     public func switchToRoom(targetRoomId: String, onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async -> Bool {
-        guard let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId) else { return false }
+        if let persisted = sessionStore?.loadForRoom(botId: botId, roomId: targetRoomId) {
+            await sessionMutex.lock()
+            NSLog("[Chat360WS] Switching to room=%@ (tearing down room=%@)", targetRoomId, roomId ?? "nil")
+            await awaitPendingReplyBeforeTeardown()
+            teardownForResession()
+            await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: targetRoomId, resumeSessionToken: persisted.sessionToken)
+            await sessionMutex.unlock()
+            return true
+        }
+        guard let owner = ownerId ?? sessionStore?.load(botId: botId)?.ownerId else { return false }
         await sessionMutex.lock()
-        NSLog("[Chat360WS] Switching to room=%@ (tearing down room=%@)", targetRoomId, roomId ?? "nil")
-        await awaitPendingReplyBeforeTeardown()
-        teardownForResession()
-        await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: targetRoomId, resumeSessionToken: persisted.sessionToken)
+        await joinRoomDirectly(owner: owner, targetRoomId: targetRoomId, onConversationStarted: onConversationStarted)
         await sessionMutex.unlock()
         return true
+    }
+
+    // Must run under `sessionMutex`.
+    private func joinRoomDirectly(owner: String, targetRoomId: String, onConversationStarted: @escaping (String) async -> Bool) async {
+        NSLog("[Chat360WS] Joining room=%@ directly, no saved session (tearing down room=%@)", targetRoomId, roomId ?? "nil")
+        await awaitPendingReplyBeforeTeardown()
+        teardownForResession()
+        let myGeneration = _sessionGeneration.mutate { $0 += 1; return $0 }
+        withState {
+            ownerId = owner
+            roomId = targetRoomId
+            // No session id is known for a room joined this way; the same fallback establishSession uses.
+            sessionId = targetRoomId
+        }
+        guard await onConversationStarted(targetRoomId), myGeneration == sessionGeneration else { return }
+        await seedOpeningNode(generation: myGeneration)
+        guard myGeneration == sessionGeneration else { return }
+        withState {
+            // The room already exists server-side, so its session_time can be asked for on open.
+            sessionEverStarted = true
+            guard myGeneration == sessionGeneration else { return }
+            openSocket()
+        }
+    }
+
+    /// Points `currentTargetId`/`lastBotNode` at the bot's opening node, without showing it: the next
+    /// message sent goes out as the first message of a fresh session. Best-effort - on failure the
+    /// position is left empty, like `loadConversationStarter`.
+    private func seedOpeningNode(generation: Int) async {
+        guard let items = try? await apiService.getFirstMessages(botId: botId) else { return }
+        withState {
+            guard generation == sessionGeneration else { return }
+            for item in items {
+                if case .botMessage(let node) = item.toIncomingEvent(), !isErrorNode(node) {
+                    lastBotNode = node
+                    currentTargetId = node.targetId ?? currentTargetId
+                }
+            }
+        }
     }
 
     // Waits (briefly) for an in-flight bot reply to the last message sent on the room about to be

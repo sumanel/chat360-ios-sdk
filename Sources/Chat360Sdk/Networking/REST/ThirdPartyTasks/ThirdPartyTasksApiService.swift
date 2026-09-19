@@ -34,7 +34,6 @@ public final class ThirdPartyTasksApiService {
     }
 
     public func fetchRoomsList(
-        clientId: String,
         bearerToken: String,
         agentId: String,
         limit: Int? = nil,
@@ -42,7 +41,6 @@ public final class ThirdPartyTasksApiService {
     ) async throws -> RoomsListResponse {
         var components = URLComponents(string: "\(trimmedBaseUrl)/api/third-party-tasks/rooms/list")!
         var items = [
-            URLQueryItem(name: "client_id", value: clientId),
             URLQueryItem(name: "agent_id", value: agentId),
         ]
         if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }

@@ -228,47 +228,45 @@ final class GhostRoomTests: XCTestCase {
         XCTAssertEqual(viewModel.uiState.inputText, "typed in the old room")
     }
 
-    // MARK: - An older room this device can't reconnect to
-    // Sending from one used to be routed into whichever room was connected, so chats done in two different
-    // older rooms ended up together in a single room. It now starts a fresh session instead.
+    // MARK: - An older room this device has no saved session for
+    // A room only ever seen in the rooms list (another device, a reinstall) can't be resumed through the
+    // session endpoint - it ignores the room id and allocates a different room. Like the web widget, the socket
+    // joins the room directly instead, so chatting in it continues that same room rather than starting a new one.
 
     private func seedOtherDeviceRoom() async {
         await dao.upsertConversation(CachedConversationEntity(id: "conv-other", botId: botId, roomId: "room-other", title: "From elsewhere", createdAt: 1, updatedAt: 1))
         await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-other" } }
     }
 
-    // Whether the fresh session manages to connect depends on the environment (the stub has no socket), so both
-    // outcomes are accepted: the text is sent in the fresh session, or handed back to the input for a retry.
-    // What must never happen is joining the old room by id, or filing the text under it. (Whether a *different*
-    // connected room is avoided is covered on Android, where the connected room can be made a real chat.)
-    func testSendingFromARoomWithNoSavedSessionNeverGoesIntoTheConnectedRoom() async {
-        ChatViewModel.newSessionSendTimeout = 1
-        defer { ChatViewModel.newSessionSendTimeout = 20 }
+    func testSendingFromARoomWithNoSavedSessionStaysInThatRoomAndCreatesNoNewOne() async {
         await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        let connectedConversationId = viewModel.uiState.activeConversationId!
+        let before = StubServer.requests.count
         await seedOtherDeviceRoom()
 
         viewModel.openConversation("conv-other")
-        await awaitUntil("marked as needing a new session") { self.viewModel.uiState.needsNewSession }
+        await settle()
+        XCTAssertFalse(viewModel.uiState.needsNewSession, "joining the room must not be treated as needing a new session")
 
         let text = "hello from the old room"
         viewModel.onInputChange(text)
         viewModel.sendMessage()
 
-        await awaitUntil("the text to be sent in a fresh session or handed back", timeout: 8) {
-            self.viewModel.uiState.inputText == text || self.transcript().contains(text)
-        }
+        await awaitUntil("the text to appear in the old room's transcript", timeout: 8) { self.transcript().contains(text) }
         await settle()
-        XCTAssertFalse(StubServer.requests.contains("room-other"), "the old room can't be rejoined by id: \(StubServer.requests)")
+        XCTAssertEqual(StubServer.requests.count, before, "a new room was created: \(StubServer.requests)")
+        let cachedInConnectedRoom = await dao.messages(conversationId: connectedConversationId).map { $0.payload }
+        XCTAssertFalse(cachedInConnectedRoom.contains(text), "the text was filed under the room that was connected before")
         let cachedInOldRoom = await dao.messages(conversationId: "conv-other").map { $0.payload }
-        XCTAssertFalse(cachedInOldRoom.contains(text), "the text must not be filed under the old room it was typed in")
-        XCTAssertFalse(viewModel.uiState.needsNewSession)
+        XCTAssertTrue(cachedInOldRoom.contains(text), "the text was not filed under the old room it was typed in")
     }
 
-    func testNeedingANewSessionEndsWhenMovingToAResumableRoomOrANewChat() async {
+    func testMovingBetweenARoomJoinedDirectlyAndAResumableRoomNeverAsksForANewSession() async {
         await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
         await seedOtherDeviceRoom()
         viewModel.openConversation("conv-other")
-        await awaitUntil("marked as needing a new session") { self.viewModel.uiState.needsNewSession }
+        await settle()
+        XCTAssertFalse(viewModel.uiState.needsNewSession)
 
         sessionStore.save(botId: botId, session: PersistedSession(roomId: "room-old", sessionToken: "tok-room-old", ownerId: "owner-1"))
         await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
@@ -279,10 +277,9 @@ final class GhostRoomTests: XCTestCase {
         XCTAssertFalse(viewModel.uiState.needsNewSession)
 
         viewModel.openConversation("conv-other")
-        await awaitUntil("marked again") { self.viewModel.uiState.needsNewSession }
-        viewModel.startNewChat()
         await settle()
         XCTAssertFalse(viewModel.uiState.needsNewSession)
+        XCTAssertEqual(StubServer.requests.filter { $0 == nil }.count, 1, "a room was created along the way: \(StubServer.requests)")
     }
 
     // MARK: - Overlapping room loads

@@ -61,9 +61,15 @@ public final class ChatCacheRepository {
         await dao.replaceAgentRoomConversations(botId: botId, conversations: conversations)
     }
 
+    /// Adds/updates synced rooms without removing any - used when a further page of rooms is loaded.
+    public func mergeAgentRooms(botId: String, conversations: [CachedConversationEntity]) async {
+        guard Self.enabled else { return }
+        await dao.mergeAgentRoomConversations(botId: botId, conversations: conversations)
+    }
+
     /// Applies what the server says about rooms this device already has a local conversation for:
-    /// a room the server marks inactive (deleted elsewhere) is removed here too, and a name the
-    /// server holds replaces a differing local title. Without this the local row - which owns the
+    /// a name the server holds replaces a differing local title (a room the server marks inactive is
+    /// kept, as inactive rooms are listed). Without this the local row - which owns the
     /// room and so shields it from the `agent-room:` sync - never changed after it was created.
     /// Call only with a complete rooms list.
     public func syncLocalConversations(botId: String, rooms: [RoomDto]) async {
@@ -71,11 +77,6 @@ public final class ChatCacheRepository {
         for room in rooms {
             guard let local = await dao.findConversation(botId: botId, roomId: room.roomId),
                   !local.id.hasPrefix("agent-room:") else { continue }
-            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame {
-                await dao.deleteMessages(conversationId: local.id)
-                await dao.deleteConversation(conversationId: local.id, botId: botId)
-                continue
-            }
             let name = room.roomName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !name.isEmpty && name != local.title {
                 await dao.updateTitle(conversationId: local.id, title: name, botId: botId)
@@ -88,7 +89,6 @@ public final class ChatCacheRepository {
         let fetchedAt = nowMs()
         var result: [CachedConversationEntity] = []
         for (index, room) in rooms.enumerated() {
-            if room.status?.caseInsensitiveCompare("inactive") == .orderedSame { continue }
             // Nobody typed in it: a server session_count of 0 is an empty room. A room the server gives
             // neither a name nor a count for is treated the same (an abandoned one). An unnamed room
             // that does have sessions is a real chat and is listed as "Conversation". Checked against

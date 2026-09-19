@@ -44,11 +44,11 @@ final class RoomServerSyncTests: XCTestCase {
         XCTAssertTrue(list.isEmpty)
     }
 
-    func testLocalChatTheServerMarksInactiveIsRemoved() async {
+    func testLocalChatTheServerMarksInactiveIsKept() async {
         let (cache, dao) = makeCache()
         await dao.insertConversationIfMissing(CachedConversationEntity(id: "local-1", botId: botId, roomId: "r1", title: "old chat", createdAt: 1, updatedAt: 5))
         let list = await sync(cache, [room("r1", name: "old chat", status: "INACTIVE")])
-        XCTAssertTrue(list.isEmpty)
+        XCTAssertEqual(list.map { $0.id }, ["local-1"])
     }
 
     func testLocalChatTakesTheNameTheServerHolds() async {

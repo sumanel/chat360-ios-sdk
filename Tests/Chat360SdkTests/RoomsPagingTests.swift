@@ -12,6 +12,7 @@ final class RoomsPagingTests: XCTestCase {
         let id: String
         let name: String?
         var status = "active"
+        var sessions = 1
     }
 
     /// Behaves like the real endpoint: honours limit/offset, defaults to a page of 20, reports has_more.
@@ -56,7 +57,7 @@ final class RoomsPagingTests: XCTestCase {
                     let page = Array(all.dropFirst(start).prefix(size))
                     let rooms = page.map { room -> String in
                         let name = room.name.map { "\"\($0)\"" } ?? "null"
-                        return #"{"room_id":"\#(room.id)","room_name":\#(name),"status":"\#(room.status)","updated_at":"2026-09-18T10:00:00Z","session_count":1}"#
+                        return #"{"room_id":"\#(room.id)","room_name":\#(name),"status":"\#(room.status)","updated_at":"2026-09-18T10:00:00Z","session_count":\#(room.sessions)}"#
                     }.joined(separator: ",")
                     body = Data(#"{"success":true,"data":{"rooms":[\#(rooms)],"total_count":\#(all.count),"has_more":\#(start + page.count < all.count)}}"#.utf8)
                 }
@@ -103,81 +104,143 @@ final class RoomsPagingTests: XCTestCase {
         await seedLocalRecords(for: rooms)
     }
 
-    func testEveryPageIsFetchedNotJustTheServersDefaultFirstPage() async {
-        await setServerRooms(named(250))
+    /// Server rooms without the local records `setServerRooms` seeds, so the cache holds only what the
+    /// repository itself synced (`agent-room:` rows).
+    private func setUnseededServerRooms(_ rooms: [FakeRoom]) {
+        RoomsServer.lock.lock(); RoomsServer.rooms = rooms; RoomsServer.lock.unlock()
+    }
+
+    private func syncedRoomTitles() async -> [String] {
+        var cached: [CachedConversationEntity] = []
+        for await list in cache.conversations(botId: botId) { cached = list; break }
+        return cached.filter { $0.id.hasPrefix("agent-room:") }.map { $0.title }
+    }
+
+    private var requestLog: [String] {
+        RoomsServer.seenRequests.map { "\($0.limit ?? "nil")/\($0.offset ?? "nil")" }
+    }
+
+    func testRefreshFetchesOnlyTheFirstPageAndReportsThatMoreIsAvailable() async {
+        setUnseededServerRooms(named(120))
 
         let result = await repository.refreshRooms()
 
-        XCTAssertEqual(result?.count, 250, "only part of the list was fetched")
-        XCTAssertEqual(RoomsServer.seenRequests.map { "\($0.limit ?? "nil")/\($0.offset ?? "nil")" }, ["100/0", "100/100", "100/200"])
+        XCTAssertEqual(result?.count, 50)
+        XCTAssertTrue(repository.hasMoreRooms)
+        XCTAssertEqual(requestLog, ["50/0"])
     }
 
-    func testAnOlderRealChatBehindManyDeletedRoomsStillShowsUp() async {
-        // The reported shape: newest-first, the front of the list is soft-deleted rooms and the real
-        // conversation sits past the server's default page of 20.
-        let deleted = (1...110).map { FakeRoom(id: "gone-\($0)", name: "Deleted \($0)", status: "INACTIVE") }
-        await setServerRooms(deleted + [FakeRoom(id: "old-real", name: "Creta is a good car")])
+    func testLoadMoreAddsTheNextPageUntilTheServerSaysThereIsNoMore() async {
+        setUnseededServerRooms(named(120))
+        _ = await repository.refreshRooms()
 
-        let result = await repository.refreshRooms()
+        let first = await repository.loadMoreRooms()
+        let afterFirst = await syncedRoomTitles().count
+        XCTAssertTrue(first)
+        XCTAssertEqual(afterFirst, 100)
+        XCTAssertTrue(repository.hasMoreRooms)
 
-        XCTAssertEqual(result?.map { $0.title }, ["Creta is a good car"])
+        let second = await repository.loadMoreRooms()
+        let afterSecond = await syncedRoomTitles().count
+        XCTAssertTrue(second)
+        XCTAssertEqual(afterSecond, 120)
+        XCTAssertFalse(repository.hasMoreRooms)
+        XCTAssertEqual(RoomsServer.seenRequests.map { $0.offset ?? "nil" }, ["0", "50", "100"])
     }
 
-    func testAServerThatCapsAPageBelowTheRequestedSizeIsPagedByWhatItActuallyReturned() async {
-        RoomsServer.serverMaxPage = 3
-        await setServerRooms(named(7))
-
-        let result = await repository.refreshRooms()
-
-        XCTAssertEqual(result?.count, 7)
-        XCTAssertEqual(RoomsServer.seenRequests.map { $0.offset ?? "nil" }, ["0", "3", "6"])
-    }
-
-    func testASinglePageMakesASingleRequest() async {
-        await setServerRooms(named(5))
+    func testASinglePageOffersNoLoadMore() async {
+        setUnseededServerRooms(named(5))
 
         let result = await repository.refreshRooms()
 
         XCTAssertEqual(result?.count, 5)
+        XCTAssertFalse(repository.hasMoreRooms)
         XCTAssertEqual(RoomsServer.seenRequests.count, 1)
     }
 
-    func testAServerThatIgnoresOffsetAndRepeatsOnePageCannotLoopForever() async {
+    func testAnOlderChatBehindManyEmptyRoomsIsReachedByLoadingMore() async {
+        // Newest-first, the front of the list is empty (never-used) rooms and the real conversation
+        // sits past the first page.
+        let empty = (1...110).map { FakeRoom(id: "empty-\($0)", name: "Empty \($0)", sessions: 0) }
+        setUnseededServerRooms(empty + [FakeRoom(id: "old-real", name: "Creta is a good car")])
+
+        let first = await repository.refreshRooms()
+        XCTAssertEqual(first?.count, 0)
+        _ = await repository.loadMoreRooms()
+        _ = await repository.loadMoreRooms()
+
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles, ["Creta is a good car"])
+    }
+
+    func testAServerThatCapsAPageBelowTheRequestedSizeIsPagedByWhatItActuallyReturned() async {
+        RoomsServer.serverMaxPage = 3
+        setUnseededServerRooms(named(7))
+
+        _ = await repository.refreshRooms()
+        _ = await repository.loadMoreRooms()
+        _ = await repository.loadMoreRooms()
+
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles.count, 7)
+        XCTAssertEqual(RoomsServer.seenRequests.map { $0.offset ?? "nil" }, ["0", "3", "6"])
+    }
+
+    func testAServerThatIgnoresOffsetAndRepeatsOnePageCannotKeepLoadMoreAlive() async {
         RoomsServer.ignoreOffset = true
         RoomsServer.serverMaxPage = 3
-        await setServerRooms(named(9))
+        setUnseededServerRooms(named(9))
 
-        let result = await repository.refreshRooms()
+        _ = await repository.refreshRooms()
+        _ = await repository.loadMoreRooms()
 
-        XCTAssertEqual(result?.count, 3, "duplicates were not collapsed")
-        XCTAssertLessThanOrEqual(RoomsServer.seenRequests.count, 2, "kept requesting: \(RoomsServer.seenRequests)")
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles.count, 3, "duplicates were not collapsed")
     }
 
-    func testAFailureOnALaterPageFailsTheWholeRefreshAndLeavesTheCachedListUntouched() async {
-        // Four synced rooms the user has chatted in, all sitting on the THIRD page of the server's list.
-        let onLaterPage = (200...203).map { "Chat-\($0)" }
-        for roomId in onLaterPage {
-            let id = "agent-room:\(roomId)"
-            await dao.upsertConversation(CachedConversationEntity(id: id, botId: botId, roomId: roomId, title: roomId, createdAt: 1, updatedAt: 1))
-            await dao.insertMessage(CachedMessageEntity(conversationId: id, kind: "USER", payload: "hi", createdAt: 1))
-        }
-        RoomsServer.lock.lock(); RoomsServer.rooms = named(250); RoomsServer.failFromOffset = 100; RoomsServer.lock.unlock() // page 2 blows up
+    func testRefreshAfterLoadingMoreReFetchesWhatWasAlreadyLoadedSoTheListDoesNotCollapse() async {
+        setUnseededServerRooms(named(120))
+        _ = await repository.refreshRooms()
+        _ = await repository.loadMoreRooms() // 100 loaded
 
-        let result = await repository.refreshRooms()
+        _ = await repository.refreshRooms()
 
-        XCTAssertNil(result, "a partial list was returned as if it were complete")
-        // The sync deletes cached agent rooms missing from the fetched list - handed only the first
-        // pages, it would have wiped every room that lives on the pages that never loaded.
-        var cached: [CachedConversationEntity] = []
-        for await list in cache.conversations(botId: botId) { cached = list; break }
-        XCTAssertEqual(cached.filter { $0.id.hasPrefix("agent-room:") }.count, 4, "cached rooms were deleted by a partial refresh")
+        XCTAssertEqual(requestLog.last, "100/0")
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles.count, 100)
     }
 
-    func testSoftDeletedRoomsAreStillDroppedAfterPaging() async {
-        await setServerRooms(named(3) + (1...3).map { FakeRoom(id: "gone-\($0)", name: "Deleted \($0)", status: "INACTIVE") })
+    func testAFailedLoadMoreReportsFailureAndLeavesTheListAsItWas() async {
+        setUnseededServerRooms(named(120))
+        _ = await repository.refreshRooms()
+        RoomsServer.lock.lock(); RoomsServer.failFromOffset = 50; RoomsServer.lock.unlock()
+
+        let ok = await repository.loadMoreRooms()
+
+        XCTAssertFalse(ok)
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles.count, 50)
+        XCTAssertTrue(repository.hasMoreRooms, "retry must still be offered")
+    }
+
+    func testAFailedRefreshReturnsNilAndLeavesTheCachedListUntouched() async {
+        setUnseededServerRooms(named(4))
+        let first = await repository.refreshRooms()
+        XCTAssertEqual(first?.count, 4)
+
+        RoomsServer.lock.lock(); RoomsServer.failFromOffset = 0; RoomsServer.lock.unlock()
+        let result = await repository.refreshRooms()
+
+        XCTAssertNil(result)
+        let titles = await syncedRoomTitles()
+        XCTAssertEqual(titles.count, 4)
+    }
+
+    func testInactiveRoomsAreListedAlongWithActiveOnes() async {
+        setUnseededServerRooms(named(3) + (1...3).map { FakeRoom(id: "gone-\($0)", name: "Deleted \($0)", status: "INACTIVE") })
 
         let result = await repository.refreshRooms()
 
-        XCTAssertEqual(result?.map { $0.title }.sorted(), ["Chat 1", "Chat 2", "Chat 3"])
+        XCTAssertEqual(result?.map { $0.title }.sorted(), ["Chat 1", "Chat 2", "Chat 3", "Deleted 1", "Deleted 2", "Deleted 3"])
     }
 }

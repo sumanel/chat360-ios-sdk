@@ -51,6 +51,11 @@ public struct ChatDrawer: View {
     private let onConversationDeleted: (String) -> Void
     private let languages: [SessionLanguage]
     private let onLanguageSelected: (String) -> Void
+    private let isHistoryUnavailable: Bool
+    private let onRetryHistory: () -> Void
+    private let hasMoreRooms: Bool
+    private let isLoadingMoreRooms: Bool
+    private let onLoadMoreRooms: () -> Void
 
     public init(
         onDismiss: @escaping () -> Void,
@@ -67,7 +72,12 @@ public struct ChatDrawer: View {
         onConversationRenamed: @escaping (String, String) -> Void,
         onConversationDeleted: @escaping (String) -> Void = { _ in },
         languages: [SessionLanguage] = [],
-        onLanguageSelected: @escaping (String) -> Void = { _ in }
+        onLanguageSelected: @escaping (String) -> Void = { _ in },
+        isHistoryUnavailable: Bool = false,
+        onRetryHistory: @escaping () -> Void = {},
+        hasMoreRooms: Bool = false,
+        isLoadingMoreRooms: Bool = false,
+        onLoadMoreRooms: @escaping () -> Void = {}
     ) {
         self.onDismiss = onDismiss
         self.onNewChat = onNewChat
@@ -84,6 +94,11 @@ public struct ChatDrawer: View {
         self.onConversationDeleted = onConversationDeleted
         self.languages = languages
         self.onLanguageSelected = onLanguageSelected
+        self.isHistoryUnavailable = isHistoryUnavailable
+        self.onRetryHistory = onRetryHistory
+        self.hasMoreRooms = hasMoreRooms
+        self.isLoadingMoreRooms = isLoadingMoreRooms
+        self.onLoadMoreRooms = onLoadMoreRooms
     }
 
     public var body: some View {
@@ -199,6 +214,16 @@ public struct ChatDrawer: View {
     @ViewBuilder
     private var historyList: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The server list failed to load, so only chats cached on this device are shown.
+            if isHistoryUnavailable {
+                Button(action: onRetryHistory) {
+                    Text("Couldn't load your older chats. Tap to retry.")
+                        .font(typography.textFamily.font(size: 13))
+                        .foregroundColor(colors.textSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.bottom, 16)
+            }
             if conversations.isEmpty {
                 Text("No saved conversations yet")
                     .font(typography.textFamily.font(size: 14))
@@ -221,6 +246,16 @@ public struct ChatDrawer: View {
                         )
                     }
                 }
+            }
+            if hasMoreRooms {
+                Button(action: onLoadMoreRooms) {
+                    Text(isLoadingMoreRooms ? "Loading…" : "Load more")
+                        .font(typography.textFamily.font(size: 15, weight: .semibold))
+                        .foregroundColor(colors.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+                .disabled(isLoadingMoreRooms)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

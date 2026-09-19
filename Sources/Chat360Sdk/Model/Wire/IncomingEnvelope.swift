@@ -81,7 +81,10 @@ extension RawSocketEnvelope {
         }
 
         if user == "end_user" {
-            return .echoedUserMessage(chatMsgId: chat_msg_id, text: message?.contentOrNull, timestampMs: timestampMs)
+            // A tapped choice button is echoed as an object (`{"text": "...", "type": "multichoice-option"}`)
+            // rather than a plain string.
+            let echoedText = message?.contentOrNull ?? message?.objectValue?["text"]?.contentOrNull
+            return .echoedUserMessage(chatMsgId: chat_msg_id, text: echoedText, timestampMs: timestampMs)
         }
 
         if type == "typing_status" {

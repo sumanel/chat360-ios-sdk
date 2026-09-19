@@ -177,6 +177,9 @@ public struct ChatUiState: Equatable {
     public var hasMoreHistory: Bool = false
     public var isLoadingMoreHistory: Bool = false
     public var isHistoryUnavailable: Bool = false
+    /// The server has older rooms than the history list holds so far; the drawer offers "Load more".
+    public var hasMoreRooms: Bool = false
+    public var isLoadingMoreRooms: Bool = false
     public var activeConversationId: String?
     public var pendingFeedbackMessageId: String?
     public var pendingFeedbackTimestampMs: Int64?
@@ -214,6 +217,8 @@ public struct ChatUiState: Equatable {
             lhs.hasMoreHistory == rhs.hasMoreHistory &&
             lhs.isLoadingMoreHistory == rhs.isLoadingMoreHistory &&
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&
+            lhs.hasMoreRooms == rhs.hasMoreRooms &&
+            lhs.isLoadingMoreRooms == rhs.isLoadingMoreRooms &&
             lhs.activeConversationId == rhs.activeConversationId &&
             lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
             lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&

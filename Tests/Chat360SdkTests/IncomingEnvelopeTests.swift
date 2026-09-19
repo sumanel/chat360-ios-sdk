@@ -234,4 +234,23 @@ final class IncomingEnvelopeTests: XCTestCase {
         XCTAssertTrue(suppress)
         XCTAssertNil(terminalMessage)
     }
+
+    func testEchoedUserMessageKeepsTheTextOfATappedChoiceButton() {
+        // A tapped choice button is echoed as an object, not a plain string; its text used to be lost,
+        // so the user's choice never showed when a room was reopened from history.
+        let message: JSONValue = .object(["text": .string("Venue Interior Features"), "type": .string("multichoice-option"), "value": .number(1)])
+        let envelope = RawSocketEnvelope(user: "end_user", message: message)
+        guard case .echoedUserMessage(_, let text, _) = envelope.toIncomingEvent() else {
+            return XCTFail("expected echoedUserMessage")
+        }
+        XCTAssertEqual(text, "Venue Interior Features")
+    }
+
+    func testEchoedUserMessageKeepsPlainTypedText() {
+        let envelope = RawSocketEnvelope(user: "end_user", message: .string("venue safety features"))
+        guard case .echoedUserMessage(_, let text, _) = envelope.toIncomingEvent() else {
+            return XCTFail("expected echoedUserMessage")
+        }
+        XCTAssertEqual(text, "venue safety features")
+    }
 }

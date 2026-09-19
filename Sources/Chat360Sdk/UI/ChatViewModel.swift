@@ -121,19 +121,7 @@ public final class ChatViewModel: ObservableObject {
             }
         }
 
-        if let chatHistoryRepository {
-            Task { [weak self] in
-                guard let self else { return }
-                // Don't assign the fetched list to `conversations` directly - `refreshRooms()`
-                // already reconciles it into the local cache (see `syncAgentRooms`), which
-                // `conversationsObservationTask` picks up via its live subscription. Writing it
-                // here too raced that subscription: this one-shot assignment could land after
-                // the stream's already-correct snapshot and stomp it with a narrower one, then
-                // never get corrected until some unrelated local write re-fired the stream.
-                let refreshed = await chatHistoryRepository.refreshRooms()
-                self.update { $0.isHistoryUnavailable = refreshed == nil }
-            }
-        }
+        refreshRoomsList()
 
         Task { [weak self] in
             guard let self else { return }
@@ -142,6 +130,41 @@ public final class ChatViewModel: ObservableObject {
                 return
             }
             await self.connectFirstTime()
+        }
+    }
+
+    // Re-fetches the server room list into the cache; also run each time the history menu opens and
+    // from its retry notice. No-ops when history isn't configured.
+    func refreshRoomsList() {
+        guard let chatHistoryRepository else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            // Don't assign the fetched list to `conversations` directly - `refreshRooms()`
+            // already reconciles it into the local cache (see `syncAgentRooms`), which
+            // `conversationsObservationTask` picks up via its live subscription. Writing it
+            // here too raced that subscription: this one-shot assignment could land after
+            // the stream's already-correct snapshot and stomp it with a narrower one, then
+            // never get corrected until some unrelated local write re-fired the stream.
+            let refreshed = await chatHistoryRepository.refreshRooms()
+            self.update {
+                $0.isHistoryUnavailable = refreshed == nil
+                if refreshed != nil { $0.hasMoreRooms = chatHistoryRepository.hasMoreRooms }
+            }
+        }
+    }
+
+    // Loads the next page of older rooms into the history list ("Load more").
+    func loadMoreRooms() {
+        guard let chatHistoryRepository, !uiState.isLoadingMoreRooms else { return }
+        update { $0.isLoadingMoreRooms = true }
+        Task { [weak self] in
+            guard let self else { return }
+            let ok = await chatHistoryRepository.loadMoreRooms()
+            self.update {
+                $0.isLoadingMoreRooms = false
+                $0.hasMoreRooms = chatHistoryRepository.hasMoreRooms
+                if ok { $0.isHistoryUnavailable = false }
+            }
         }
     }
 
@@ -363,7 +386,13 @@ public final class ChatViewModel: ObservableObject {
                 let isSuppressibleOpener: Bool
                 if restoringFromCache {
                     if let openerNodeId = cachedSuppressedOpenerNodeId {
-                        isSuppressibleOpener = node.nodeId != nil && node.nodeId == openerNodeId
+                        // Some flows answer every question through the opener's own node, so the node id
+                        // alone would hide every reply on replay. It only marks an opener until the user
+                        // has said something: judged by the transcript rebuilt so far (replay is
+                        // chronological) or, when the window starts mid-chat, by the earliest user timestamp.
+                        let userAlreadySpoke = uiState.messages.contains(where: { $0.fromUser })
+                            || (cachedEarliestUserTimestampMs.map { earliest in node.timestampMs.map { $0 >= earliest } ?? true } ?? false)
+                        isSuppressibleOpener = node.nodeId != nil && node.nodeId == openerNodeId && !userAlreadySpoke
                     } else {
                         // This conversation has never had its opener identified live (e.g.
                         // synced-in history) - fall back to the timestamp heuristic just for this

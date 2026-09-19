@@ -25,14 +25,30 @@ public final class ChatHistoryRepository {
         self.endUserId = endUserId
     }
 
+    // How many rooms the server has handed over so far (the next page's offset), and whether it says
+    // there are more. Counted as returned by the server, not as shown: empty rooms are dropped from the
+    // list, and a server may cap a page below the size asked for.
+    private var loadedCount = 0
+    public private(set) var hasMoreRooms = false
+
+    /// Fetches the newest rooms and merges them into the cache; nil on any failure (the caller keeps
+    /// showing whatever it already has).
+    ///
+    /// One request, from the top of the list: a page, or as many rooms as were already loaded so that a
+    /// refresh doesn't collapse a list the user had scrolled through. Older rooms come in through
+    /// `loadMoreRooms()` instead of being fetched up front.
     public func refreshRooms() async -> [CachedConversationEntity]? {
         do {
-            // Every page or nothing: the sync below deletes cached rooms that are missing from what it
-            // is given, so a fetch that got only the first pages must fail outright rather than hand
-            // over a partial list that would wipe the rooms on the pages that never loaded.
-            let rooms = try await fetchAllRooms()
-            await cache.syncLocalConversations(botId: botId, rooms: rooms)
-            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: rooms)
+            let limit = max(Self.roomsPageSize, loadedCount)
+            let page = try await withAuthRetry { token in
+                try await self.apiService.fetchRoomsList(bearerToken: token, agentId: self.endUserId, limit: limit, offset: 0)
+            }
+            loadedCount = page.rooms.count
+            hasMoreRooms = page.hasMore && !page.rooms.isEmpty
+            await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
+            // Replaces the synced rooms: any cached one missing from the top of the list is dropped, and
+            // reappears once its page is loaded again.
+            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: page.rooms)
             await cache.syncAgentRooms(botId: botId, conversations: conversations)
             return conversations
         } catch {
@@ -41,34 +57,29 @@ public final class ChatHistoryRepository {
         }
     }
 
-    static let roomsPageSize = 100
-    static let roomsMaxPages = 50
+    static let roomsPageSize = 50
 
-    // Walks `rooms/list` page by page until the server reports no more. Called with no `limit` the
-    // server returns only its default page (20 rooms) and says `has_more`; the list is newest-first
-    // and soft-deleted rooms count toward the page, so as deleted and abandoned rooms piled up the
-    // real, older chats fell off the end of the history list.
-    //
-    // The next offset is the number of rooms the server actually returned, not `roomsPageSize`, in
-    // case it caps a page lower than asked. Stops early on a page that adds nothing new, so a server
-    // that ignores `offset` and repeats one page can't loop forever, and after `roomsMaxPages` as a
-    // hard ceiling.
-    private func fetchAllRooms() async throws -> [RoomDto] {
-        var rooms: [RoomDto] = []
-        var seen = Set<String>()
-        var offset = 0
-        for _ in 0..<Self.roomsMaxPages {
-            let currentOffset = offset
+    /// Fetches the next page of older rooms and adds them to the cache. Returns false on failure (the
+    /// list is left as it was and the caller can offer a retry); true otherwise, after which
+    /// `hasMoreRooms` says whether another page is available.
+    public func loadMoreRooms() async -> Bool {
+        guard hasMoreRooms else { return true }
+        do {
+            let offset = loadedCount
             let page = try await withAuthRetry { token in
-                try await self.apiService.fetchRoomsList(clientId: self.clientId, bearerToken: token, agentId: self.endUserId, limit: Self.roomsPageSize, offset: currentOffset)
+                try await self.apiService.fetchRoomsList(bearerToken: token, agentId: self.endUserId, limit: Self.roomsPageSize, offset: offset)
             }
-            let fresh = page.rooms.filter { seen.insert($0.roomId).inserted }
-            rooms += fresh
-            if !page.hasMore || fresh.isEmpty { return rooms }
-            offset += page.rooms.count
+            loadedCount += page.rooms.count
+            // A page with nothing in it ends the list even if the server still claims more, so a server
+            // that misreports has_more can't keep the button alive forever.
+            hasMoreRooms = page.hasMore && !page.rooms.isEmpty
+            await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
+            await cache.mergeAgentRooms(botId: botId, conversations: await cache.thirdPartyRoomConversations(botId: botId, rooms: page.rooms))
+            return true
+        } catch {
+            NSLog("[Chat360] third-party-tasks rooms/list (more) failed: %@", error.localizedDescription)
+            return false
         }
-        NSLog("[Chat360] third-party-tasks rooms/list hit the %d-page ceiling with more still available", Self.roomsMaxPages)
-        return rooms
     }
 
     public func renameRoom(roomId: String, roomName: String) async {

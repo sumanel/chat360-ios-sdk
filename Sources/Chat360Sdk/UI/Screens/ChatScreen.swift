@@ -107,6 +107,7 @@ public struct ChatScreen: View {
                         newChatEnabled: !viewModel.uiState.isAgentTyping,
                         onMenuClick: {
                             sdkConfig.callbacks.onMenuClicked()
+                            viewModel.refreshRoomsList()
                             isInputFocused = false
                             withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = true }
                         },
@@ -302,7 +303,12 @@ public struct ChatScreen: View {
                             onLanguageSelected: { key in
                                 viewModel.switchLanguage(targetId: key)
                                 withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
-                            }
+                            },
+                            isHistoryUnavailable: viewModel.uiState.isHistoryUnavailable,
+                            onRetryHistory: { viewModel.refreshRoomsList() },
+                            hasMoreRooms: viewModel.uiState.hasMoreRooms,
+                            isLoadingMoreRooms: viewModel.uiState.isLoadingMoreRooms,
+                            onLoadMoreRooms: { viewModel.loadMoreRooms() }
                         )
                         .frame(width: min(320, geo.size.width * 0.84))
                         Color.black.opacity(0.55)
