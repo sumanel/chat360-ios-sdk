@@ -1746,6 +1746,8 @@ public final class ChatViewModel: ObservableObject {
     public func sendMessage() {
         let text = uiState.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         if uiState.needsNewSession {
+            sendInNewSession(text)
+            return
         }
         if text.isEmpty && !uiState.isLiveChat { return }
         update { $0.inputText = "" }
