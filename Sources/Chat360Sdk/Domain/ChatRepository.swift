@@ -40,6 +40,14 @@ public final class ChatRepository {
     private let encoder = JSONEncoder()
     private let scheduler = DispatchQueueScheduler(queue: DispatchQueue(label: "com.chat360.sdk.repository"))
 
+    /// Variables of the selected Assistant Mode option, merged over `meta` (they win on key clashes) when a
+    /// new session is created - never when one is resumed (see `sessionMeta`).
+    /// Changed at runtime through `setAssistantVariables`.
+    @Locked private var assistantVariables: [String: String] = [:]
+
+    /// Called when a brand-new session (not a resumed one) is created, with the Assistant Mode variables it was created with,
+    /// so the caller can remember which role the room belongs to before the server lists it.
+    @Locked var onFreshSession: (_ roomId: String, _ variables: [String: String]) -> Void = { _, _ in }
     @Locked private var ownerId: String?
     @Locked private var roomId: String?
     @Locked private var sessionId: String?
@@ -134,7 +142,8 @@ public final class ChatRepository {
         sessionStore: SessionStore? = nil,
         meta: [String: String]? = nil,
         dealerId: String? = nil,
-        empId: String? = nil
+        empId: String? = nil,
+        assistantVariables: [String: String] = [:]
     ) {
         self.baseUrl = baseUrl
         self.botId = botId
@@ -143,6 +152,7 @@ public final class ChatRepository {
         self.wsClient = wsClient
         self.sessionStore = sessionStore
         self.meta = meta
+        self.assistantVariables = assistantVariables
         self.dealerId = dealerId
         self.empId = empId
         heartbeat = HeartbeatManager(
@@ -200,6 +210,19 @@ public final class ChatRepository {
         await sessionMutex.lock()
         await establishSession(onConversationStarted: onConversationStarted, resumeRoomId: blankSession?.roomId, resumeSessionToken: blankSession?.sessionToken)
         await sessionMutex.unlock()
+    }
+
+    /// Takes effect from the next session-init, so callers follow it with `startNewSession`.
+    public func setAssistantVariables(_ variables: [String: String]) {
+        assistantVariables = variables
+    }
+
+    /// Host `meta`, plus the Assistant Mode variables only for a brand-new session. A resumed session
+    /// (reopening the chat, or opening an older room) keeps the role it was created with - sending the
+    /// currently selected option's variables again would switch it. Nil when there is nothing to send.
+    func sessionMeta(resuming: Bool) -> [String: String]? {
+        let merged = (meta ?? [:]).merging(resuming ? [:] : assistantVariables) { _, variable in variable }
+        return merged.isEmpty ? nil : merged
     }
 
     public func startNewSession(onConversationStarted: @escaping (String) async -> Bool = { _ in false }) async {
@@ -324,13 +347,16 @@ public final class ChatRepository {
         let myGeneration = _sessionGeneration.mutate { $0 += 1; return $0 }
         do {
             let host = hostComponent(of: baseUrl)
+            let resuming = resumeRoomId != nil || resumeSessionToken != nil
+            // What this request carries, read once: a button tapped while it is in flight must not relabel the room it creates.
+            let sentVariables = resuming ? [:] : assistantVariables
             let session = try await apiService.getSession(
                 botId: botId,
                 websiteUrl: host,
                 currentUrl: "\(baseUrl)/web_bot/?h=\(botId)",
                 roomId: resumeRoomId,
                 sessionId: resumeSessionToken,
-                meta: meta,
+                meta: (meta ?? [:]).merging(sentVariables) { _, variable in variable }.nilIfEmpty,
                 dealerId: dealerId,
                 empId: empId
             )
@@ -349,6 +375,7 @@ public final class ChatRepository {
                 sessionId = session.session_id ?? session.room_id
                 currentTargetId = session.targetId
             }
+            if !resuming { onFreshSession(session.room_id, sentVariables) }
             NSLog("[Chat360WS] Session established: owner=%@ room=%@", session.owner_id, session.room_id)
             sessionStore?.save(botId: botId, session: PersistedSession(roomId: session.room_id, sessionToken: session.session_token, ownerId: session.owner_id))
             shouldAskFeedback = session.configs?.should_ask_feedback ?? false
@@ -582,7 +609,7 @@ public final class ChatRepository {
         openSocket()
     }
 
-    private func handleIncoming(_ raw: String) {
+    func handleIncoming(_ raw: String) {
         stateLock.lock()
         defer { stateLock.unlock() }
         // The response shape for this one isn't part of the normal message protocol
@@ -1168,4 +1195,9 @@ private actor AsyncMutex {
             waiters.removeFirst().resume()
         }
     }
+}
+
+private extension Dictionary {
+    /// nil for an empty dictionary - an empty `meta` must not reach the request at all.
+    var nilIfEmpty: Self? { isEmpty ? nil : self }
 }

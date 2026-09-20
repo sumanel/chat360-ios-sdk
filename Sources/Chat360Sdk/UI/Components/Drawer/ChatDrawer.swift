@@ -38,8 +38,10 @@ public struct ChatDrawer: View {
 
     private let onDismiss: () -> Void
     private let onNewChat: () -> Void
-    private let isTrainingMode: Bool
-    private let onAssistantModeChanged: (Bool) -> Void
+    private let assistantModes: [Chat360AssistantModeOption]
+    private let selectedAssistantMode: Int
+    private let onAssistantModeSelected: (Int) -> Void
+    private let roomRoles: [String: String]
     private let isDarkTheme: Bool
     private let onThemeChanged: (Bool) -> Void
     private let showAssistantMode: Bool
@@ -60,8 +62,10 @@ public struct ChatDrawer: View {
     public init(
         onDismiss: @escaping () -> Void,
         onNewChat: @escaping () -> Void,
-        isTrainingMode: Bool,
-        onAssistantModeChanged: @escaping (Bool) -> Void,
+        assistantModes: [Chat360AssistantModeOption],
+        selectedAssistantMode: Int,
+        onAssistantModeSelected: @escaping (Int) -> Void,
+        roomRoles: [String: String] = [:],
         isDarkTheme: Bool,
         onThemeChanged: @escaping (Bool) -> Void,
         showAssistantMode: Bool,
@@ -81,8 +85,10 @@ public struct ChatDrawer: View {
     ) {
         self.onDismiss = onDismiss
         self.onNewChat = onNewChat
-        self.isTrainingMode = isTrainingMode
-        self.onAssistantModeChanged = onAssistantModeChanged
+        self.assistantModes = assistantModes
+        self.selectedAssistantMode = selectedAssistantMode
+        self.onAssistantModeSelected = onAssistantModeSelected
+        self.roomRoles = roomRoles
         self.isDarkTheme = isDarkTheme
         self.onThemeChanged = onThemeChanged
         self.showAssistantMode = showAssistantMode
@@ -235,6 +241,10 @@ public struct ChatDrawer: View {
                             title: group.label,
                             items: group.items,
                             activeConversationId: activeConversationId,
+                            roleBadgeFor: { conversation in
+                                guard showAssistantMode else { return nil }
+                                return assistantModes.badge(forRole: conversation.roomId.flatMap { roomRoles[$0] })
+                            },
                             onConversationSelected: onConversationSelected,
                             onRenameRequested: { id, title in
                                 renameDraft = title
@@ -272,8 +282,14 @@ public struct ChatDrawer: View {
                     .foregroundColor(colors.textSecondary)
                 Spacer().frame(height: 12)
                 HStack {
-                    ModeOption(text: "Training", icon: .training, selected: isTrainingMode, disabled: true) { onAssistantModeChanged(true) }
-                    ModeOption(text: "Customer", icon: .person, selected: !isTrainingMode, disabled: false) { onAssistantModeChanged(false) }
+                    ForEach(Array(assistantModes.enumerated()), id: \.offset) { index, option in
+                        ModeOption(
+                            text: option.label,
+                            icon: index == 0 ? .training : .person,
+                            selected: index == selectedAssistantMode,
+                            disabled: !option.enabled
+                        ) { onAssistantModeSelected(index) }
+                    }
                 }
                 Spacer().frame(height: 18)
             }
@@ -342,12 +358,14 @@ private struct LanguageChip: View {
 }
 
 @available(iOS 15.0, *)
+@available(iOS 15.0, *)
 private struct HistoryGroup: View {
     @Environment(\.chat360Colors) private var colors
     @Environment(\.chat360Typography) private var typography
     let title: String
     let items: [CachedConversationEntity]
     let activeConversationId: String?
+    let roleBadgeFor: (CachedConversationEntity) -> Chat360AssistantRoleBadge?
     let onConversationSelected: (String) -> Void
     let onRenameRequested: (String, String) -> Void
     let onDeleteRequested: (String, String) -> Void
@@ -363,6 +381,7 @@ private struct HistoryGroup: View {
                 ForEach(items, id: \.id) { conversation in
                     ConversationItem(
                         conversation: conversation,
+                        roleBadge: roleBadgeFor(conversation),
                         isActive: conversation.id == activeConversationId,
                         onSelected: { onConversationSelected(conversation.id) },
                         onRenameRequested: { onRenameRequested(conversation.id, $0) },
@@ -389,6 +408,7 @@ private struct ConversationItem: View {
     @Environment(\.chat360Typography) private var typography
 
     let conversation: CachedConversationEntity
+    let roleBadge: Chat360AssistantRoleBadge?
     let isActive: Bool
     let onSelected: () -> Void
     let onRenameRequested: (String) -> Void
@@ -407,6 +427,17 @@ private struct ConversationItem: View {
             Button(action: onSelected) {
                 HStack(alignment: .top, spacing: 14) {
                     Chat360Icon.chat.image.foregroundColor(isActive ? colors.accent : colors.textSecondary)
+                        .overlay(alignment: .bottomTrailing) {
+                            if let roleBadge {
+                                (roleBadge.modeIndex == nil ? Chat360Icon.tag : (roleBadge.modeIndex == 0 ? Chat360Icon.training : Chat360Icon.person)).image
+                                    .foregroundColor(colors.accent)
+                                    .frame(width: 11, height: 11)
+                                    .padding(1)
+                                    .background(Circle().fill(isActive ? colors.backgroundSunken : colors.backgroundElevated))
+                                    .offset(x: 4, y: 4)
+                                    .accessibilityLabel(roleBadge.label)
+                            }
+                        }
                     VStack(alignment: .leading, spacing: 0) {
                         Text(displayTitle)
                             .font(typography.textFamily.font(size: 16, weight: .semibold))

@@ -8,6 +8,19 @@ public final class ChatHistoryRepository {
     private let clientId: String
     private let botId: String
     private let endUserId: String
+    private let roleStore: RoomRoleStore?
+    // What `rooms/list` last said, and what this device itself sent when it created a room. The server is the
+    // source of truth, so a role it returns always wins; the local one only fills in until it does (a room made a
+    // moment ago may not be in the list yet, or may come back without a role).
+    private let rolesLock = NSLock()
+    private var serverRoles: [String: String] = [:]
+    private var localRoles: [String: String] = [:]
+
+    /// roomId -> trimmed `agent_role` (server's, else the one this device sent), available before the first fetch.
+    public var roomRoles: [String: String] {
+        rolesLock.lock(); defer { rolesLock.unlock() }
+        return localRoles.merging(serverRoles) { _, server in server }
+    }
 
     public init(
         apiService: ThirdPartyTasksApiService,
@@ -15,7 +28,8 @@ public final class ChatHistoryRepository {
         cache: ChatCacheRepository,
         clientId: String,
         botId: String,
-        endUserId: String
+        endUserId: String,
+        roleStore: RoomRoleStore? = nil
     ) {
         self.apiService = apiService
         self.tokenManager = tokenManager
@@ -23,6 +37,44 @@ public final class ChatHistoryRepository {
         self.clientId = clientId
         self.botId = botId
         self.endUserId = endUserId
+        self.roleStore = roleStore
+        self.serverRoles = roleStore?.load(botId: botId) ?? [:]
+        self.localRoles = roleStore?.loadLocal(botId: botId) ?? [:]
+    }
+
+    /// For every room in `rooms`, the server's role replaces what was kept, and a room it now returns without one loses
+    /// the server role (a locally known one stays). Rooms not in this page are left alone.
+    private func rememberRoles(_ rooms: [RoomDto]) {
+        rolesLock.lock(); defer { rolesLock.unlock() }
+        var server = serverRoles
+        var local = localRoles
+        for room in rooms {
+            if let role = room.agentRole?.trimmingCharacters(in: .whitespacesAndNewlines), !role.isEmpty {
+                server[room.roomId] = role
+                local.removeValue(forKey: room.roomId)
+            } else {
+                server.removeValue(forKey: room.roomId)
+            }
+        }
+        commit(server: server, local: local)
+    }
+
+    /// The role this device just sent when it created `roomId`; used until `rooms/list` returns one for that room.
+    public func rememberLocalRole(roomId: String, role: String?) {
+        guard let trimmed = role?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return }
+        rolesLock.lock(); defer { rolesLock.unlock() }
+        guard serverRoles[roomId] == nil else { return }
+        var local = localRoles
+        local[roomId] = trimmed
+        commit(server: serverRoles, local: local)
+    }
+
+    // Must be called with `rolesLock` held.
+    private func commit(server: [String: String], local: [String: String]) {
+        if server != serverRoles { roleStore?.save(botId: botId, roles: server) }
+        if local != localRoles { roleStore?.saveLocal(botId: botId, roles: local) }
+        serverRoles = server
+        localRoles = local
     }
 
     // How many rooms the server has handed over so far (the next page's offset), and whether it says
@@ -45,6 +97,7 @@ public final class ChatHistoryRepository {
             }
             loadedCount = page.rooms.count
             hasMoreRooms = page.hasMore && !page.rooms.isEmpty
+            rememberRoles(page.rooms)
             await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
             // Replaces the synced rooms: any cached one missing from the top of the list is dropped, and
             // reappears once its page is loaded again.
@@ -73,6 +126,7 @@ public final class ChatHistoryRepository {
             // A page with nothing in it ends the list even if the server still claims more, so a server
             // that misreports has_more can't keep the button alive forever.
             hasMoreRooms = page.hasMore && !page.rooms.isEmpty
+            rememberRoles(page.rooms)
             await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
             await cache.mergeAgentRooms(botId: botId, conversations: await cache.thirdPartyRoomConversations(botId: botId, rooms: page.rooms))
             return true

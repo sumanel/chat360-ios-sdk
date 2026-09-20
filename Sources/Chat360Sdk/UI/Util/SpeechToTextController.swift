@@ -14,36 +14,90 @@ public final class SpeechToTextController: NSObject, ObservableObject {
     private var task: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
     private var language = Locale.current.identifier
+    // Text from earlier recognition sessions; iOS ends a session on pauses, so each restart
+    // appends to this instead of wiping what was already said.
+    private var finalizedText = ""
+
+    // System permission/availability lookups, injectable so the permission flow can be unit tested.
+    private let recognizerAvailable: (String) -> Bool
+    private let authorizationStatus: () -> SFSpeechRecognizerAuthorizationStatus
+    private let requestSpeechAuthorization: (@escaping (SFSpeechRecognizerAuthorizationStatus) -> Void) -> Void
+    private let requestMicrophonePermission: (@escaping (Bool) -> Void) -> Void
+
+    public static let permissionDeniedMessage = "Speech recognition needs microphone and speech access. Enable both in Settings."
 
     public override init() {
+        recognizerAvailable = { SFSpeechRecognizer(locale: Locale(identifier: $0))?.isAvailable ?? false }
+        authorizationStatus = { SFSpeechRecognizer.authorizationStatus() }
+        requestSpeechAuthorization = { SFSpeechRecognizer.requestAuthorization($0) }
+        requestMicrophonePermission = { AVAudioSession.sharedInstance().requestRecordPermission($0) }
         super.init()
     }
 
+    init(
+        recognizerAvailable: @escaping (String) -> Bool,
+        authorizationStatus: @escaping () -> SFSpeechRecognizerAuthorizationStatus,
+        requestSpeechAuthorization: @escaping (@escaping (SFSpeechRecognizerAuthorizationStatus) -> Void) -> Void,
+        requestMicrophonePermission: @escaping (@escaping (Bool) -> Void) -> Void
+    ) {
+        self.recognizerAvailable = recognizerAvailable
+        self.authorizationStatus = authorizationStatus
+        self.requestSpeechAuthorization = requestSpeechAuthorization
+        self.requestMicrophonePermission = requestMicrophonePermission
+        super.init()
+    }
+
+    public func dismissError() { error = nil }
+
     public func isSupported() -> Bool {
-        SFSpeechRecognizer(locale: Locale(identifier: language))?.isAvailable ?? false
+        recognizerAvailable(language)
     }
 
     public func hasPermission() -> Bool {
-        SFSpeechRecognizer.authorizationStatus() == .authorized
+        authorizationStatus() == .authorized
     }
 
     public func requestStart(languageTag: String = Locale.current.identifier) {
         if isListening { return }
         language = languageTag
+        error = nil
         guard isSupported() else { return }
-        if hasPermission() {
-            start()
-            return
+        switch authorizationStatus() {
+        case .authorized:
+            requestMicrophoneThenStart()
+        case .notDetermined:
+            requestSpeechAuthorization { [weak self] status in
+                Task { @MainActor in
+                    if status == .authorized {
+                        self?.requestMicrophoneThenStart()
+                    } else {
+                        self?.error = Self.permissionDeniedMessage
+                    }
+                }
+            }
+        default:
+            error = Self.permissionDeniedMessage
         }
-        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+    }
+
+    // Speech recognition also needs the microphone; without it the audio engine yields no audio.
+    private func requestMicrophoneThenStart() {
+        requestMicrophonePermission { [weak self] granted in
             Task { @MainActor in
-                if status == .authorized { self?.start() }
+                if granted {
+                    self?.start()
+                } else {
+                    self?.error = Self.permissionDeniedMessage
+                }
             }
         }
     }
 
-    private func start() {
-        transcript = ""
+    private func start(resetting: Bool = true) {
+        if resetting {
+            finalizedText = ""
+            transcript = ""
+        }
         error = nil
         recognizer = SFSpeechRecognizer(locale: Locale(identifier: language))
 
@@ -78,14 +132,17 @@ public final class SpeechToTextController: NSObject, ObservableObject {
         isListening = true
         task = recognizer?.recognitionTask(with: newRequest) { [weak self] result, error in
             Task { @MainActor in
-                guard let self else { return }
+                // Ignore callbacks from a superseded session (cancelling one fires an error callback).
+                guard let self, self.request === newRequest else { return }
                 if let result {
-                    self.transcript = result.bestTranscription.formattedString
+                    self.transcript = [self.finalizedText, result.bestTranscription.formattedString]
+                        .filter { !$0.isEmpty }.joined(separator: " ")
                 }
                 if error != nil || (result?.isFinal ?? false) {
                     if self.isListening {
+                        self.finalizedText = self.transcript
                         self.stopEngine()
-                        self.start()
+                        self.start(resetting: false)
                     }
                 }
             }

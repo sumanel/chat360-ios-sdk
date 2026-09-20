@@ -1,5 +1,6 @@
 import XCTest
 import SQLite3
+import Combine
 @testable import Chat360SDK
 
 /// Regression test for ghost rooms: every session-init the app makes allocates a real room on
@@ -128,6 +129,7 @@ final class GhostRoomTests: XCTestCase {
     private var dao: ChatCacheDao!
     private var sessionStore: InMemorySessionStore!
     private var viewModel: ChatViewModel!
+    private var repository: ChatRepository!
 
     override func setUp() async throws {
         StubServer.reset()
@@ -149,6 +151,7 @@ final class GhostRoomTests: XCTestCase {
             apiService: Chat360ApiService(baseUrl: baseUrl, session: URLSession(configuration: configuration)),
             sessionStore: sessionStore
         )
+        self.repository = repository
         return ChatViewModel(repository: repository, botId: botId, cache: ChatCacheRepository(dao: dao), maintenanceApi: maintenanceApi, welcomeTextRepository: welcome, salesExecutiveGate: gate)
     }
 
@@ -326,6 +329,124 @@ final class GhostRoomTests: XCTestCase {
 
         XCTAssertEqual(transcript(), ["c1", "c2", "c3"])
         XCTAssertEqual(viewModel.uiState.activeConversationId, "conv-c")
+    }
+
+    // MARK: - Live replies while switching between several rooms
+
+    private var liveFrameCounter = 0
+
+    /// A live bot frame from `room`, as the socket would hand it to the repository. Its text names the room it belongs to.
+    private func liveReply(from room: String) {
+        liveFrameCounter += 1
+        let raw = #"{"user":"bot","room_id":"\#(room)","timestamp_int":"\#(1_700_000_000 + liveFrameCounter)","data":{"nodeType":"TEXT","nodeId":"n\#(liveFrameCounter)","questionText":"live-\#(room)-\#(liveFrameCounter)"}}"#
+        repository.handleIncoming(raw)
+    }
+
+    private func seedResumableRoom(_ conversationId: String, roomId: String, texts: [String]) async {
+        await seedCachedConversation(conversationId, roomId: roomId, texts: texts)
+        sessionStore.save(botId: botId, session: PersistedSession(roomId: roomId, sessionToken: "tok-\(roomId)", ownerId: "owner-1"))
+    }
+
+    /// Replies from several rooms keep arriving while the user hops between them. Only one room is
+    /// connected at a time, so a reply for any other room must not show up in the chat on screen.
+    func testLiveRepliesFromSeveralRoomsNeverLandInTheWrongRoomWhileSwitchingRapidly() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedResumableRoom("conv-a", roomId: "room-a", texts: ["a1"])
+        await seedResumableRoom("conv-b", roomId: "room-b", texts: ["b1"])
+        await seedResumableRoom("conv-c", roomId: "room-c", texts: ["c1"])
+        await awaitUntil("conversations listed") { self.viewModel.conversations.count >= 3 }
+
+        viewModel.openConversation("conv-a"); liveReply(from: "room-a"); liveReply(from: "room-b"); liveReply(from: "room-c")
+        viewModel.openConversation("conv-b"); liveReply(from: "room-a"); liveReply(from: "room-b")
+        viewModel.openConversation("conv-c"); liveReply(from: "room-c"); liveReply(from: "room-a")
+        viewModel.openConversation("conv-a"); liveReply(from: "room-b"); liveReply(from: "room-a")
+        viewModel.openConversation("conv-b")
+        await settle()
+
+        XCTAssertEqual(viewModel.uiState.activeConversationId, "conv-b")
+        XCTAssertFalse(transcript().contains { $0.contains("live-room-a") || $0.contains("live-room-c") }, "another room's reply is in the chat: \(transcript())")
+
+        // The room the user ended on still receives its own replies live.
+        liveReply(from: "room-b")
+        await settle()
+        XCTAssertEqual(transcript().last, "live-room-b-\(liveFrameCounter)", "the connected room's reply was lost: \(transcript())")
+
+        // Moving on shows that room alone - nothing carried over from b.
+        viewModel.openConversation("conv-c")
+        await settle()
+        XCTAssertFalse(transcript().contains { $0.contains("live-room-a") || $0.contains("live-room-b") }, "another room's reply is in the chat: \(transcript())")
+        liveReply(from: "room-a") // a reply for the room just left
+        await settle()
+        XCTAssertFalse(transcript().contains { $0.contains("live-room-a") }, "a late reply from a previous room landed here: \(transcript())")
+    }
+
+    /// The user sends a message and taps New chat before the bot has answered. The repository keeps the old
+    /// room's socket open (up to 10s) for that reply, so it can still arrive after the new chat is on screen
+    /// - and it must not show up there, nor be saved under the new conversation.
+    func testAReplyStillInFlightFromTheRoomJustLeftNeverLandsInTheNewChat() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        let oldConversation = viewModel.uiState.activeConversationId
+        // The room already has a conversation (the stub's history), so it is not a blank room New chat would reuse.
+        await awaitUntil("the room's history") { self.transcript().contains("Tell me about Hyundai Venue features") }
+        viewModel.onInputChange("And what about the price?")
+        viewModel.sendMessage() // the bot's reply to this is now outstanding on room-1
+        await settle()
+
+        viewModel.startNewChat()
+        await awaitUntil("the new chat is on screen") {
+            self.viewModel.uiState.activeConversationId != oldConversation && self.transcript().isEmpty
+        }
+        let newConversation = viewModel.uiState.activeConversationId!
+        // The new room's own activation clears the screen shortly after, so watch every state change
+        // instead of only looking at the end - a reply that flashes into the new chat is still a leak.
+        var everShownInNewChat = false
+        let watcher = viewModel.$uiState.sink { state in
+            if state.activeConversationId == newConversation, state.messages.contains(where: { $0.text.contains("live-room-1") }) {
+                everShownInNewChat = true
+            }
+        }
+        defer { watcher.cancel() }
+
+        liveReply(from: "room-1") // the reply to the question, from the room that was just left
+        await settle()
+
+        XCTAssertFalse(everShownInNewChat, "the old room's reply appeared in the new chat")
+        XCTAssertFalse(transcript().contains { $0.contains("live-room-1") }, "the old room's reply is in the new chat: \(transcript())")
+        let savedInNewChat = await dao.messages(conversationId: newConversation).map { $0.payload }
+        XCTAssertFalse(savedInNewChat.contains { $0.contains("live-room-1") }, "the old room's reply was saved under the new chat: \(savedInNewChat)")
+        let savedInOldChat = await dao.messages(conversationId: oldConversation!).map { $0.payload }
+        XCTAssertTrue(savedInOldChat.contains { $0.contains("live-room-1") }, "the reply was not kept with the room it belongs to: \(savedInOldChat)")
+    }
+
+    /// Same as above, but the user leaves by opening a saved conversation from the drawer instead of tapping New chat.
+    func testAReplyStillInFlightFromTheRoomJustLeftStaysOutOfTheConversationOpenedNext() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        let oldConversation = viewModel.uiState.activeConversationId!
+        await seedResumableRoom("conv-a", roomId: "room-a", texts: ["a1"])
+        await awaitUntil("conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-a" } }
+        await awaitUntil("the room's history") { self.transcript().contains("Tell me about Hyundai Venue features") }
+        viewModel.onInputChange("And what about the price?")
+        viewModel.sendMessage() // the bot's reply to this is now outstanding on room-1
+        await settle()
+
+        var everShownInOpenedChat = false
+        let watcher = viewModel.$uiState.sink { state in
+            if state.activeConversationId == "conv-a", state.messages.contains(where: { $0.text.contains("live-room-1") }) {
+                everShownInOpenedChat = true
+            }
+        }
+        defer { watcher.cancel() }
+
+        viewModel.openConversation("conv-a")
+        liveReply(from: "room-1") // the reply to the question, from the room that was just left
+        await settle()
+
+        XCTAssertFalse(everShownInOpenedChat, "the old room's reply appeared in the conversation that was opened")
+        XCTAssertFalse(transcript().contains { $0.contains("live-room-1") }, "the old room's reply is in the opened conversation: \(transcript())")
+        let savedInOpenedChat = await dao.messages(conversationId: "conv-a").map { $0.payload }
+        XCTAssertFalse(savedInOpenedChat.contains { $0.contains("live-room-1") }, "the old room's reply was saved under the opened conversation: \(savedInOpenedChat)")
+        let savedInOldChat = await dao.messages(conversationId: oldConversation).map { $0.payload }
+        XCTAssertTrue(savedInOldChat.contains { $0.contains("live-room-1") }, "the reply was not kept with the room it belongs to: \(savedInOldChat)")
     }
 
     // MARK: - A reply generated while away

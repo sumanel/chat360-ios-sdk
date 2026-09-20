@@ -27,10 +27,11 @@ public struct ChatScreen: View {
     @StateObject private var voiceRecorder = VoiceRecorderController()
     @StateObject private var voicePreviewPlayback = VoicePlaybackController()
     @StateObject private var speechToText = SpeechToTextController()
+    // Text already in the box when dictation starts; the live transcript is appended to it.
+    @State private var dictationBase = ""
 
     @State private var showEmojiPicker = false
     @State private var showHistorySidebar = false
-    @State private var isTrainingMode = false
     @State private var showAttachmentPicker = false
     @State private var showCameraCapture = false
     @State private var hasNotifiedChatReady = false
@@ -242,11 +243,17 @@ public struct ChatScreen: View {
                             viewModel.cancelVoiceDraft()
                         }
                     )
-                } else if speechToText.isListening {
-                    SpeechToTextBar(isListening: true, error: speechToText.error, onStop: { speechToText.stop() })
                 } else {
                     if showEmojiPicker {
                         EmojiPickerPanel(onEmojiSelected: { emoji in viewModel.onInputChange(viewModel.uiState.inputText + emoji) })
+                    }
+                    if let dictationError = speechToText.error {
+                        Text(dictationError)
+                            .font(.system(size: 12))
+                            .foregroundColor(activeRed)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 6)
                     }
                     if let footer = sdkConfig.ui.footer {
                         footer()
@@ -255,13 +262,19 @@ public struct ChatScreen: View {
                             value: Binding(get: { viewModel.uiState.inputText }, set: { viewModel.onInputChange($0) }),
                             isFocused: $isInputFocused,
                             onSend: {
+                                speechToText.stop()
                                 viewModel.sendMessage()
                                 isInputFocused = false
                             },
                             onAttachmentClick: { showAttachmentPicker = true },
                             onMicClick: { voiceRecorder.requestStart() },
                             showDictationIcon: features.showSpeechToText && speechToText.isSupported(),
-                            onDictateClick: { speechToText.requestStart() },
+                            onDictateClick: {
+                                dictationBase = viewModel.uiState.inputText
+                                speechToText.requestStart()
+                            },
+                            isDictating: speechToText.isListening,
+                            onDictateStop: { speechToText.stop() },
                             onEmojiClick: { showEmojiPicker.toggle() },
                             showAttachment: features.showAttachment,
                             showEmoji: features.showEmoji,
@@ -285,8 +298,13 @@ public struct ChatScreen: View {
                                 viewModel.startNewChat()
                                 withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
                             },
-                            isTrainingMode: isTrainingMode,
-                            onAssistantModeChanged: { isTrainingMode = $0 },
+                            assistantModes: features.effectiveAssistantModes,
+                            selectedAssistantMode: viewModel.assistantModeIndex,
+                            onAssistantModeSelected: { index in
+                                viewModel.selectAssistantMode(index: index, variables: features.effectiveAssistantModes[index].variables)
+                                withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
+                            },
+                            roomRoles: viewModel.roomRoles,
                             isDarkTheme: isDarkTheme ?? false,
                             onThemeChanged: { themeController?.selectDarkTheme($0) },
                             showAssistantMode: features.showAssistantMode,
@@ -356,8 +374,18 @@ public struct ChatScreen: View {
             hasNotifiedChatReady = true
             Chat360Bot.shared.onChatSessionReady?()
         }
+        // Dictation errors (e.g. permission denied) clear themselves after a few seconds.
+        .onChange(of: speechToText.error) { error in
+            guard let error else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if speechToText.error == error { speechToText.dismissError() }
+            }
+        }
         .onChange(of: speechToText.transcript) { transcript in
-            if speechToText.isListening { viewModel.onInputChange(transcript) }
+            if speechToText.isListening {
+                viewModel.onInputChange([dictationBase, transcript].filter { !$0.isEmpty }.joined(separator: " "))
+            }
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active { viewModel.onAppForegrounded() }

@@ -17,7 +17,8 @@ public struct Chat360NativeChatScreen: View {
             sessionStore: UserDefaultsSessionStore(),
             meta: botConfig.meta,
             dealerId: botConfig.dealerId,
-            empId: botConfig.empId
+            empId: botConfig.empId,
+            assistantVariables: botConfig.uiConfig?.features.initialAssistantVariables ?? [:]
         )
         let cache = ChatCacheRepository(dao: ChatCacheDatabase.shared.dao)
         let historyRepository = Chat360NativeChatScreen.buildChatHistoryRepository(botConfig: botConfig, baseUrl: resolvedBaseUrl, botId: resolvedBotId, cache: cache)
@@ -35,7 +36,8 @@ public struct Chat360NativeChatScreen: View {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .flatMap { $0.isEmpty ? nil : $0 }
                 .map { WelcomeTextRepository(apiService: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl), clientId: $0, store: UserDefaultsWelcomeTextStore()) },
-            salesExecutiveGate: Chat360NativeChatScreen.buildSalesExecutiveGate(botConfig: botConfig, baseUrl: resolvedBaseUrl)
+            salesExecutiveGate: Chat360NativeChatScreen.buildSalesExecutiveGate(botConfig: botConfig, baseUrl: resolvedBaseUrl),
+            initialAssistantModeIndex: botConfig.uiConfig?.features.initialAssistantModeIndex ?? 0
         ))
     }
 
@@ -56,7 +58,7 @@ public struct Chat360NativeChatScreen: View {
         }
         let thirdPartyApi = ThirdPartyTasksApiService(baseUrl: baseUrl)
         let tokenManager = ThirdPartyTokenManager(apiService: thirdPartyApi, clientId: clientId, apiKey: apiKey)
-        return ChatHistoryRepository(apiService: thirdPartyApi, tokenManager: tokenManager, cache: cache, clientId: clientId, botId: botId, endUserId: endUserId)
+        return ChatHistoryRepository(apiService: thirdPartyApi, tokenManager: tokenManager, cache: cache, clientId: clientId, botId: botId, endUserId: endUserId, roleStore: UserDefaultsRoomRoleStore())
     }
 
     public var body: some View {

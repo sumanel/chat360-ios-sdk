@@ -100,17 +100,27 @@ public final class ChatViewModel: ObservableObject {
         periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12,
         maintenanceApi: ThirdPartyTasksApiService? = nil,
         welcomeTextRepository: WelcomeTextRepository? = nil,
-        salesExecutiveGate: SalesExecutiveGate? = nil
+        salesExecutiveGate: SalesExecutiveGate? = nil,
+        initialAssistantModeIndex: Int = 0
     ) {
+        self.assistantModeIndex = initialAssistantModeIndex
         self.repository = repository
         self.botId = botId
         self.cache = cache
         self.chatHistoryRepository = chatHistoryRepository
+        self.roomRoles = chatHistoryRepository?.roomRoles ?? [:]
         self.suppressInitialBotMessages = suppressInitialBotMessages
         self.showPeriodicFeedbackPrompt = showPeriodicFeedbackPrompt
         self.periodicFeedbackPromptInterval = periodicFeedbackPromptInterval
         self.maintenanceApi = maintenanceApi
         self.salesExecutiveGate = salesExecutiveGate
+        if let history = chatHistoryRepository {
+            // A room created on this device is badged with the role it was made with, before the server lists it.
+            repository.onFreshSession = { [weak self] roomId, variables in
+                history.rememberLocalRole(roomId: roomId, role: variables[Chat360FeatureConfig.assistantRoleKey])
+                Task { @MainActor in self?.roomRoles = history.roomRoles }
+            }
+        }
 
         loadWelcomeText(welcomeTextRepository)
 
@@ -135,6 +145,9 @@ public final class ChatViewModel: ObservableObject {
 
     // Re-fetches the server room list into the cache; also run each time the history menu opens and
     // from its retry notice. No-ops when history isn't configured.
+    /// roomId -> `agent_role` for the history list's role badges; empty when history isn't configured.
+    @Published public private(set) var roomRoles: [String: String] = [:]
+
     func refreshRoomsList() {
         guard let chatHistoryRepository else { return }
         Task { [weak self] in
@@ -146,6 +159,7 @@ public final class ChatViewModel: ObservableObject {
             // the stream's already-correct snapshot and stomp it with a narrower one, then
             // never get corrected until some unrelated local write re-fired the stream.
             let refreshed = await chatHistoryRepository.refreshRooms()
+            self.roomRoles = chatHistoryRepository.roomRoles
             self.update {
                 $0.isHistoryUnavailable = refreshed == nil
                 if refreshed != nil { $0.hasMoreRooms = chatHistoryRepository.hasMoreRooms }
@@ -160,6 +174,7 @@ public final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let ok = await chatHistoryRepository.loadMoreRooms()
+            self.roomRoles = chatHistoryRepository.roomRoles
             self.update {
                 $0.isLoadingMoreRooms = false
                 $0.hasMoreRooms = chatHistoryRepository.hasMoreRooms
@@ -1190,6 +1205,28 @@ public final class ChatViewModel: ObservableObject {
         update { $0.inputText = text }
     }
 
+    /// Index of the selected Assistant Mode option. Published so the drawer reflects it.
+    @Published public private(set) var assistantModeIndex: Int
+
+    /// Selects an Assistant Mode option: its `variables` are merged into the session-init `meta`, and a fresh
+    /// session is started so the bot sees them. A blank room is never reused, since it was created under the
+    /// previous variables. No-op when `index` is already selected.
+    public func selectAssistantMode(index: Int, variables: [String: String]) {
+        guard index != assistantModeIndex else { return }
+        assistantModeIndex = index
+        repository.setAssistantVariables(variables)
+        Task { [weak self] in
+            guard let self else { return }
+            if self.applyAccess(await self.checkAccess()) { return }
+            if self.neverConnected {
+                self.neverConnected = false
+                await self.connectFirstTime()
+                return
+            }
+            await self.createNewRoom()
+        }
+    }
+
     public func startNewChat() {
         Task { [weak self] in
             guard let self else { return }
@@ -1279,10 +1316,12 @@ public final class ChatViewModel: ObservableObject {
     private func createNewRoom() async {
         let generation = beginLoad()
         let conversationId = UUID().uuidString
-        self.connectedConversationId = conversationId
-        self.connectedRoomId = nil
-        self.conversationPersisted = false
-        self.pendingRawEnvelopes.removeAll()
+        // Only the display resets now, for a responsive "new chat" screen. Live-frame routing
+        // (connectedConversationId and the bookkeeping set alongside it in `beginNewRoomActivation`)
+        // deliberately stays on the *old* room until its socket is really torn down: the repository
+        // keeps that socket open for a reply still in flight (see awaitPendingReplyBeforeTeardown),
+        // and flipping the routing here would file that reply into this brand-new, still-empty chat -
+        // rendering it there and losing it from the room it belongs to.
         self.setActiveConversationId(conversationId)
         self.streamRawText.removeAll()
         self.update {
@@ -1299,7 +1338,19 @@ public final class ChatViewModel: ObservableObject {
             $0.pendingUrlToOpen = nil
             $0.hasMoreHistory = false
         }
-        await repository.startNewSession(onConversationStarted: { [weak self] roomId in await self?.activateConversation(roomId: roomId, generation: generation) ?? false })
+        await repository.startNewSession(onConversationStarted: { [weak self] roomId in
+            await self?.beginNewRoomActivation(conversationId: conversationId, roomId: roomId, generation: generation) ?? false
+        })
+    }
+
+    /// Only now does routing move to the new conversation, exactly on the id already shown optimistically
+    /// (`activateConversation` reads `connectedConversationId` as its cache hint).
+    private func beginNewRoomActivation(conversationId: String, roomId: String, generation: Int) async -> Bool {
+        connectedConversationId = conversationId
+        connectedRoomId = nil
+        conversationPersisted = false
+        pendingRawEnvelopes.removeAll()
+        return await activateConversation(roomId: roomId, generation: generation)
     }
 
     public func renameConversation(conversationId: String, title: String) {

@@ -18,6 +18,7 @@ public enum Chat360Icon: String {
     case more = "ellipsis"
     case person = "person.fill"
     case training = "graduationcap.fill"
+    case tag = "tag.fill"
     case lightMode = "sun.max.fill"
     case darkMode = "moon.fill"
     case refresh = "arrow.clockwise"

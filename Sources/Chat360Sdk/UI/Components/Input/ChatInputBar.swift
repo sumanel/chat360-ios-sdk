@@ -13,6 +13,8 @@ public struct ChatInputBar: View {
     private let onMicClick: () -> Void
     private let showDictationIcon: Bool
     private let onDictateClick: () -> Void
+    private let isDictating: Bool
+    private let onDictateStop: () -> Void
     private let onEmojiClick: () -> Void
     private let showAttachment: Bool
     private let showEmoji: Bool
@@ -24,6 +26,7 @@ public struct ChatInputBar: View {
     public init(
         value: Binding<String>, isFocused: FocusState<Bool>.Binding, onSend: @escaping () -> Void, onAttachmentClick: @escaping () -> Void,
         onMicClick: @escaping () -> Void, showDictationIcon: Bool = false, onDictateClick: @escaping () -> Void = {},
+        isDictating: Bool = false, onDictateStop: @escaping () -> Void = {},
         onEmojiClick: @escaping () -> Void = {}, showAttachment: Bool = true, showEmoji: Bool = true,
         showVoiceInput: Bool = true, showSend: Bool = true, sendEnabled: Bool = true, enabled: Bool = true
     ) {
@@ -34,6 +37,8 @@ public struct ChatInputBar: View {
         self.onMicClick = onMicClick
         self.showDictationIcon = showDictationIcon
         self.onDictateClick = onDictateClick
+        self.isDictating = isDictating
+        self.onDictateStop = onDictateStop
         self.onEmojiClick = onEmojiClick
         self.showAttachment = showAttachment
         self.showEmoji = showEmoji
@@ -54,9 +59,9 @@ public struct ChatInputBar: View {
                 .disabled(!enabled)
             }
             if showDictationIcon {
-                Button(action: onDictateClick) {
+                Button(action: isDictating ? onDictateStop : onDictateClick) {
                     Chat360Icon.dictate.image
-                        .foregroundColor(enabled ? colors.textSecondary : colors.textDisabled)
+                        .foregroundColor(isDictating ? activeRed : (enabled ? colors.textSecondary : colors.textDisabled))
                         .frame(width: 22, height: 22)
                 }
                 .disabled(!enabled)
@@ -64,7 +69,7 @@ public struct ChatInputBar: View {
             HStack(alignment: .center, spacing: 8) {
                 ZStack(alignment: .leading) {
                     if value.isEmpty {
-                        Text(branding.inputPlaceholder)
+                        Text(isDictating ? "Listening…" : branding.inputPlaceholder)
                             .font(typography.textFamily.font(size: 15))
                             .foregroundColor(colors.textSecondary)
                     }
@@ -73,6 +78,7 @@ public struct ChatInputBar: View {
                         .foregroundColor(colors.textPrimary)
                         .accentColor(colors.accent)
                         .focused(isFocused)
+                        .disabled(isDictating)
                 }
                 .frame(maxWidth: .infinity)
 

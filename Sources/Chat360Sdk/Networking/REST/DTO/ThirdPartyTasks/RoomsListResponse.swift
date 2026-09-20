@@ -63,6 +63,8 @@ public struct RoomDto: Codable {
     public var sessionIds: [String] = []
     /// How many sessions (chats with a user message) the room has; nil when the server omits it. 0 means an empty, never-used room.
     public var sessionCount: Int?
+    /// The agent role the room was created for (the `agent_role` sent in session-init `meta`); nil when the server omits it.
+    public var agentRole: String?
 
     enum CodingKeys: String, CodingKey {
         case roomId = "room_id"
@@ -73,11 +75,13 @@ public struct RoomDto: Codable {
         case updatedAt = "updated_at"
         case sessionIds = "session_ids"
         case sessionCount = "session_count"
+        case agentRole = "agent_role"
     }
 
     public init(
         roomId: String, roomName: String = "", agentId: String? = nil, status: String? = nil,
-        createdAt: String? = nil, updatedAt: String? = nil, sessionIds: [String] = [], sessionCount: Int? = nil
+        createdAt: String? = nil, updatedAt: String? = nil, sessionIds: [String] = [], sessionCount: Int? = nil,
+        agentRole: String? = nil
     ) {
         self.roomId = roomId
         self.roomName = roomName
@@ -87,6 +91,7 @@ public struct RoomDto: Codable {
         self.updatedAt = updatedAt
         self.sessionIds = sessionIds
         self.sessionCount = sessionCount
+        self.agentRole = agentRole
     }
 
     public init(from decoder: Decoder) throws {
@@ -99,5 +104,6 @@ public struct RoomDto: Codable {
         updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
         sessionIds = try container.decode([String].self, forKey: .sessionIds, default: [])
         sessionCount = try? container.decodeIfPresent(Int.self, forKey: .sessionCount)
+        agentRole = try? container.decodeIfPresent(String.self, forKey: .agentRole)
     }
 }

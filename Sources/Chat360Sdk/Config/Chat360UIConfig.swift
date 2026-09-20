@@ -53,6 +53,55 @@ public struct Chat360BrandingConfig {
     }
 }
 
+/// One button of the Assistant Mode switcher. `variables` are merged into the session-init `meta`
+/// (the bot flow's `@`-variables) while this option is selected, e.g. `["agent_role": "trainer"]`.
+/// Selecting a different option starts a new session so the new variables take effect.
+@available(iOS 13.0, *)
+public struct Chat360AssistantModeOption {
+    public var label: String
+    public var variables: [String: String]
+    public var enabled: Bool
+
+    public init(label: String, variables: [String: String] = [:], enabled: Bool = true) {
+        self.label = label
+        self.variables = variables
+        self.enabled = enabled
+    }
+}
+
+/// What to draw on a history row's chat bubble for a room's `agent_role`.
+@available(iOS 13.0, *)
+public struct Chat360AssistantRoleBadge: Equatable {
+    /// The Assistant Mode button whose role this is (0 = training icon, else person icon); nil = no button sends it (generic tag icon).
+    public let modeIndex: Int?
+    /// The matched button's label, or the raw role text when nothing matches.
+    public let label: String
+
+    public init(modeIndex: Int?, label: String) {
+        self.modeIndex = modeIndex
+        self.label = label
+    }
+}
+
+@available(iOS 13.0, *)
+extension Array where Element == Chat360AssistantModeOption {
+    /// The index of the option whose `agent_role` variable equals `role`, ignoring case and surrounding spaces.
+    public func indexForRole(_ role: String?) -> Int? {
+        guard let wanted = role?.trimmingCharacters(in: .whitespacesAndNewlines), !wanted.isEmpty else { return nil }
+        return firstIndex {
+            $0.variables[Chat360FeatureConfig.assistantRoleKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(wanted) == .orderedSame
+        }
+    }
+
+    /// The badge for a room's `role`: its button when one sends it, a generic one when none does, and nil when the room has no role.
+    public func badge(forRole role: String?) -> Chat360AssistantRoleBadge? {
+        guard let trimmed = role?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        let index = indexForRole(trimmed)
+        return Chat360AssistantRoleBadge(modeIndex: index, label: index.map { self[$0].label } ?? trimmed)
+    }
+}
+
 @available(iOS 13.0, *)
 public struct Chat360FeatureConfig {
     public var showMenu: Bool = false
@@ -70,6 +119,14 @@ public struct Chat360FeatureConfig {
     public var showCamera: Bool = true
     public var showSend: Bool = true
     public var showAssistantMode: Bool = true
+    /// The Assistant Mode buttons, in display order - at most `maxAssistantModes` (2); any extra are ignored.
+    /// The first uses the training icon, the second the person icon.
+    public var assistantModes: [Chat360AssistantModeOption] = [
+        Chat360AssistantModeOption(label: "Training"),
+        Chat360AssistantModeOption(label: "Customer"),
+    ]
+    /// Index into `assistantModes` selected when the chat opens.
+    public var defaultAssistantMode: Int = 1
     public var showAppearanceSwitcher: Bool = false
     public var showTypingIndicator: Bool = true
     public var enableVoicePreview: Bool = false
@@ -93,7 +150,8 @@ public struct Chat360FeatureConfig {
         showEmoji: Bool = false, showAttachment: Bool = false, showVoiceInput: Bool = true, showSpeechToText: Bool? = nil,
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
         showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true,
-        showPeriodicFeedbackPrompt: Bool = true, periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12
+        showPeriodicFeedbackPrompt: Bool = true, periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12,
+        assistantModes: [Chat360AssistantModeOption]? = nil, defaultAssistantMode: Int = 1
     ) {
         self.showMenu = showMenu
         self.showHistorySidebar = showHistorySidebar
@@ -112,11 +170,40 @@ public struct Chat360FeatureConfig {
         self.showCamera = showCamera
         self.showSend = showSend
         self.showAssistantMode = showAssistantMode
+        if let assistantModes { self.assistantModes = assistantModes }
+        self.defaultAssistantMode = defaultAssistantMode
         self.showAppearanceSwitcher = showAppearanceSwitcher
         self.showTypingIndicator = showTypingIndicator
         self.enableVoicePreview = enableVoicePreview
         self.showBotAvatar = showBotAvatar
         self.showClose = showClose
+    }
+
+    /// The Assistant Mode switcher has room for two buttons.
+    public static let maxAssistantModes = 2
+
+    /// `assistantModes` capped at `maxAssistantModes`.
+    public var effectiveAssistantModes: [Chat360AssistantModeOption] {
+        Array(assistantModes.prefix(Self.maxAssistantModes))
+    }
+
+    /// The variable name that carries the role in session-init `meta` and comes back on `rooms/list`.
+    public static let assistantRoleKey = "agent_role"
+
+    /// The index of the button whose variables carry `role` as `agent_role` (ignoring case and surrounding spaces), or nil when none does.
+    public func assistantModeIndex(forRole role: String?) -> Int? {
+        effectiveAssistantModes.indexForRole(role)
+    }
+
+    /// The selected option at chat open, clamped into range of the (capped) options.
+    public var initialAssistantModeIndex: Int {
+        min(max(defaultAssistantMode, 0), max(effectiveAssistantModes.count - 1, 0))
+    }
+
+    /// Variables to seed session-init `meta` with at chat open; empty when the switcher is hidden.
+    public var initialAssistantVariables: [String: String] {
+        guard showAssistantMode, effectiveAssistantModes.indices.contains(initialAssistantModeIndex) else { return [:] }
+        return effectiveAssistantModes[initialAssistantModeIndex].variables
     }
 }
 
