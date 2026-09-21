@@ -666,6 +666,20 @@ public final class ChatCacheDao {
         }
     }
 
+    /// Removes every locally stored conversation of [botId] and everything hanging off them. Synchronous on
+    /// the cache queue so it is finished before any later read is queued - it runs before the chat screen
+    /// starts observing, when the signed-in user has changed (see `ChatIdentityGuard`).
+    public func clearBotSync(botId: String) {
+        queue.sync {
+            let owned = "conversationId IN (SELECT id FROM chat_conversations WHERE botId = ?)"
+            for table in ["chat_messages", "chat_pending_feedback", "chat_message_reactions", "chat_pending_reply", "chat_suppressed_opener", "chat_session_created_at"] {
+                self.exec("DELETE FROM \(table) WHERE \(owned)", params: [botId])
+            }
+            self.exec("DELETE FROM chat_conversations WHERE botId = ?", params: [botId])
+            self.notifyConversationsChanged(botId: botId)
+        }
+    }
+
     public func touch(conversationId: String, updatedAt: Int64, botId: String) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async {

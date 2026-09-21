@@ -38,6 +38,13 @@ public final class UserDefaultsSessionStore: SessionStore {
         write(prefix: roomKeyPrefix(botId, session.roomId), session: session)
     }
 
+    /// Forgets the last room and every per-room session of [botId], so the next connect starts a new one.
+    public func clear(botId: String) {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("\(botId).") {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     private func read(prefix: String) -> PersistedSession? {
         guard let roomId = defaults.string(forKey: "\(prefix).roomId") else { return nil }
         guard let ownerId = defaults.string(forKey: "\(prefix).ownerId") else { return nil }

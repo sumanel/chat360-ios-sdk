@@ -26,6 +26,11 @@ public final class UserDefaultsRoomRoleStore: RoomRoleStore {
     public func loadLocal(botId: String) -> [String: String] { read(key(botId) + "_local") }
     public func saveLocal(botId: String, roles: [String: String]) { defaults.set(roles, forKey: key(botId) + "_local") }
 
+    public func clear(botId: String) {
+        defaults.removeObject(forKey: key(botId))
+        defaults.removeObject(forKey: key(botId) + "_local")
+    }
+
     private func read(_ key: String) -> [String: String] {
         defaults.dictionary(forKey: key) as? [String: String] ?? [:]
     }

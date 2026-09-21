@@ -10,6 +10,10 @@ public struct Chat360NativeChatScreen: View {
         let resolvedBaseUrl = Chat360Bot.shared.getBaseUrl() ?? (botConfig.isDebug ? "https://staging.chat360.io" : "https://app.chat360.io")
         let resolvedBotId = botConfig.botId ?? ""
 
+        // Before anything reads the per-bot local data: a different user must not inherit the last one's history.
+        ChatIdentityGuard(clearCache: { ChatCacheDatabase.shared.dao.clearBotSync(botId: $0) })
+            .apply(botId: resolvedBotId, endUserId: botConfig.endUserId)
+
         let repository = ChatRepository(
             baseUrl: resolvedBaseUrl,
             botId: resolvedBotId,

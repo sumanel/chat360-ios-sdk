@@ -43,6 +43,13 @@ public class Chat360Bot: NSObject {
         baseUrl = url
     }
 
+    /// Call when the user signs out: removes that bot's local conversations, saved session and room roles from this device.
+    @objc public func clearUserData(botId: String) {
+        if #available(iOS 13.0, *) {
+            ChatIdentityGuard(clearCache: { ChatCacheDatabase.shared.dao.clearBotSync(botId: $0) }).reset(botId: botId)
+        }
+    }
+
     @objc public func getBaseUrl() -> String? {
         return baseUrl
     }
