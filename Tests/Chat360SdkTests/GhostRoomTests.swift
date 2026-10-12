@@ -38,11 +38,13 @@ final class GhostRoomTests: XCTestCase {
         /// History fetches per room, and how many of the room under test's fetches see no bot reply yet.
         static var historyRequestsByRoom: [String: Int] = [:]
         static var historyWithoutReply = 0
+        /// Every room's history is empty (nothing was ever said) - for tests about what a brand-new chat does by itself.
+        static var historyIsEmpty = false
         /// The room whose history the reply tests are about; every other room's history never has a reply.
         static let roomUnderTest = "room-a"
 
         static func reset() {
-            lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0
+            lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0; historyIsEmpty = false
             salesStatus = 200; salesBody = activeExecutive; salesDelay = 0; salesClientIds = []; salesBodies = []; maintenanceBody = #"{"is_active":false}"#
             welcomeStatus = 200; welcomeBody = #"{"heading":"Server heading","text":"Server subtitle","client_id":"client-1"}"#; welcomeDelay = 0; welcomeClientIds = []
             lock.unlock()
@@ -97,9 +99,10 @@ final class GhostRoomTests: XCTestCase {
                 Self.lock.lock()
                 Self.historyRequestsByRoom[room, default: 0] += 1
                 let includeReply = room == Self.roomUnderTest && Self.historyRequestsByRoom[room, default: 0] > Self.historyWithoutReply
+                let empty = Self.historyIsEmpty
                 Self.lock.unlock()
                 status = 200
-                body = Self.historyBody(includeReply: includeReply)
+                body = empty ? Data(#"{"history":[],"previous_cursor":null}"#.utf8) : Self.historyBody(includeReply: includeReply)
             } else if url.path.contains("/session/") {
                 let requested = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "room_id" }?.value
                 Self.lock.lock()
@@ -168,6 +171,14 @@ final class GhostRoomTests: XCTestCase {
         }
     }
 
+    /// Opening an older room only shows it - the server is not asked for its session until something is sent in it
+    /// (see `ChatViewModel.openConversation`). This is that first send, which resumes the room and makes it the connected one.
+    private func sendInOpenedRoom(_ room: String, text: String = "hello") async {
+        viewModel.onInputChange(text)
+        viewModel.sendMessage()
+        await awaitUntil("\(room) resumed") { StubServer.requests.contains(room) }
+    }
+
     private func settle() async { try? await Task.sleep(nanoseconds: 500_000_000) }
 
     func testTappingNewChatRepeatedlyAfterVisitingAnotherRoomReusesTheBlankRoom() async {
@@ -181,12 +192,13 @@ final class GhostRoomTests: XCTestCase {
         await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
         await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
         viewModel.openConversation("conv-old")
-        await awaitUntil("old room resumed") { StubServer.requests.contains("room-old") }
+        await sendInOpenedRoom("room-old")
         await settle()
 
         // 3. New chat, twice. Neither may ask the server for a new room.
         viewModel.startNewChat()
-        await awaitUntil("blank room resumed") { StubServer.requests.contains("room-1") }
+        // The send above left a reply outstanding; the repository waits up to 10s for it before switching away.
+        await awaitUntil("blank room resumed", timeout: 20) { StubServer.requests.contains("room-1") }
         await settle()
         viewModel.startNewChat()
         await settle()
@@ -194,6 +206,53 @@ final class GhostRoomTests: XCTestCase {
         let freshRooms = StubServer.requests.filter { $0 == nil }.count
         XCTAssertEqual(freshRooms, 1, "ghost rooms were created: \(StubServer.requests)")
         XCTAssertEqual(viewModel.uiState.activeConversationId, firstScreenId, "New chat must show the original first screen again")
+    }
+
+    func testOpeningAnOldRoomDoesNotAskTheServerForItsSessionUntilSomethingIsSent() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        sessionStore.save(botId: botId, session: PersistedSession(roomId: "room-old", sessionToken: "tok-room-old", ownerId: "owner-1"))
+        await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
+        await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
+
+        viewModel.openConversation("conv-old")
+        await settle()
+
+        // Session-init renews an expired session - a "new session" in the logs and a running timer for a room the
+        // user has only looked at.
+        XCTAssertEqual(StubServer.requests, [nil], "looking at an old room contacted the server: \(StubServer.requests)")
+        XCTAssertEqual(viewModel.uiState.activeConversationId, "conv-old")
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "no countdown for a room nobody has written to")
+
+        await sendInOpenedRoom("room-old", text: "my first question")
+
+        XCTAssertEqual(StubServer.requests, [nil, "room-old"], "the first send resumes that room, and only that")
+    }
+
+    // MARK: - The session timer
+
+    /// The bot's own opening message arrives on connect, before anything has been typed. It used to start the
+    /// countdown by itself ("timer is initiating from the SDK").
+    func testTheBotsOpeningMessageDoesNotStartTheTimer() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        // A brand-new chat: the room has no history, so the only thing that can start the timer is what happens now.
+        StubServer.historyIsEmpty = true
+        viewModel.onCleared()
+        viewModel = makeViewModel()
+        await awaitUntil("chat reopened on the untouched room") { StubServer.requests.count >= 2 && self.viewModel.uiState.activeConversationId != nil }
+        await settle()
+
+        liveReply(from: "room-1") // the welcome message - the user has typed nothing
+        await settle()
+        XCTAssertTrue(transcript().contains { $0.contains("live-room-1") }, "the welcome message should still show: \(transcript())")
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "the welcome message started the countdown")
+
+        viewModel.onInputChange("Tell me about the Venue")
+        viewModel.sendMessage()
+        await settle()
+        liveReply(from: "room-1") // the answer
+        await settle()
+
+        XCTAssertNotNil(viewModel.uiState.sessionTimerExpiresAt, "the answer to the user's question should start it")
     }
 
     func testReopeningTheChatScreenInTheSameProcessReusesTheBlankRoom() async {
@@ -217,7 +276,7 @@ final class GhostRoomTests: XCTestCase {
         await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
         await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
         viewModel.openConversation("conv-old")
-        await awaitUntil("old room resumed") { StubServer.requests.contains("room-old") }
+        await sendInOpenedRoom("room-old")
         await settle()
         XCTAssertEqual(viewModel.uiState.inputText, "", "the other room must not inherit the text")
 
@@ -275,7 +334,7 @@ final class GhostRoomTests: XCTestCase {
         await dao.upsertConversation(CachedConversationEntity(id: "conv-old", botId: botId, roomId: "room-old", title: "Old chat", createdAt: 1, updatedAt: 1))
         await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
         viewModel.openConversation("conv-old")
-        await awaitUntil("old room resumed") { StubServer.requests.contains("room-old") }
+        await sendInOpenedRoom("room-old")
         await settle()
         XCTAssertFalse(viewModel.uiState.needsNewSession)
 
@@ -366,7 +425,9 @@ final class GhostRoomTests: XCTestCase {
         XCTAssertEqual(viewModel.uiState.activeConversationId, "conv-b")
         XCTAssertFalse(transcript().contains { $0.contains("live-room-a") || $0.contains("live-room-c") }, "another room's reply is in the chat: \(transcript())")
 
-        // The room the user ended on still receives its own replies live.
+        // Once the user writes in the room they ended on, it is the connected one and receives its own replies live.
+        await sendInOpenedRoom("room-b")
+        await settle()
         liveReply(from: "room-b")
         await settle()
         XCTAssertEqual(transcript().last, "live-room-b-\(liveFrameCounter)", "the connected room's reply was lost: \(transcript())")

@@ -278,6 +278,14 @@ try? Chat360Bot.shared.startChatbot(animated: true)
 On the legacy WebView screen (`useNewUI: false`), `Chat360Bot.shared.sendEventToBot(event:)`
 pushes an event into the embedded page.
 
+## History drawer, room resume and session timer behaviour
+
+- **Opening an older room only shows it.** The SDK does not reconnect to a room (session-init, which renews an expired session on the server) just because it was opened from the drawer; the room is resumed by the first thing the user sends in it. A live chat is the exception and reconnects immediately.
+- **Session timer** starts only from the bot's reply to the user's message, never from the bot's own opening message, and restarts from the reply to the next message once the hour has run out.
+- **Host variables** (`meta`, `dealerId`, `empId`) are sent again as flow variables with the first message of a room that never went through session-init (an older room joined directly) and with the first message after a session expired and was renewed by the backend.
+- **Delete** is remembered on the device and filtered from every `rooms/list` page, because the server keeps listing rooms it has marked inactive.
+- A history refresh that started before a live reply arrived no longer overwrites the screen and the cache with its older page.
+
 ## Error Handling
 
 If the URL creation fails, ensure that your `botId` and `appId` are correctly set. The SDK throws `Chat360Error.configDoesNotExit` if configuration is not set before initialization.

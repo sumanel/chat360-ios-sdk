@@ -54,6 +54,7 @@ public struct ChatDrawer: View {
     private let languages: [SessionLanguage]
     private let onLanguageSelected: (String) -> Void
     private let isHistoryUnavailable: Bool
+    private let isLoadingRooms: Bool
     private let onRetryHistory: () -> Void
     private let hasMoreRooms: Bool
     private let isLoadingMoreRooms: Bool
@@ -78,6 +79,7 @@ public struct ChatDrawer: View {
         languages: [SessionLanguage] = [],
         onLanguageSelected: @escaping (String) -> Void = { _ in },
         isHistoryUnavailable: Bool = false,
+        isLoadingRooms: Bool = false,
         onRetryHistory: @escaping () -> Void = {},
         hasMoreRooms: Bool = false,
         isLoadingMoreRooms: Bool = false,
@@ -101,6 +103,7 @@ public struct ChatDrawer: View {
         self.languages = languages
         self.onLanguageSelected = onLanguageSelected
         self.isHistoryUnavailable = isHistoryUnavailable
+        self.isLoadingRooms = isLoadingRooms
         self.onRetryHistory = onRetryHistory
         self.hasMoreRooms = hasMoreRooms
         self.isLoadingMoreRooms = isLoadingMoreRooms
@@ -231,7 +234,7 @@ public struct ChatDrawer: View {
                 .padding(.bottom, 16)
             }
             if conversations.isEmpty {
-                Text("No saved conversations yet")
+                Text(isLoadingRooms ? "Loading your chats…" : "No saved conversations yet")
                     .font(typography.textFamily.font(size: 14))
                     .foregroundColor(colors.textSecondary)
             } else {

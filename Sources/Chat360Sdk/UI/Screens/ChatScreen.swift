@@ -323,6 +323,7 @@ public struct ChatScreen: View {
                                 withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
                             },
                             isHistoryUnavailable: viewModel.uiState.isHistoryUnavailable,
+                            isLoadingRooms: viewModel.uiState.isLoadingRooms,
                             onRetryHistory: { viewModel.refreshRoomsList() },
                             hasMoreRooms: viewModel.uiState.hasMoreRooms,
                             isLoadingMoreRooms: viewModel.uiState.isLoadingMoreRooms,

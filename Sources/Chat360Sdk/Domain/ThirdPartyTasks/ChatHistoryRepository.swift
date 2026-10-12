@@ -9,6 +9,10 @@ public final class ChatHistoryRepository {
     private let botId: String
     private let endUserId: String
     private let roleStore: RoomRoleStore?
+    // Rooms the user deleted on this device; never shown again even though `rooms/list` still returns them.
+    private let deletedRoomStore: DeletedRoomStore?
+    private let deletedLock = NSLock()
+    private var deletedRooms: Set<String> = []
     // What `rooms/list` last said, and what this device itself sent when it created a room. The server is the
     // source of truth, so a role it returns always wins; the local one only fills in until it does (a room made a
     // moment ago may not be in the list yet, or may come back without a role).
@@ -29,7 +33,8 @@ public final class ChatHistoryRepository {
         clientId: String,
         botId: String,
         endUserId: String,
-        roleStore: RoomRoleStore? = nil
+        roleStore: RoomRoleStore? = nil,
+        deletedRoomStore: DeletedRoomStore? = nil
     ) {
         self.apiService = apiService
         self.tokenManager = tokenManager
@@ -38,6 +43,8 @@ public final class ChatHistoryRepository {
         self.botId = botId
         self.endUserId = endUserId
         self.roleStore = roleStore
+        self.deletedRoomStore = deletedRoomStore
+        self.deletedRooms = deletedRoomStore?.load(botId: botId) ?? []
         self.serverRoles = roleStore?.load(botId: botId) ?? [:]
         self.localRoles = roleStore?.loadLocal(botId: botId) ?? [:]
     }
@@ -57,6 +64,20 @@ public final class ChatHistoryRepository {
             }
         }
         commit(server: server, local: local)
+    }
+
+    /// A page without the rooms the user deleted here.
+    private func withoutDeleted(_ rooms: [RoomDto]) -> [RoomDto] {
+        deletedLock.lock(); defer { deletedLock.unlock() }
+        return deletedRooms.isEmpty ? rooms : rooms.filter { !deletedRooms.contains($0.roomId) }
+    }
+
+    /// Hides `roomId` from every later `rooms/list` on this device. Cheap and non-blocking, so a delete can call it
+    /// before anything else and a list refresh racing right behind it already leaves the room out.
+    public func forgetRoom(roomId: String) {
+        deletedLock.lock(); defer { deletedLock.unlock() }
+        deletedRooms.insert(roomId)
+        deletedRoomStore?.add(botId: botId, roomId: roomId)
     }
 
     /// The role this device just sent when it created `roomId`; used until `rooms/list` returns one for that room.
@@ -95,13 +116,15 @@ public final class ChatHistoryRepository {
             let page = try await withAuthRetry { token in
                 try await self.apiService.fetchRoomsList(bearerToken: token, agentId: self.endUserId, limit: limit, offset: 0)
             }
+            // Counted as returned by the server, before the rooms deleted here are dropped from what is shown.
             loadedCount = page.rooms.count
             hasMoreRooms = page.hasMore && !page.rooms.isEmpty
-            rememberRoles(page.rooms)
-            await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
+            let rooms = withoutDeleted(page.rooms)
+            rememberRoles(rooms)
+            await cache.syncLocalConversations(botId: botId, rooms: rooms)
             // Replaces the synced rooms: any cached one missing from the top of the list is dropped, and
             // reappears once its page is loaded again.
-            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: page.rooms)
+            let conversations = await cache.thirdPartyRoomConversations(botId: botId, rooms: rooms)
             await cache.syncAgentRooms(botId: botId, conversations: conversations)
             return conversations
         } catch {
@@ -126,9 +149,10 @@ public final class ChatHistoryRepository {
             // A page with nothing in it ends the list even if the server still claims more, so a server
             // that misreports has_more can't keep the button alive forever.
             hasMoreRooms = page.hasMore && !page.rooms.isEmpty
-            rememberRoles(page.rooms)
-            await cache.syncLocalConversations(botId: botId, rooms: page.rooms)
-            await cache.mergeAgentRooms(botId: botId, conversations: await cache.thirdPartyRoomConversations(botId: botId, rooms: page.rooms))
+            let rooms = withoutDeleted(page.rooms)
+            rememberRoles(rooms)
+            await cache.syncLocalConversations(botId: botId, rooms: rooms)
+            await cache.mergeAgentRooms(botId: botId, conversations: await cache.thirdPartyRoomConversations(botId: botId, rooms: rooms))
             return true
         } catch {
             NSLog("[Chat360] third-party-tasks rooms/list (more) failed: %@", error.localizedDescription)
@@ -146,7 +170,10 @@ public final class ChatHistoryRepository {
         }
     }
 
+    /// Best-effort remote "mark inactive" - the counterpart of deleting a conversation from history. Also forgets
+    /// the room locally, which does not depend on the request succeeding.
     public func markRoomInactive(roomId: String) async {
+        forgetRoom(roomId: roomId)
         do {
             _ = try await withAuthRetry { token in
                 try await self.apiService.updateRoomStatus(roomId: roomId, clientId: self.clientId, bearerToken: token)

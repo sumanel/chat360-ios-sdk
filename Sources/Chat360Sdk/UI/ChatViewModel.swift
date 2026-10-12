@@ -74,6 +74,11 @@ public final class ChatViewModel: ObservableObject {
     // actually left, not restart, and only actual expiry (not merely having left and returned)
     // should trigger a fresh hour on the next message.
     private var sessionTimerExpiresAtByConversation: [String: Date] = [:]
+    // Live (not replayed) bot bubbles rendered into the transcript so far. `refreshConversationHistory` compares it
+    // before and after its network round trip: a reply that landed in between is newer than that response, and
+    // writing the (older) response over the screen and the cache would wipe it until the room was next reopened -
+    // the "reply was generated but only showed up after switching rooms" bug.
+    private var liveBotBubbleCount = 0
     // The server's own record of when this room's session actually started, keyed by
     // conversation - anchors the countdown to real session age instead of "whenever this device
     // happened to send its first message in it", which could understate a resumed room's true
@@ -150,6 +155,7 @@ public final class ChatViewModel: ObservableObject {
 
     func refreshRoomsList() {
         guard let chatHistoryRepository else { return }
+        update { $0.isLoadingRooms = true }
         Task { [weak self] in
             guard let self else { return }
             // Don't assign the fetched list to `conversations` directly - `refreshRooms()`
@@ -161,6 +167,7 @@ public final class ChatViewModel: ObservableObject {
             let refreshed = await chatHistoryRepository.refreshRooms()
             self.roomRoles = chatHistoryRepository.roomRoles
             self.update {
+                $0.isLoadingRooms = false
                 $0.isHistoryUnavailable = refreshed == nil
                 if refreshed != nil { $0.hasMoreRooms = chatHistoryRepository.hasMoreRooms }
             }
@@ -460,11 +467,14 @@ public final class ChatViewModel: ObservableObject {
             // (before `streamRawText` has an entry for it) counts as "one more bot reply".
             let isNewStreamMessage = node.streamId.map { streamRawText[$0] == nil } ?? true
             if !restoringFromCache && isNewStreamMessage {
+                liveBotBubbleCount += 1
                 registerLiveBotReplyForFeedbackPrompt()
-                // Shown once the bot has actually answered, not the instant the user's own
-                // message goes out - `ensureSessionTimerStarted`'s own "already running or not
-                // yet expired" guard means this is still a no-op on every reply after the first.
-                ensureSessionTimerStarted()
+                // Shown once the bot has actually answered the user, not the instant the user's own
+                // message goes out - and not for the bot's own opening message either, which arrives
+                // on connect before anything has been typed: that used to start the countdown by
+                // itself. `ensureSessionTimerStarted`'s own "already running or not yet expired"
+                // guard means this is still a no-op on every reply after the first.
+                if uiState.messages.contains(where: { $0.fromUser }) { ensureSessionTimerStarted() }
             } else {
                 NSLog(
                     "[Chat360] Skipping feedback-prompt count: restoringFromCache=%@ isNewStreamMessage=%@ nodeId=%@",
@@ -590,7 +600,14 @@ public final class ChatViewModel: ObservableObject {
         // Anchor to the server's real session creation time when we have it, rather than "now" -
         // a resumed room's session may have actually started well before this device sent
         // anything in it, and the client-side guess would understate how much time is really left.
-        let anchor = serverSessionCreatedAtByConversation[conversationId] ?? now
+        var anchor = serverSessionCreatedAtByConversation[conversationId] ?? now
+        // A session that already ran its hour is over: the backend renews it for this message, so the new
+        // countdown starts from now. Anchoring to the old start left the new deadline in the past, so the
+        // timer never came back after the first hour.
+        if anchor.addingTimeInterval(3600) <= now {
+            anchor = now
+            serverSessionCreatedAtByConversation[conversationId] = now
+        }
         let newExpiresAt = anchor.addingTimeInterval(3600)
         sessionTimerExpiresAtByConversation[conversationId] = newExpiresAt
         update { $0.sessionTimerExpiresAt = newExpiresAt }
@@ -1373,6 +1390,8 @@ public final class ChatViewModel: ObservableObject {
         let wasActive = conversationId == activeConversationId
         let roomId = conversations.first { $0.id == conversationId }?.roomId
         conversations = conversations.filter { $0.id != conversationId }
+        // Before the tasks below: a rooms/list refresh racing right behind this must already leave it out.
+        if let roomId { chatHistoryRepository?.forgetRoom(roomId: roomId) }
         Task { [weak self] in
             guard let self else { return }
             await self.cache.deleteConversation(conversationId: conversationId, botId: self.botId)
@@ -1638,6 +1657,7 @@ public final class ChatViewModel: ObservableObject {
     @discardableResult
     private func refreshConversationHistory(conversationId: String, roomId: String, generation: Int) async -> Bool {
         NSLog("[Chat360] Fetching from SERVER (full refresh): room=%@", roomId)
+        let liveBubblesBefore = liveBotBubbleCount
         guard let response = try? await repository.fetchHistory(roomId: roomId) else {
             NSLog("[Chat360] SERVER fetch (full refresh) failed for room=%@", roomId)
             return false
@@ -1645,6 +1665,10 @@ public final class ChatViewModel: ObservableObject {
         let history = response.history
         NSLog("[Chat360] SERVER returned %d history rows for room=%@ (full refresh)", history.count, roomId)
         guard isCurrentLoad(generation) else { return !history.isEmpty }
+        // A live reply arrived while this was in flight - the response predates it (the server may not have
+        // indexed it yet), so applying it would erase what the user is already looking at. The next entry to
+        // the room re-syncs.
+        guard liveBotBubbleCount == liveBubblesBefore else { return !history.isEmpty }
         let earliestUserTimestamp = await earliestUserTimestampMs(conversationId: conversationId, alsoConsidering: history)
         let suppressedOpener = await cache.suppressedOpenerNodeId(conversationId: conversationId)
         // Awaited above - a newer load may have taken over. Checked before anything is cleared, so
@@ -1791,18 +1815,16 @@ public final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             await self.restoreConversation(conversationId: conversationId, roomId: roomId, generation: generation)
-        }
-        // Reconnect the live socket to this room right away rather than waiting for the user's
-        // next send - otherwise the socket stays bound to the previously-viewed room until then,
-        // so a reply typed immediately after switching could still land in the wrong room's
-        // history for the brief window before it resumes. Skipped while the maintenance/dealer
-        // fallback banner is up: `repository.connect()` is never called in that state (see the
-        // maintenance gate ahead of it), so none of its callbacks are wired - reconnecting here
-        // would silently open a live socket/session nothing is listening to instead of leaving
-        // the fallback state alone.
-        guard uiState.terminalFallbackMessage == nil else { return }
-        Task { [weak self] in
-            await self?.switchToActiveRoomIfResumable(generation: generation)
+            // Only looking at an old room must not touch the server's session for it: reconnecting runs
+            // session-init, which renews an expired session (a "new session" in the logs, and a running
+            // countdown) for a room the user has not written to. So the reconnect waits for the first
+            // send - every send path resumes the room first (see `sendAfterResumingRoom`) - unless it is
+            // a live chat, where the agent's messages arrive on the socket. Also skipped while the
+            // maintenance/dealer fallback banner is up: `repository.connect()` is never called in that
+            // state (see the maintenance gate ahead of it), so none of its callbacks are wired -
+            // reconnecting here would silently open a live socket/session nothing is listening to.
+            guard self.isCurrentLoad(generation), self.uiState.isLiveChat, self.uiState.terminalFallbackMessage == nil else { return }
+            await self.switchToActiveRoomIfResumable(generation: generation)
         }
     }
 

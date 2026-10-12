@@ -8,17 +8,20 @@ public final class ChatIdentityGuard {
     private let defaults: UserDefaults
     private let sessionStore: UserDefaultsSessionStore
     private let roleStore: UserDefaultsRoomRoleStore
+    private let deletedRoomStore: UserDefaultsDeletedRoomStore
     private let clearCache: (String) -> Void
 
     public init(
         defaults: UserDefaults = UserDefaults(suiteName: "chat360_identity") ?? .standard,
         sessionStore: UserDefaultsSessionStore = UserDefaultsSessionStore(),
         roleStore: UserDefaultsRoomRoleStore = UserDefaultsRoomRoleStore(),
+        deletedRoomStore: UserDefaultsDeletedRoomStore = UserDefaultsDeletedRoomStore(),
         clearCache: @escaping (String) -> Void
     ) {
         self.defaults = defaults
         self.sessionStore = sessionStore
         self.roleStore = roleStore
+        self.deletedRoomStore = deletedRoomStore
         self.clearCache = clearCache
     }
 
@@ -46,6 +49,7 @@ public final class ChatIdentityGuard {
         clearCache(botId)
         sessionStore.clear(botId: botId)
         roleStore.clear(botId: botId)
+        deletedRoomStore.clear(botId: botId)
     }
 
     private func key(_ botId: String) -> String { "\(botId).endUserId" }

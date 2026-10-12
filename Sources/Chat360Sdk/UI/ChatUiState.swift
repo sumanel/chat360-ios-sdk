@@ -177,6 +177,8 @@ public struct ChatUiState: Equatable {
     public var hasMoreHistory: Bool = false
     public var isLoadingMoreHistory: Bool = false
     public var isHistoryUnavailable: Bool = false
+    /// The server room list is being fetched; the history menu says so instead of "No saved conversations yet".
+    public var isLoadingRooms: Bool = false
     /// The server has older rooms than the history list holds so far; the drawer offers "Load more".
     public var hasMoreRooms: Bool = false
     public var isLoadingMoreRooms: Bool = false
@@ -217,6 +219,7 @@ public struct ChatUiState: Equatable {
             lhs.hasMoreHistory == rhs.hasMoreHistory &&
             lhs.isLoadingMoreHistory == rhs.isLoadingMoreHistory &&
             lhs.isHistoryUnavailable == rhs.isHistoryUnavailable &&
+            lhs.isLoadingRooms == rhs.isLoadingRooms &&
             lhs.hasMoreRooms == rhs.hasMoreRooms &&
             lhs.isLoadingMoreRooms == rhs.isLoadingMoreRooms &&
             lhs.activeConversationId == rhs.activeConversationId &&

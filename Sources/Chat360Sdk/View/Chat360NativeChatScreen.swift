@@ -62,7 +62,7 @@ public struct Chat360NativeChatScreen: View {
         }
         let thirdPartyApi = ThirdPartyTasksApiService(baseUrl: baseUrl)
         let tokenManager = ThirdPartyTokenManager(apiService: thirdPartyApi, clientId: clientId, apiKey: apiKey)
-        return ChatHistoryRepository(apiService: thirdPartyApi, tokenManager: tokenManager, cache: cache, clientId: clientId, botId: botId, endUserId: endUserId, roleStore: UserDefaultsRoomRoleStore())
+        return ChatHistoryRepository(apiService: thirdPartyApi, tokenManager: tokenManager, cache: cache, clientId: clientId, botId: botId, endUserId: endUserId, roleStore: UserDefaultsRoomRoleStore(), deletedRoomStore: UserDefaultsDeletedRoomStore())
     }
 
     public var body: some View {

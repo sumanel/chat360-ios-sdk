@@ -10,6 +10,8 @@ public final class ChatRepository {
     // backend minting a brand new one for this very query) rather than its true start time - see
     // awaitingImmediateSessionTimeCheck.
     private static let freshlyCreatedSessionWindowSeconds: TimeInterval = 15
+    // How long the backend keeps one session going - the countdown in the header runs down from this.
+    private static let sessionLength: TimeInterval = 3_600
 
     private let baseUrl: String
     private let botId: String
@@ -111,6 +113,17 @@ public final class ChatRepository {
     // synthetic. Either way the reset should only become visible once the bot's next reply
     // actually comes in, same as overrideNextSessionTimeWithNow's first message.
     @Locked private var pendingSessionResetOnNextBotMessage = false
+    // The created_at of the last session time handed to the UI for the connected room, nil until
+    // one is. Lets sendTracked notice that the hour has run out by the time the user sends again -
+    // the backend then renews the session silently, so the countdown has to be restarted from that
+    // reply (see pendingSessionResetOnNextBotMessage).
+    @Locked var lastSessionCreatedAt: Date? // internal for tests
+    // Host context (meta, dealer id, emp id) to attach to the next outgoing message as flow
+    // variables. Set when the room's session did not get it from session-init: a room joined
+    // without one (joinRoomDirectly - session-init cannot resume it), or a session that expired and
+    // was renewed by the backend, which starts without the host's variables (`@emp_id` and the
+    // like). Without them the bot flow cannot answer ("we could not fetch response"). Cleared once sent.
+    @Locked private var pendingHostContext: [String: String]?
 
     @Locked private var onEvent: (IncomingSocketEvent) -> Void = { _ in }
     @Locked private var onConnected: () -> Void = {}
@@ -270,6 +283,8 @@ public final class ChatRepository {
             roomId = targetRoomId
             // No session id is known for a room joined this way; the same fallback establishSession uses.
             sessionId = targetRoomId
+            // No session-init ran for this room, so nothing carried the host's variables (emp id, dealer id, ...) into it.
+            pendingHostContext = hostContext()
         }
         guard await onConversationStarted(targetRoomId), myGeneration == sessionGeneration else { return }
         await seedOpeningNode(generation: myGeneration)
@@ -335,6 +350,17 @@ public final class ChatRepository {
         awaitingImmediateSessionTimeCheck = false
         awaitingSessionTimeResponse = false
         pendingSessionResetOnNextBotMessage = false
+        lastSessionCreatedAt = nil
+        pendingHostContext = nil
+    }
+
+    // What session-init carries for the host: `meta` plus the dealer / employee ids. Sent again as
+    // message variables where a session never got it - see pendingHostContext.
+    private func hostContext() -> [String: String]? {
+        var context = meta ?? [:]
+        if let dealerId, !dealerId.isEmpty { context["dealer_id"] = dealerId }
+        if let empId, !empId.isEmpty { context["emp_id"] = empId }
+        return context.nilIfEmpty
     }
 
     private func withState<T>(_ body: () -> T) -> T {
@@ -563,10 +589,12 @@ public final class ChatRepository {
                     self.requestSessionTime()
                 } else {
                     // A genuinely new room has no session_time to ask about yet - the timer must
-                    // stay hidden/not-running until the user sends something new and a bot reply
-                    // actually arrives live on this connection (see the botMessage case below,
-                    // which fires the request once this is consumed).
-                    self.awaitingFirstBotReplySessionTime = true
+                    // stay hidden/not-running until the user sends something and a bot reply
+                    // actually arrives (see the botMessage case below). Deliberately NOT armed
+                    // here: the bot's own opening message (delivered by the INIT jump below) is a
+                    // live bot reply too, and arming on connect made that welcome message start
+                    // the countdown before the user had typed anything. sendTracked arms it on
+                    // the first user message instead.
                 }
                 if let targetId = self.pendingInitJumpTargetId {
                     self.pendingInitJumpTargetId = nil
@@ -668,7 +696,7 @@ public final class ChatRepository {
             if pendingSessionResetOnNextBotMessage {
                 pendingSessionResetOnNextBotMessage = false
                 NSLog("[Chat360WS] Applying deferred session time reset on this bot reply - countdown restarts at 59:59 (room=%@)", roomId ?? "nil")
-                onSessionTimeReceived(Date())
+                emitSessionTime(Date())
             }
             handleWindowEventNode(node.content)
             if let endUrlMessage = node.endUrlMessage { onOpenUrl(endUrlMessage) }
@@ -726,7 +754,7 @@ public final class ChatRepository {
         awaitingSessionTimeResponse = false
         if overrideNextSessionTimeWithNow {
             overrideNextSessionTimeWithNow = false
-            onSessionTimeReceived(Date())
+            emitSessionTime(Date())
             return
         }
         if awaitingImmediateSessionTimeCheck {
@@ -742,6 +770,12 @@ public final class ChatRepository {
             }
             // Genuinely old enough to trust - show the real remaining time immediately.
         }
+        emitSessionTime(createdAt)
+    }
+
+    // Hands a session time to the UI, remembering it so sendTracked can tell when the hour has run out.
+    private func emitSessionTime(_ createdAt: Date) {
+        lastSessionCreatedAt = createdAt
         onSessionTimeReceived(createdAt)
     }
 
@@ -1075,8 +1109,31 @@ public final class ChatRepository {
         return sendTracked(outgoing)
     }
 
+    // Everything a user message needs from the session before it goes out: arms the session clock on the first one,
+    // restarts it (and re-sends the host's variables) when the hour ran out since the last reply, and attaches any
+    // pending host context. Internal so tests can see what would be sent - the socket itself cannot be observed.
+    func prepareOutgoing(_ message: OutgoingMessage) -> OutgoingMessage {
+        // The first thing the user sends is what starts the session clock - see the onOpen kickoff.
+        if !sessionEverStarted { awaitingFirstBotReplySessionTime = true }
+        // The hour ran out since the timer was last set: the backend renews the session for this message, so the
+        // countdown restarts from the bot's reply to it, and the host's variables have to go with it again.
+        if let startedAt = lastSessionCreatedAt, Date().timeIntervalSince(startedAt) >= Self.sessionLength {
+            pendingSessionResetOnNextBotMessage = true
+            pendingHostContext = hostContext()
+            lastSessionCreatedAt = nil
+        }
+        var outgoing = message
+        if let hostContext = pendingHostContext {
+            pendingHostContext = nil
+            // The node's own variable (the answer being submitted) wins over a host key of the same name.
+            outgoing.variables = hostContext.merging(message.variables ?? [:]) { _, own in own }
+        }
+        return outgoing
+    }
+
     @discardableResult
-    private func sendTracked(_ outgoing: OutgoingMessage) -> String {
+    private func sendTracked(_ message: OutgoingMessage) -> String {
+        let outgoing = prepareOutgoing(message)
         NSLog("[Chat360WS] User message sent: chat_msg_id=%@ nodeType=%@ targetId=%@", outgoing.chat_msg_id, outgoing.nodeType ?? "nil", outgoing.targetId ?? "nil")
         // Marks a bot reply as outstanding for this room - see awaitPendingReplyBeforeTeardown,
         // which keeps the socket open long enough for it to actually arrive if the user switches
