@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// What a tap on a rating icon does. A dislike is final: once set (it already came with its mandatory reason) the
+/// message can be neither liked nor un-disliked. A like can still be changed to a dislike.
+enum ReactionTap: Equatable {
+    case openLikePopup, openDislikePopup, ignore
+
+    static func likeTap(current: Bool?) -> ReactionTap { current == nil ? .openLikePopup : .ignore }
+    static func dislikeTap(current: Bool?) -> ReactionTap { current == false ? .ignore : .openDislikePopup }
+}
+
 @available(iOS 16.0, *)
 public struct BotMessageRow: View {
     @Environment(\.chat360Colors) private var colors
@@ -93,7 +102,7 @@ public struct BotMessageRow: View {
                             // A dislike is permanent once set (it already had mandatory feedback
                             // submitted for it) - liking afterward can't override that. But like
                             // itself isn't locked from the other direction (see dislike below).
-                            guard feedback == nil else { return }
+                            guard ReactionTap.likeTap(current: feedback) == .openLikePopup else { return }
                             feedback = true
                             actions.onLikeClicked()
                         }
@@ -109,7 +118,7 @@ public struct BotMessageRow: View {
                             // Only already-disliked is a no-op - switching from like to dislike
                             // is allowed, unlike the other direction, since dislike has its own
                             // mandatory feedback step gating it regardless.
-                            guard feedback != false else { return }
+                            guard ReactionTap.dislikeTap(current: feedback) == .openDislikePopup else { return }
                             feedback = false
                             actions.onDislikeClicked()
                         }

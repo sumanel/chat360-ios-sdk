@@ -12,6 +12,7 @@ public final class ChatViewModel: ObservableObject {
     private let periodicFeedbackPromptInterval: ClosedRange<Int>
     private let maintenanceApi: ThirdPartyTasksApiService?
     private let salesExecutiveGate: SalesExecutiveGate?
+    private let appFeedbackIdentity: AppFeedbackIdentity
 
     @Published public private(set) var uiState = ChatUiState()
     @Published public private(set) var conversations: [CachedConversationEntity] = []
@@ -79,13 +80,15 @@ public final class ChatViewModel: ObservableObject {
     // writing the (older) response over the screen and the cache would wipe it until the room was next reopened -
     // the "reply was generated but only showed up after switching rooms" bug.
     private var liveBotBubbleCount = 0
-    // The server's own record of when this room's session actually started, keyed by
-    // conversation - anchors the countdown to real session age instead of "whenever this device
-    // happened to send its first message in it", which could understate a resumed room's true
-    // elapsed time. Populated by `handleSessionTimeReceived`, consumed by
-    // `ensureSessionTimerStarted`; a conversation with no entry here just falls back to the old
-    // client-side guess (e.g. the request hasn't answered yet, or this bot doesn't support it).
+    // The server's own record of when this room's session started (its `updated_at`), keyed by conversation. The
+    // countdown is counted from it and from nothing else: a conversation with no entry here shows no timer.
+    // Populated by `handleSessionTimeReceived`, read by `ensureSessionTimerStarted`.
     private var serverSessionCreatedAtByConversation: [String: Date] = [:]
+    // How long one session lasts - the countdown runs this long from the session's start.
+    private static let sessionLength: TimeInterval = 3_600
+    // Conversations the user has written to since this screen opened - the countdown only ever starts for one of
+    // these, so opening an old chat (or the bot talking first) never starts it.
+    private var conversationsUserHasSentIn: Set<String> = []
     // Periodic "how's it going" feedback prompt - fires every random N live bot replies (N drawn
     // from `periodicFeedbackPromptInterval`), scoped per conversation. Was originally a single
     // pair of counters shared across every conversation
@@ -106,9 +109,12 @@ public final class ChatViewModel: ObservableObject {
         maintenanceApi: ThirdPartyTasksApiService? = nil,
         welcomeTextRepository: WelcomeTextRepository? = nil,
         salesExecutiveGate: SalesExecutiveGate? = nil,
-        initialAssistantModeIndex: Int = 0
+        initialAssistantModeIndex: Int = 0,
+        appFeedbackDealerId: String? = nil,
+        appFeedbackEmpId: String? = nil
     ) {
         self.assistantModeIndex = initialAssistantModeIndex
+        self.appFeedbackIdentity = AppFeedbackIdentity(dealerId: appFeedbackDealerId, empId: appFeedbackEmpId)
         self.repository = repository
         self.botId = botId
         self.cache = cache
@@ -209,8 +215,7 @@ public final class ChatViewModel: ObservableObject {
         // Restores whatever's already running for this specific conversation (if anything) -
         // switching to a conversation with time left resumes that countdown rather than hiding
         // or restarting it; one with no entry yet (or a past deadline) shows nothing until a
-        // message is actually sent in it. If nothing's running in memory yet (e.g. right after a
-        // cold launch), `refreshSessionTimerFromPersisted` below checks disk for the same thing.
+        // message is actually sent in it.
         let expiresAt = id.flatMap { sessionTimerExpiresAtByConversation[$0] }
         let restoredDraft = switching ? (id.flatMap { drafts[$0] } ?? "") : nil
         update {
@@ -221,28 +226,7 @@ public final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             await self?.refreshPendingFeedback(conversationId: id)
             await self?.refreshMessageReactions(conversationId: id)
-            if let id { await self?.refreshSessionTimerFromPersisted(conversationId: id) }
         }
-    }
-
-    // Shows the countdown the instant a conversation with real time left is opened, even before
-    // any live reconnect to it happens - without this, a restarted app has nothing in memory for
-    // any conversation until it reconnects, so the timer would stay hidden until a new message
-    // was sent, rather than reflecting time that's already genuinely still on the clock.
-    private func refreshSessionTimerFromPersisted(conversationId: String) async {
-        guard sessionTimerExpiresAtByConversation[conversationId] == nil else { return }
-        guard let createdAtMs = await cache.sessionCreatedAt(conversationId: conversationId) else { return }
-        // Only for a conversation that's actually had a real message - a brand-new chat's session
-        // can exist server-side before the user has said anything, and the timer shouldn't appear
-        // until they've actually started the conversation.
-        guard await cache.messages(conversationId: conversationId).contains(where: { $0.kind == "USER" }) else { return }
-        let createdAt = Date(timeIntervalSince1970: Double(createdAtMs) / 1000)
-        let expiresAt = createdAt.addingTimeInterval(3600)
-        guard expiresAt > Date() else { return }
-        serverSessionCreatedAtByConversation[conversationId] = createdAt
-        sessionTimerExpiresAtByConversation[conversationId] = expiresAt
-        guard activeConversationId == conversationId else { return }
-        update { $0.sessionTimerExpiresAt = expiresAt }
     }
 
     // Dislike must durably block the chat with a mandatory feedback prompt - including across
@@ -289,9 +273,63 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - application-wide feedback (drawer)
+
+    // The drawer's feedback icon only shows when feedback can actually be stored: it goes through third-party-tasks.
+    public var canSendAppFeedback: Bool { chatHistoryRepository != nil }
+
+    public func openAppFeedback() {
+        update { $0.showAppFeedbackDialog = true; $0.appFeedbackError = nil }
+    }
+
+    public func dismissAppFeedback() {
+        update { $0.showAppFeedbackDialog = false; $0.appFeedbackError = nil; $0.isSendingAppFeedback = false }
+    }
+
+    // Closes the popup once the server has accepted the text. On a failure it stays open, with the text intact and an
+    // error shown, rather than losing what the user wrote.
+    public func submitAppFeedback(text: String) {
+        guard !uiState.isSendingAppFeedback else { return }
+        guard let chatHistoryRepository, let roomId = connectedRoomId else {
+            update { $0.appFeedbackError = "Couldn't send feedback right now. Please try again." }
+            return
+        }
+        update { $0.isSendingAppFeedback = true; $0.appFeedbackError = nil }
+        let identity = appFeedbackIdentity
+        Task { [weak self] in
+            let sent = await chatHistoryRepository.submitAppFeedback(roomId: roomId, feedback: text, dealerId: identity.dealerId, empId: identity.empId)
+            self?.update {
+                $0.isSendingAppFeedback = false
+                if sent {
+                    $0.showAppFeedbackDialog = false
+                } else {
+                    $0.appFeedbackError = "Couldn't send feedback right now. Please try again."
+                }
+            }
+        }
+    }
+
+    // Marks the message liked and opens the popup for an optional remark. The like is reported once the popup is
+    // resolved (see `submitLikeFeedback` / `skipLikeFeedback`).
     public func likeMessage(timestampMs: Int64?) {
         setReaction(timestampMs: timestampMs, liked: true)
-        reportFeedback(timestampMs: timestampMs, feedback: "Like", remarks: nil)
+        update { $0.pendingLikeTimestampMs = timestampMs }
+    }
+
+    // Reports the like with whatever the user typed; blank text is reported as no remark.
+    public func submitLikeFeedback(text: String) {
+        resolveLike(remarks: normalizedFeedbackRemarks(text))
+    }
+
+    // Closing the popup without typing still reports the like - it is never undone or lost.
+    public func skipLikeFeedback() {
+        resolveLike(remarks: nil)
+    }
+
+    private func resolveLike(remarks: String?) {
+        let timestampMs = uiState.pendingLikeTimestampMs
+        update { $0.pendingLikeTimestampMs = nil }
+        reportFeedback(timestampMs: timestampMs, feedback: "Like", remarks: remarks)
     }
 
     public func dislikeMessage(messageId: String, timestampMs: Int64?) {
@@ -469,12 +507,9 @@ public final class ChatViewModel: ObservableObject {
             if !restoringFromCache && isNewStreamMessage {
                 liveBotBubbleCount += 1
                 registerLiveBotReplyForFeedbackPrompt()
-                // Shown once the bot has actually answered the user, not the instant the user's own
-                // message goes out - and not for the bot's own opening message either, which arrives
-                // on connect before anything has been typed: that used to start the countdown by
-                // itself. `ensureSessionTimerStarted`'s own "already running or not yet expired"
-                // guard means this is still a no-op on every reply after the first.
-                if uiState.messages.contains(where: { $0.fromUser }) { ensureSessionTimerStarted() }
+                // Shown once the bot has actually answered the user, from the server's stored anchor - not the
+                // instant the user's own message goes out, and not for the bot's own opening message either.
+                ensureSessionTimerStarted()
             } else {
                 NSLog(
                     "[Chat360] Skipping feedback-prompt count: restoringFromCache=%@ isNewStreamMessage=%@ nodeId=%@",
@@ -549,6 +584,7 @@ public final class ChatViewModel: ObservableObject {
 
     private func appendMessage(_ message: ChatMessage, cacheUserMessage: Bool? = nil) {
         let shouldCache = cacheUserMessage ?? message.fromUser
+        if message.fromUser, shouldCache, let sentIn = connectedConversationId ?? activeConversationId { conversationsUserHasSentIn.insert(sentIn) }
         let target = connectedConversationId
         if message.fromUser, !restoringFromCache, let target, activeConversationId != target {
             setActiveConversationId(target)
@@ -590,27 +626,26 @@ public final class ChatViewModel: ObservableObject {
         }
     }
 
-    // Only (re)starts when nothing is currently running for THIS conversation, or its last
-    // deadline already passed - a message sent while its hour is still counting down leaves it
-    // alone, and merely having left and come back doesn't count as expiry.
+    // The countdown is the server's, never a local guess: it runs for one hour from the session's `updated_at` (see
+    // `handleSessionTimeReceived`). With no server anchor there is no timer at all, and the user must have sent
+    // something in this conversation before one shows - opening an old chat, or the bot speaking first, shows nothing.
+    //
+    // Called when the bot answers. Shows the countdown from a server anchor already stored for the conversation (an
+    // old chat's connect-time answer arrives before the user has sent anything, so it was only remembered); an
+    // anchor that has already run out waits for the renewed session's own answer instead.
     private func ensureSessionTimerStarted() {
-        guard let conversationId = activeConversationId else { return }
-        let now = Date()
-        if let expiresAt = sessionTimerExpiresAtByConversation[conversationId], expiresAt > now { return }
-        // Anchor to the server's real session creation time when we have it, rather than "now" -
-        // a resumed room's session may have actually started well before this device sent
-        // anything in it, and the client-side guess would understate how much time is really left.
-        var anchor = serverSessionCreatedAtByConversation[conversationId] ?? now
-        // A session that already ran its hour is over: the backend renews it for this message, so the new
-        // countdown starts from now. Anchoring to the old start left the new deadline in the past, so the
-        // timer never came back after the first hour.
-        if anchor.addingTimeInterval(3600) <= now {
-            anchor = now
-            serverSessionCreatedAtByConversation[conversationId] = now
-        }
-        let newExpiresAt = anchor.addingTimeInterval(3600)
-        sessionTimerExpiresAtByConversation[conversationId] = newExpiresAt
-        update { $0.sessionTimerExpiresAt = newExpiresAt }
+        guard let conversationId = activeConversationId, conversationsUserHasSentIn.contains(conversationId) else { return }
+        guard let anchor = serverSessionCreatedAtByConversation[conversationId] else { return }
+        showSessionTimer(anchor: anchor, conversationId: conversationId)
+    }
+
+    // Counts down the hour from `anchor`, unless it has already run out - then nothing shows until the renewed
+    // session's answer arrives.
+    private func showSessionTimer(anchor: Date, conversationId: String) {
+        let expiresAt = anchor.addingTimeInterval(Self.sessionLength)
+        guard expiresAt > Date() else { return }
+        sessionTimerExpiresAtByConversation[conversationId] = expiresAt
+        if activeConversationId == conversationId { update { $0.sessionTimerExpiresAt = expiresAt } }
     }
 
     // `connectedConversationId` is the room whose session this response actually belongs to -
@@ -620,21 +655,13 @@ public final class ChatViewModel: ObservableObject {
     private func handleSessionTimeReceived(_ createdAt: Date) {
         guard let conversationId = connectedConversationId else { return }
         serverSessionCreatedAtByConversation[conversationId] = createdAt
-        // Saved to disk too, so a future cold launch can show the countdown for this conversation
-        // the instant it's opened, without needing a live reconnect to re-derive it first - see
-        // `refreshSessionTimerFromPersisted`.
+        // Saved to disk too, so a later launch still knows when this conversation's session started.
         let createdAtMs = Int64(createdAt.timeIntervalSince1970 * 1000)
         let cache = self.cache
         Task { await cache.setSessionCreatedAt(conversationId: conversationId, createdAtMs: createdAtMs) }
-        // The timer may have already started using "now" as a rough stand-in, if the user sent
-        // their first message before this response made it back - correct it now that the real
-        // anchor is known, rather than leaving it on the earlier guess for the rest of the hour.
-        guard sessionTimerExpiresAtByConversation[conversationId] != nil else { return }
-        let correctedExpiresAt = createdAt.addingTimeInterval(3600)
-        sessionTimerExpiresAtByConversation[conversationId] = correctedExpiresAt
-        if activeConversationId == conversationId {
-            update { $0.sessionTimerExpiresAt = correctedExpiresAt }
-        }
+        // Shown only once the user has sent in this conversation; until then the anchor is just remembered.
+        guard conversationsUserHasSentIn.contains(conversationId) else { return }
+        showSessionTimer(anchor: createdAt, conversationId: conversationId)
     }
 
     // Best-effort: a failed or unavailable check should never block the chat from starting, so
@@ -703,12 +730,7 @@ public final class ChatViewModel: ObservableObject {
             },
             onAppearanceLoaded: { [weak self] details, chatboxName in
                 Task { @MainActor [weak self] in
-                    self?.update {
-                        $0.colorOverrides = details?.toColorOverrides()
-                        $0.logoOverride = details?.toLogoOverride()
-                        $0.botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
-                        $0.feedbackConfig = details?.feedback_config ?? $0.feedbackConfig
-                    }
+                    self?.update { $0.applyAppearance(details, chatboxName: chatboxName) }
                 }
             },
             onConversationStarted: { [weak self] roomId in

@@ -198,6 +198,21 @@ public final class ThirdPartyTasksApiService {
         NSLog("[Chat360] << PATCH %@ succeeded (2xx)", url.absoluteString)
     }
 
+    /// Application-wide feedback (not tied to a message): `POST /api/third-party-tasks/app-feedback`. A dealer or
+    /// employee the host never set is left out of the body.
+    public func submitAppFeedback(roomId: String, feedback: String, dealerId: String?, empId: String?, bearerToken: String) async throws {
+        let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/app-feedback")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        var body: [String: Any] = ["room_id": roomId, "feedback": feedback]
+        if let dealerId { body["dealer_id"] = dealerId }
+        if let empId { body["emp_id"] = empId }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await execute(request)
+    }
+
     public func fetchMaintenanceStatus() async throws -> MaintenanceStatusResponse {
         let url = URL(string: "\(trimmedBaseUrl)/api/third-party-tasks/maintainance")!
         let data = try await execute(URLRequest(url: url))

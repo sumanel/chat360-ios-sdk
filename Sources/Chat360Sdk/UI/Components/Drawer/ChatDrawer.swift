@@ -59,6 +59,8 @@ public struct ChatDrawer: View {
     private let hasMoreRooms: Bool
     private let isLoadingMoreRooms: Bool
     private let onLoadMoreRooms: () -> Void
+    private let showAppFeedback: Bool
+    private let onAppFeedback: () -> Void
 
     public init(
         onDismiss: @escaping () -> Void,
@@ -83,7 +85,9 @@ public struct ChatDrawer: View {
         onRetryHistory: @escaping () -> Void = {},
         hasMoreRooms: Bool = false,
         isLoadingMoreRooms: Bool = false,
-        onLoadMoreRooms: @escaping () -> Void = {}
+        onLoadMoreRooms: @escaping () -> Void = {},
+        showAppFeedback: Bool = false,
+        onAppFeedback: @escaping () -> Void = {}
     ) {
         self.onDismiss = onDismiss
         self.onNewChat = onNewChat
@@ -108,6 +112,8 @@ public struct ChatDrawer: View {
         self.hasMoreRooms = hasMoreRooms
         self.isLoadingMoreRooms = isLoadingMoreRooms
         self.onLoadMoreRooms = onLoadMoreRooms
+        self.showAppFeedback = showAppFeedback
+        self.onAppFeedback = onAppFeedback
     }
 
     public var body: some View {
@@ -123,9 +129,19 @@ public struct ChatDrawer: View {
                     .foregroundColor(colors.accent)
                 }
                 Spacer()
-                Text("v\(Constants.sdkVersion)")
-                    .font(typography.textFamily.font(size: 12))
-                    .foregroundColor(colors.textSecondary)
+                // Right-most: the version, with the application-wide "Feedback" button underneath it.
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("v\(Constants.sdkVersion)")
+                        .font(typography.textFamily.font(size: 12))
+                        .foregroundColor(colors.textSecondary)
+                    if showAppFeedback {
+                        Button(action: onAppFeedback) {
+                            Text("Feedback")
+                                .font(typography.textFamily.font(size: 15, weight: .bold))
+                                .foregroundColor(colors.accent)
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .frame(height: 60)

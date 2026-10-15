@@ -68,7 +68,7 @@ final class SessionContextTests: XCTestCase {
 
     /// The server's answer to a session-time request.
     private func sessionTimeAnswer(_ repository: ChatRepository, room: String = "room-1") {
-        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"\#(room)","created_at":"2026-09-01T10:00:00.000000"}}"#)
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"\#(room)","created_at":"2020-01-01T00:00:00.000000","updated_at":"2026-09-01T10:00:00.000000"}}"#)
     }
 
     private func connected(_ repository: ChatRepository, onSessionTime: @escaping (Date) -> Void = { _ in }) async {
@@ -127,6 +127,33 @@ final class SessionContextTests: XCTestCase {
         botReply(repository)
 
         XCTAssertTrue(times.isEmpty)
+    }
+
+    // MARK: - the countdown anchors to updated_at
+
+    func testAReplyWithOnlyCreatedAtStartsNoTimer() async {
+        let repository = makeRepository()
+        var times: [Date] = []
+        await connected(repository) { times.append($0) }
+        botReply(repository)
+        repository.sendFreeText("question")
+        botReply(repository) // asks the server for the session time
+
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-1","created_at":"2026-09-01T10:00:00.000000"}}"#)
+
+        XCTAssertTrue(times.isEmpty, "created_at must not start the timer: \(times)")
+    }
+
+    func testTheTimerAnchorsToUpdatedAtNotCreatedAt() async {
+        let repository = makeRepository()
+        var times: [Date] = []
+        await connected(repository) { times.append($0) }
+        repository.awaitingSessionTimeResponse = true
+
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-1","created_at":"2020-01-01T00:00:00.000000","updated_at":"2026-09-01T10:00:00.000000"}}"#)
+
+        let anchor = ISO8601DateFormatter().date(from: "2026-09-01T10:00:00Z")
+        XCTAssertEqual(times.first, anchor)
     }
 
     // MARK: - the host's variables

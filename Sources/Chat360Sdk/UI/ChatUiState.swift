@@ -185,6 +185,14 @@ public struct ChatUiState: Equatable {
     public var activeConversationId: String?
     public var pendingFeedbackMessageId: String?
     public var pendingFeedbackTimestampMs: Int64?
+    // The message whose thumbs-up popup (optional remarks) is open. In memory only: unlike a dislike, a like owes
+    // nothing, so it never blocks the chat and is not restored after a restart.
+    public var pendingLikeTimestampMs: Int64?
+    // The drawer's application-wide feedback popup. In memory only. `isSendingAppFeedback` disables Submit while the
+    // request is out; a failure keeps the popup open with `appFeedbackError` so the text is not lost.
+    public var showAppFeedbackDialog: Bool = false
+    public var isSendingAppFeedback: Bool = false
+    public var appFeedbackError: String?
     public var messageReactions: [Int64: Bool] = [:]
     // Purely a client-side display, not tied to any real backend session lifetime. Starts on
     // the conversation's first user message, keeps counting down regardless of further
@@ -225,6 +233,10 @@ public struct ChatUiState: Equatable {
             lhs.activeConversationId == rhs.activeConversationId &&
             lhs.pendingFeedbackMessageId == rhs.pendingFeedbackMessageId &&
             lhs.pendingFeedbackTimestampMs == rhs.pendingFeedbackTimestampMs &&
+            lhs.pendingLikeTimestampMs == rhs.pendingLikeTimestampMs &&
+            lhs.showAppFeedbackDialog == rhs.showAppFeedbackDialog &&
+            lhs.isSendingAppFeedback == rhs.isSendingAppFeedback &&
+            lhs.appFeedbackError == rhs.appFeedbackError &&
             lhs.messageReactions == rhs.messageReactions &&
             lhs.sessionTimerExpiresAt == rhs.sessionTimerExpiresAt &&
             lhs.showPeriodicFeedbackPrompt == rhs.showPeriodicFeedbackPrompt

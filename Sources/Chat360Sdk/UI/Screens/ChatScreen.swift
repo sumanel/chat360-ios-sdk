@@ -44,7 +44,7 @@ public struct ChatScreen: View {
     private var effectiveBranding: Chat360Branding {
         var branding = baseBranding
         branding.botTitle = viewModel.uiState.botTitleOverride ?? baseBranding.botTitle
-        branding.logo = viewModel.uiState.logoOverride ?? baseBranding.logo
+        branding.logo = resolveLogo(configured: baseBranding.logo, fromServer: viewModel.uiState.logoOverride)
         return branding.withWelcome(viewModel.uiState.welcomeOverride)
     }
 
@@ -327,7 +327,12 @@ public struct ChatScreen: View {
                             onRetryHistory: { viewModel.refreshRoomsList() },
                             hasMoreRooms: viewModel.uiState.hasMoreRooms,
                             isLoadingMoreRooms: viewModel.uiState.isLoadingMoreRooms,
-                            onLoadMoreRooms: { viewModel.loadMoreRooms() }
+                            onLoadMoreRooms: { viewModel.loadMoreRooms() },
+                            showAppFeedback: features.showAppFeedback && viewModel.canSendAppFeedback,
+                            onAppFeedback: {
+                                withAnimation(.easeOut(duration: 0.22)) { showHistorySidebar = false }
+                                viewModel.openAppFeedback()
+                            }
                         )
                         .frame(width: min(320, geo.size.width * 0.84))
                         Color.black.opacity(0.55)
@@ -356,6 +361,31 @@ public struct ChatScreen: View {
                 DislikeFeedbackDialog(
                     onSubmit: { text in viewModel.submitDislikeFeedback(messageId: messageId, text: text) },
                     onCancel: { viewModel.cancelDislikeFeedback(messageId: messageId) }
+                )
+            }
+
+            // The drawer's application-wide feedback popup. Can be dismissed (tap outside or the X) - nothing is owed.
+            if viewModel.uiState.showAppFeedbackDialog {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                    .onTapGesture { viewModel.dismissAppFeedback() }
+                DislikeFeedbackDialog(
+                    kind: .appFeedback,
+                    isSending: viewModel.uiState.isSendingAppFeedback,
+                    errorMessage: viewModel.uiState.appFeedbackError,
+                    onSubmit: { text in viewModel.submitAppFeedback(text: text) },
+                    onCancel: { viewModel.dismissAppFeedback() }
+                )
+            }
+
+            // The thumbs-up popup: the same dialog with optional text. Unlike a dislike it can be dismissed - tapping
+            // outside or the X still records the like, just without a remark - and it never blocks the chat.
+            if viewModel.uiState.pendingLikeTimestampMs != nil {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                    .onTapGesture { viewModel.skipLikeFeedback() }
+                DislikeFeedbackDialog(
+                    kind: .like,
+                    onSubmit: { text in viewModel.submitLikeFeedback(text: text) },
+                    onCancel: { viewModel.skipLikeFeedback() }
                 )
             }
 

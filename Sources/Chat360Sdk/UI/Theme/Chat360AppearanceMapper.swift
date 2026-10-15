@@ -20,6 +20,26 @@ extension BotAppearanceDetails {
     }
 }
 
+/// The logo to show: the host's configured one always wins, so a brand's own logo (Hyundai's) is never replaced by the
+/// bot's server-side avatar. The server's logo only fills in when the host configured none.
+@available(iOS 13.0, *)
+public func resolveLogo(configured: Chat360Logo?, fromServer: Chat360Logo?) -> Chat360Logo? {
+    configured ?? fromServer
+}
+
+@available(iOS 13.0, *)
+extension ChatUiState {
+    /// Applies a (re)loaded bot appearance. The logo is sticky: a failed fetch (`details == nil`, e.g. right after a
+    /// dropped socket or a wake from sleep) or a response with no logo keeps the one already resolved instead of
+    /// falling back to whatever sits underneath.
+    mutating func applyAppearance(_ details: BotAppearanceDetails?, chatboxName: String?) {
+        colorOverrides = details?.toColorOverrides()
+        logoOverride = details?.toLogoOverride() ?? logoOverride
+        botTitleOverride = chatboxName.flatMap { $0.isBlank ? nil : $0 }
+        feedbackConfig = details?.feedback_config ?? feedbackConfig
+    }
+}
+
 @available(iOS 13.0, *)
 extension String {
     public func toChat360Color() -> Color? {

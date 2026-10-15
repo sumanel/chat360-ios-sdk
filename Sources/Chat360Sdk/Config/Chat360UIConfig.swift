@@ -134,6 +134,9 @@ public struct Chat360FeatureConfig {
     // Defaults true: ChatController presents fullScreen, which doesn't support swipe-to-dismiss,
     // so a host that turns this off must provide its own way to close the chat screen.
     public var showClose: Bool = true
+    /// A feedback icon in the drawer's header. It opens a popup, and its text is stored for the whole application
+    /// (by employee id), not for a single message. Needs history (clientId, apiKey, endUserId) to be configured.
+    public var showAppFeedback: Bool = false
     // The mandatory "how's it going so far?" prompt that fires every random N live bot replies,
     // N drawn from `periodicFeedbackPromptInterval` below (see
     // `ChatViewModel.registerLiveBotReplyForFeedbackPrompt`) - separate from `showFeedback`
@@ -151,7 +154,7 @@ public struct Chat360FeatureConfig {
         showCamera: Bool = true, showSend: Bool = true, showAssistantMode: Bool = true, showAppearanceSwitcher: Bool = false,
         showTypingIndicator: Bool = true, enableVoicePreview: Bool = false, showBotAvatar: Bool = true, showClose: Bool = true,
         showPeriodicFeedbackPrompt: Bool = true, periodicFeedbackPromptInterval: ClosedRange<Int> = 8...12,
-        assistantModes: [Chat360AssistantModeOption]? = nil, defaultAssistantMode: Int = 1
+        assistantModes: [Chat360AssistantModeOption]? = nil, defaultAssistantMode: Int = 1, showAppFeedback: Bool = false
     ) {
         self.showMenu = showMenu
         self.showHistorySidebar = showHistorySidebar
@@ -177,6 +180,7 @@ public struct Chat360FeatureConfig {
         self.enableVoicePreview = enableVoicePreview
         self.showBotAvatar = showBotAvatar
         self.showClose = showClose
+        self.showAppFeedback = showAppFeedback
     }
 
     /// The Assistant Mode switcher has room for two buttons.

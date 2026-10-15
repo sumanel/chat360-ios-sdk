@@ -106,7 +106,7 @@ public final class ChatRepository {
     // Set right before each requestSessionTime() call, cleared the moment any session-time frame
     // arrives. Lets handleSessionTimeReceived tell a reply to our own request apart from a
     // session-time frame the backend pushes unprompted.
-    @Locked private var awaitingSessionTimeResponse = false
+    @Locked var awaitingSessionTimeResponse = false // internal for tests
     // Set when a session-time reply shouldn't be shown to the UI the moment it arrives - either an
     // unprompted push (the backend rolls the current session over to a fresh one once its hour
     // window lapses) or a resumed session whose real elapsed time was already found to be
@@ -647,7 +647,9 @@ public final class ChatRepository {
             NSLog("[Chat360WS] Session time response: %@", raw)
             if let data = raw.data(using: .utf8),
                let response = try? decoder.decode(SessionTimeResponse.self, from: data),
-               let createdAtRaw = response.session?.created_at,
+               // The countdown runs from `updated_at`, which stays fixed once the session exists. `created_at` is
+               // deliberately not a fallback: a reply without `updated_at` starts no timer.
+               let createdAtRaw = response.session?.updated_at,
                let createdAt = Self.parseSessionTimestamp(createdAtRaw) {
                 handleSessionTimeReceived(createdAt)
             }
@@ -1217,6 +1219,7 @@ private struct SessionTimeResponse: Codable {
         let session_id: String?
         let admin_uuid: String?
         let created_at: String?
+        let updated_at: String?
     }
     let data_type: String?
     let session: Session?

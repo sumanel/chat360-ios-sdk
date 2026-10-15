@@ -212,6 +212,21 @@ public final class ChatHistoryRepository {
         }
     }
 
+    /// Sends application-wide feedback; true once the server accepted it. Blank text is never sent.
+    public func submitAppFeedback(roomId: String, feedback: String, dealerId: String?, empId: String?) async -> Bool {
+        guard let text = normalizedFeedbackRemarks(feedback) else { return false }
+        do {
+            try await withAuthRetry { token in
+                try await self.apiService.submitAppFeedback(roomId: roomId, feedback: text, dealerId: dealerId, empId: empId, bearerToken: token)
+            }
+            NSLog("[Chat360] App feedback sent successfully (room=%@)", roomId)
+            return true
+        } catch {
+            NSLog("[Chat360] third-party-tasks app-feedback failed: %@", error.localizedDescription)
+            return false
+        }
+    }
+
     private func withAuthRetry<T>(_ block: @escaping (String) async throws -> T) async throws -> T {
         let token = try await tokenManager.validToken()
         do {

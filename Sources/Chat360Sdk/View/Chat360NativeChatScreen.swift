@@ -25,6 +25,7 @@ public struct Chat360NativeChatScreen: View {
             assistantVariables: botConfig.uiConfig?.features.initialAssistantVariables ?? [:]
         )
         let cache = ChatCacheRepository(dao: ChatCacheDatabase.shared.dao)
+        let feedbackIdentity = AppFeedbackIdentity.resolve(dealerId: botConfig.dealerId, empId: botConfig.empId, meta: botConfig.meta, endUserId: botConfig.endUserId)
         let historyRepository = Chat360NativeChatScreen.buildChatHistoryRepository(botConfig: botConfig, baseUrl: resolvedBaseUrl, botId: resolvedBotId, cache: cache)
         _viewModel = StateObject(wrappedValue: ChatViewModel(
             repository: repository,
@@ -41,7 +42,9 @@ public struct Chat360NativeChatScreen: View {
                 .flatMap { $0.isEmpty ? nil : $0 }
                 .map { WelcomeTextRepository(apiService: ThirdPartyTasksApiService(baseUrl: resolvedBaseUrl), clientId: $0, store: UserDefaultsWelcomeTextStore()) },
             salesExecutiveGate: Chat360NativeChatScreen.buildSalesExecutiveGate(botConfig: botConfig, baseUrl: resolvedBaseUrl),
-            initialAssistantModeIndex: botConfig.uiConfig?.features.initialAssistantModeIndex ?? 0
+            initialAssistantModeIndex: botConfig.uiConfig?.features.initialAssistantModeIndex ?? 0,
+            appFeedbackDealerId: feedbackIdentity.dealerId,
+            appFeedbackEmpId: feedbackIdentity.empId
         ))
     }
 

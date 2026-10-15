@@ -40,11 +40,14 @@ final class GhostRoomTests: XCTestCase {
         static var historyWithoutReply = 0
         /// Every room's history is empty (nothing was ever said) - for tests about what a brand-new chat does by itself.
         static var historyIsEmpty = false
+        static var appFeedbackStatus = 200
+        static var appFeedbackBodies: [String] = []
         /// The room whose history the reply tests are about; every other room's history never has a reply.
         static let roomUnderTest = "room-a"
 
         static func reset() {
             lock.lock(); sessionRequests = []; roomCounter = 0; historyRequestsByRoom = [:]; historyWithoutReply = 0; historyIsEmpty = false
+            appFeedbackStatus = 200; appFeedbackBodies = []
             salesStatus = 200; salesBody = activeExecutive; salesDelay = 0; salesClientIds = []; salesBodies = []; maintenanceBody = #"{"is_active":false}"#
             welcomeStatus = 200; welcomeBody = #"{"heading":"Server heading","text":"Server subtitle","client_id":"client-1"}"#; welcomeDelay = 0; welcomeClientIds = []
             lock.unlock()
@@ -83,6 +86,18 @@ final class GhostRoomTests: XCTestCase {
                 let delay = Self.salesDelay
                 Self.lock.unlock()
                 if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+            } else if url.path.hasSuffix("/api/third-party-tasks/app-feedback") {
+                var sent = request.httpBody ?? Data()
+                if sent.isEmpty, let stream = request.httpBodyStream {
+                    stream.open(); defer { stream.close() }
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; sent.append(buffer, count: n) }
+                }
+                Self.lock.lock()
+                Self.appFeedbackBodies.append(String(decoding: sent, as: UTF8.self))
+                status = Self.appFeedbackStatus
+                body = Data("{}".utf8)
+                Self.lock.unlock()
             } else if url.path.hasSuffix("/api/third-party-tasks/maintainance") {
                 Self.lock.lock(); body = Data(Self.maintenanceBody.utf8); Self.lock.unlock()
                 status = 200
@@ -121,11 +136,13 @@ final class GhostRoomTests: XCTestCase {
     }
 
     private final class InMemorySessionStore: SessionStore {
+        // The repository saves from background tasks while tests save from the test thread, so access is locked.
+        private let lock = NSLock()
         private var rooms: [String: PersistedSession] = [:]
         private var last: PersistedSession?
-        func load(botId: String) -> PersistedSession? { last }
-        func loadForRoom(botId: String, roomId: String) -> PersistedSession? { rooms[roomId] }
-        func save(botId: String, session: PersistedSession) { rooms[session.roomId] = session; last = session }
+        func load(botId: String) -> PersistedSession? { lock.lock(); defer { lock.unlock() }; return last }
+        func loadForRoom(botId: String, roomId: String) -> PersistedSession? { lock.lock(); defer { lock.unlock() }; return rooms[roomId] }
+        func save(botId: String, session: PersistedSession) { lock.lock(); defer { lock.unlock() }; rooms[session.roomId] = session; last = session }
     }
 
     private let botId = "ghost-room-bot-\(UUID().uuidString)"
@@ -144,7 +161,7 @@ final class GhostRoomTests: XCTestCase {
     }
 
     /// A fresh view model over the same cache/session store - what reopening the chat screen builds.
-    private func makeViewModel(welcome: WelcomeTextRepository? = nil, gate: SalesExecutiveGate? = nil, maintenanceApi: ThirdPartyTasksApiService? = nil) -> ChatViewModel {
+    private func makeViewModel(welcome: WelcomeTextRepository? = nil, gate: SalesExecutiveGate? = nil, maintenanceApi: ThirdPartyTasksApiService? = nil, history: ChatHistoryRepository? = nil) -> ChatViewModel {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubServer.self]
         let baseUrl = "https://ghost.test"
@@ -155,7 +172,7 @@ final class GhostRoomTests: XCTestCase {
             sessionStore: sessionStore
         )
         self.repository = repository
-        return ChatViewModel(repository: repository, botId: botId, cache: ChatCacheRepository(dao: dao), maintenanceApi: maintenanceApi, welcomeTextRepository: welcome, salesExecutiveGate: gate)
+        return ChatViewModel(repository: repository, botId: botId, cache: ChatCacheRepository(dao: dao), chatHistoryRepository: history, maintenanceApi: maintenanceApi, welcomeTextRepository: welcome, salesExecutiveGate: gate, appFeedbackDealerId: "D1", appFeedbackEmpId: "12345")
     }
 
     override func tearDown() async throws {
@@ -252,7 +269,207 @@ final class GhostRoomTests: XCTestCase {
         liveReply(from: "room-1") // the answer
         await settle()
 
-        XCTAssertNotNil(viewModel.uiState.sessionTimerExpiresAt, "the answer to the user's question should start it")
+        // The reply alone starts nothing: with no server `updated_at` there is nothing to count from.
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "the bot's reply started a local countdown with no server anchor")
+
+        // The server's session-time answer (with updated_at) is what starts it.
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-1","updated_at":"\#(utcStamp(secondsAgo: 0))"}}"#)
+        await settle()
+        XCTAssertNotNil(viewModel.uiState.sessionTimerExpiresAt, "the server's updated_at should start it once the user has sent")
+    }
+
+    func testASessionTimeAnswerWithoutUpdatedAtNeverStartsTheTimer() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        viewModel.onInputChange("Tell me about the Venue")
+        viewModel.sendMessage()
+        await settle()
+        liveReply(from: "room-1")
+        await settle()
+
+        // Only created_at - production and staging send this today.
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-1","created_at":"\#(utcStamp(secondsAgo: 0))"}}"#)
+        await settle()
+
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "created_at must not start the timer, and neither may a local clock")
+    }
+
+    func testTheServersAnswerBeforeTheUserSendsShowsNothingUntilTheyDo() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        repository.awaitingSessionTimeResponse = true
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-1","updated_at":"\#(utcStamp(secondsAgo: 300))"}}"#)
+        await settle()
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "the user has not sent yet")
+
+        viewModel.onInputChange("Tell me about the Venue")
+        viewModel.sendMessage()
+        await settle()
+        liveReply(from: "room-1") // the bot's answer: the stored server anchor now shows
+        await settle()
+
+        let remaining = viewModel.uiState.sessionTimerExpiresAt?.timeIntervalSinceNow ?? 0
+        XCTAssertTrue((3_200...3_400).contains(remaining), "expected about 55 minutes left from the stored updated_at, got \(remaining)s")
+    }
+
+    // MARK: - application-wide feedback (drawer)
+
+    private func makeHistory() -> ChatHistoryRepository {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubServer.self]
+        let api = ThirdPartyTasksApiService(baseUrl: "https://ghost.test", session: URLSession(configuration: configuration))
+        return ChatHistoryRepository(
+            apiService: api,
+            tokenManager: ThirdPartyTokenManager(fetchToken: { TokenResponse(bearerToken: "tok-1") }),
+            cache: ChatCacheRepository(dao: dao),
+            clientId: "client-1", botId: botId, endUserId: "12345"
+        )
+    }
+
+    private func reopenWithHistory() async {
+        viewModel.onCleared()
+        viewModel = makeViewModel(history: makeHistory())
+        await awaitUntil("room opened with history") { StubServer.requests.count >= 2 && self.viewModel.uiState.activeConversationId != nil }
+        await settle()
+    }
+
+    func testTheFeedbackIconNeedsHistoryToBeConfigured() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        XCTAssertFalse(viewModel.canSendAppFeedback, "without third-party-tasks there is nowhere to store the feedback")
+        await reopenWithHistory()
+        XCTAssertTrue(viewModel.canSendAppFeedback)
+    }
+
+    func testTheFeedbackPopupOpensAndCloses() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        viewModel.openAppFeedback()
+        XCTAssertTrue(viewModel.uiState.showAppFeedbackDialog)
+        viewModel.dismissAppFeedback()
+        XCTAssertFalse(viewModel.uiState.showAppFeedbackDialog)
+    }
+
+    func testSubmittingSendsTheTextWithTheRoomTheDealerAndTheEmployeeThenCloses() async throws {
+        await reopenWithHistory()
+        viewModel.openAppFeedback()
+
+        viewModel.submitAppFeedback(text: "Search results are very helpful")
+        await awaitUntil("feedback sent and popup closed") { !self.viewModel.uiState.showAppFeedbackDialog }
+
+        let sent = try XCTUnwrap(StubServer.appFeedbackBodies.first)
+        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(sent.utf8)) as? [String: Any])
+        XCTAssertEqual(body["feedback"] as? String, "Search results are very helpful")
+        XCTAssertEqual(body["dealer_id"] as? String, "D1")
+        XCTAssertEqual(body["emp_id"] as? String, "12345")
+        XCTAssertNotNil(body["room_id"] as? String, "the room the user is in is sent")
+        XCTAssertFalse(viewModel.uiState.isSendingAppFeedback)
+        XCTAssertNil(viewModel.uiState.appFeedbackError)
+    }
+
+    func testAFailedSubmitKeepsThePopupOpenWithAnError() async {
+        await reopenWithHistory()
+        StubServer.appFeedbackStatus = 500
+        viewModel.openAppFeedback()
+
+        viewModel.submitAppFeedback(text: "Nice app")
+        await awaitUntil("failure shown") { self.viewModel.uiState.appFeedbackError != nil }
+
+        XCTAssertTrue(viewModel.uiState.showAppFeedbackDialog, "the text must not be lost")
+        XCTAssertFalse(viewModel.uiState.isSendingAppFeedback, "the user can try again")
+    }
+
+    func testReopeningThePopupClearsTheOldError() async {
+        await reopenWithHistory()
+        StubServer.appFeedbackStatus = 500
+        viewModel.openAppFeedback()
+        viewModel.submitAppFeedback(text: "Nice app")
+        await awaitUntil("failure shown") { self.viewModel.uiState.appFeedbackError != nil }
+        viewModel.dismissAppFeedback()
+
+        viewModel.openAppFeedback()
+
+        XCTAssertNil(viewModel.uiState.appFeedbackError)
+    }
+
+    // MARK: - thumbs-up popup (optional remarks)
+
+    func testTappingThumbsUpOpensThePopupAndMarksTheMessageLiked() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+
+        viewModel.likeMessage(timestampMs: 1_700_000_000_123)
+
+        XCTAssertEqual(viewModel.uiState.pendingLikeTimestampMs, 1_700_000_000_123, "the popup should be showing")
+        XCTAssertEqual(viewModel.uiState.messageReactions[1_700_000_000_123], true)
+    }
+
+    func testSubmittingTheLikePopupClosesItAndKeepsTheLike() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        viewModel.likeMessage(timestampMs: 1_700_000_000_123)
+
+        viewModel.submitLikeFeedback(text: "Clear and quick")
+
+        XCTAssertNil(viewModel.uiState.pendingLikeTimestampMs)
+        XCTAssertEqual(viewModel.uiState.messageReactions[1_700_000_000_123], true)
+    }
+
+    func testSubmittingTheLikePopupWithNoTextIsAllowed() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        viewModel.likeMessage(timestampMs: 1_700_000_000_123)
+
+        viewModel.submitLikeFeedback(text: "")
+
+        XCTAssertNil(viewModel.uiState.pendingLikeTimestampMs)
+        XCTAssertEqual(viewModel.uiState.messageReactions[1_700_000_000_123], true)
+    }
+
+    func testClosingTheLikePopupStillKeepsTheLike() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        viewModel.likeMessage(timestampMs: 1_700_000_000_123)
+
+        viewModel.skipLikeFeedback()
+
+        XCTAssertNil(viewModel.uiState.pendingLikeTimestampMs)
+        XCTAssertEqual(viewModel.uiState.messageReactions[1_700_000_000_123], true, "closing the popup must not undo the like")
+    }
+
+    func testTheLikePopupNeverBlocksTheChat() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+
+        viewModel.likeMessage(timestampMs: 1_700_000_000_123)
+
+        XCTAssertNil(viewModel.uiState.pendingFeedbackMessageId, "a like must not create the mandatory-feedback obligation a dislike does")
+    }
+
+    private func utcStamp(secondsAgo: TimeInterval) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: Date().addingTimeInterval(-secondsAgo))
+    }
+
+    /// An old chat with earlier user messages: opening it, and the server's session time arriving, must not show the
+    /// countdown. Only the user writing in it does - and then it counts down from the server's `updated_at`.
+    func testAnOldChatShowsTheTimerOnlyAfterTheUserSendsAndCountsFromTheServersUpdatedAt() async {
+        await awaitUntil("initial room") { StubServer.requests.count == 1 && self.viewModel.uiState.activeConversationId != nil }
+        await seedResumableRoom("conv-old", roomId: "room-old", texts: ["an earlier question"])
+        await awaitUntil("old conversation listed") { self.viewModel.conversations.contains { $0.id == "conv-old" } }
+
+        viewModel.openConversation("conv-old")
+        await settle()
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "opening an old chat must not show the countdown")
+
+        await sendInOpenedRoom("room-old", text: "where is my order")
+        await settle()
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "sending alone shows nothing until the bot answers")
+
+        liveReply(from: "room-old") // the answer to the send
+        await settle()
+        XCTAssertNil(viewModel.uiState.sessionTimerExpiresAt, "no server updated_at yet, so no countdown")
+
+        repository.awaitingSessionTimeResponse = true // the stub socket never opens, so stand in for the request it would have sent
+        // The server says this session's updated_at was 10 minutes ago: 50 minutes of the hour are left.
+        repository.handleIncoming(#"{"data_type":"session_time_hyundai","found":true,"session":{"room_id":"room-old","created_at":"2020-01-01T00:00:00","updated_at":"\#(utcStamp(secondsAgo: 600))"}}"#)
+        await settle()
+        let remaining = viewModel.uiState.sessionTimerExpiresAt?.timeIntervalSinceNow ?? 0
+        XCTAssertTrue((2_900...3_100).contains(remaining), "expected about 50 minutes left from the server's updated_at, got \(remaining)s")
     }
 
     func testReopeningTheChatScreenInTheSameProcessReusesTheBlankRoom() async {
